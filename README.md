@@ -1,253 +1,153 @@
-# 巴布之光庆祝系统 (BBZG)
+# BOB-LIFT_BBZG（BBZG）
 
-支持多用户成交音乐配置、语音播报、动画效果和数据统计功能。
+一个给电商团队用的“询盘计数 + 成交播报 + 战歌庆祝”本地系统。
 
-## 项目架构
+你要的效果就两点：
 
-### 技术栈
-- **后端**: Node.js + Express.js
-- **前端**: HTML5 + CSS3 + JavaScript (原生)
-- **数据存储**: JSON文件本地存储
-- **文件上传**: Multer
-- **图片处理**: Sharp
-- **语音合成**: 阿里云TTS + Web Speech API
-- **定时任务**: node-cron
-- **会话管理**: express-session
+- **数据立刻变**（询盘/成交立刻更新到大屏）
+- **播报立刻响**（成交后马上走“队列→TTS→音乐→弹窗”）
 
-### 系统架构
+本项目是 **Node.js + Express + 纯静态前端**，数据用本地 `data.json` 存储，适合本地电脑或 NAS 运行。
 
-#### 后端架构 (server.js)
-```
-├── 认证系统
-│   ├── 登录验证 (/login)
-│   ├── 会话管理 (express-session)
-│   └── API权限控制
-├── 核心API
-│   ├── 询盘管理 (/api/inquiries/*)
-│   ├── 成交管理 (/api/deals/*)
-│   ├── 用户管理 (/api/users/*)
-│   └── 音乐管理 (/api/music/*)
-├── 文件处理
-│   ├── 音乐文件上传
-│   ├── 用户头像处理 (Sharp图片裁剪)
-│   └── LRC歌词文件处理
-├── 语音服务
-│   ├── 阿里云TTS集成
-│   ├── 语音配置管理
-│   └── TTS文件缓存和清理
-└── 数据管理
-    ├── JSON文件存储 (data.json)
-    ├── 数据备份机制
-    └── 历史记录管理
-```
+## 页面入口
 
-#### 前端架构
-```
-public/
-├── 页面文件
-│   ├── index.html (主显示页面)
-│   ├── admin.html (管理后台)
-│   └── login.html (登录页面)
-├── JavaScript模块
-│   ├── 核心模块
-│   │   ├── main.js (主页面逻辑)
-│   │   ├── init.js (初始化)
-│   │   ├── data.js (数据获取)
-│   │   └── animation.js (动画效果)
-│   ├── 音频系统
-│   │   ├── audioSystem.js (音频系统初始化)
-│   │   ├── musicPlayer.js (音乐播放器)
-│   │   └── sound.js (音效处理)
-│   ├── 显示模块
-│   │   ├── leaderboard.js (排行榜)
-│   │   └── tv-display.js (TV显示适配)
-│   └── 管理后台
-│       ├── admin-init.js (后台初始化)
-│       ├── admin-users.js (用户管理)
-│       ├── admin-music.js (音乐管理)
-│       ├── admin-tts.js (TTS配置)
-│       └── admin-celebration.js (庆祝语管理)
-├── 样式文件
-│   ├── style.css (主页面样式)
-│   ├── admin.css (管理后台样式)
-│   ├── leaderboard.css (排行榜样式)
-│   └── tv-display.css (TV显示样式)
-└── 资源文件
-    ├── images/ (图片资源)
-    └── music/ (音乐和音效文件)
-```
+- `GET /`：主大屏（`public/index.html`）
+- `GET /login`：登录页
+- `GET /admin`：管理后台（需要登录）
+- `GET /health-check.html`：健康检查页面
+- `GET /egg-music.html`：彩蛋页面（需要 egg 会话或管理员）
 
-### 数据结构 (data.json)
-```json
-{
-  "inquiryCount": 询盘总数,
-  "dealAmount": 成交总金额,
-  "users": [用户列表],
-  "music": [音乐文件列表],
-  "celebrationMessages": [庆祝语模板],
-  "inquiryConfig": {询盘音效配置},
-  "defaultBattleSong": {默认战歌配置},
-  "voiceConfig": {语音播报配置},
-  "aliyunTtsConfig": {阿里云TTS配置},
-  "targets": {目标设置},
-  "inquiriesHistory": [询盘历史记录],
-  "dealsHistory": [成交历史记录]
-}
-```
+## 鉴权模型（非常重要）
 
-## 功能特点
+默认规则：
 
-### 核心功能
-- ✅ **实时询盘计数**: 支持增加/减少询盘数量，带动画效果
-- ✅ **成交金额统计**: 实时显示成交总金额和增长动画
-- ✅ **用户成交音乐**: 每个用户可配置专属成交音乐
-- ✅ **语音播报**: 成交时自动播放庆祝语音
-- ✅ **庆祝动画**: 全屏庆祝动画效果
-- ✅ **排行榜显示**: 用户成交排行榜
-- ✅ **历史记录**: 询盘和成交历史追踪
+- **所有 `/api/*` 默认需要管理员登录**（Session：`req.session.loggedIn`）
+- 为了让首页/TV 能“未登录也能展示”，在 `app/create-app.js` 里维护了一个 **public 白名单**
 
-### 管理功能
-- ✅ **用户管理**: 添加/编辑/删除用户，上传头像
-- ✅ **音乐管理**: 上传音乐文件和LRC歌词
-- ✅ **庆祝语管理**: 自定义成交庆祝文案模板
-- ✅ **TTS配置**: 阿里云语音合成服务配置
-- ✅ **目标设置**: 设置询盘和成交目标
-- ✅ **数据统计**: 查看各类统计数据
+### public 只读（未登录允许 GET/HEAD）
 
-### 显示适配
-- ✅ **TV显示优化**: 支持电视浏览器显示
-- ✅ **响应式设计**: 适配不同屏幕尺寸
-- ✅ **飞视浏览器**: 专门优化TV端显示效果
+首页/TV 会用到的典型接口：
 
-## 快速开始
+- `GET /api/ping`
+- `GET /api/dashboard`（主轮询接口）
+- `GET /api/page-settings`
+- `GET /api/platform-display-settings`
+- `GET /api/platforms/targets`
+- `GET /api/deals/recent`
+- `GET /api/deals/leaderboard`
+- `GET /api/defaultBattleSong/public`
+
+### public 写入（未登录允许 POST）
+
+成交播报链路需要 TTS：
+
+- `POST /api/text-to-speech`
+
+### public 写入（未登录允许 GET）
+
+为了方便“外部系统触发”（例如扫码枪/工作流），本项目保留了以下 GET 写入：
+
+- `GET /api/deals/add`（添加成交）
+- `GET /api/inquiries/add`（询盘 +1）
+- `GET /api/inquiries/reduce`（询盘 -1）
+
+注意：以上 GET 写入接口**等同于“公开按钮”**，如果你要暴露到公网，务必加 token/签名校验。
+
+## 播报链路（成交为什么能“排队”）
+
+成交检测发生在前端：
+
+- `/api/dashboard` 返回 `dealAmount` 和 `latestDeal`
+- 前端在 `public/js/data.js` 的 `applyDealSnapshot()` 里检测到 `dealAmount` 增加
+- 检测到增加后：
+  - 优先调用 `window.addToQueue()`（队列系统，`public/js/dealQueue.js`）
+  - 队列逐条处理：`showDealAnimation()`（`public/js/animation.js`）
+  - `showDealAnimation()` 会先等语音播报（`public/js/sound.js`）：
+    - 调 `POST /api/text-to-speech` 拿到 MP3（或复用缓存）
+    - 播放 TTS
+  - TTS 结束后播放音乐（用户专属音乐或默认战歌）并显示庆祝框
+
+## 轮询策略（为什么能即时播报但不刷爆系统）
+
+分两类：
+
+### 1）播报关键数据（高频）
+
+`public/js/init.js` 的 `startMainPolling()`：
+
+- `GET /api/dashboard`：**前台约 1 秒一次**
+- 页面后台（`document.hidden`）会自动降频（至少 30 秒）
+- 切回前台会通过 `visibilitychange` 立即触发一次刷新
+
+这条链路决定“播报是否即时”。
+
+### 2）配置类数据（低频）
+
+- `GET /api/page-settings`：在 `leaderboard.js` 做了 **60 秒节流**（并且 focus 强制刷新）
+- `GET /api/platform-display-settings`：在 `platform-targets.js` **60 秒检查一次**
+
+## 本地运行
 
 ### 环境要求
-- Node.js 14.0+
-- npm 6.0+
 
-### 安装依赖
+- Node.js 14+
+
+### 安装 / 启动
+
 ```bash
 npm install
-```
-
-### 启动应用
-```bash
 npm start
 ```
 
-应用将在 http://localhost:3000 启动。
+启动后访问：
 
-### 首次使用
-1. 访问 http://localhost:3000/login
-2. 使用默认账号登录：
-   - 用户名: `admin`
-   - 密码: `admin`
-3. 进入管理后台配置系统
+- `http://localhost:3000/`
+- `http://localhost:3000/login`
+- `http://localhost:3000/admin`
 
-## 使用指南
+### 默认管理员
 
-### 主显示页面
-- 访问 http://localhost:3000 查看实时数据
-- 显示当前询盘总数和成交金额
-- 自动播放成交庆祝动画和音乐
-- 显示用户成交排行榜
+第一次启动会在 `data.json` 里自动生成管理员账号：
 
-### 管理系统
-访问 http://localhost:3000/admin 进入管理系统：
+- 用户名：`admin`
+- 密码：`admin`
 
-#### 用户管理
-- 添加新用户，设置姓名和职位
-- 上传用户头像（支持裁剪）
-- 为用户配置专属成交音乐
-- 删除不需要的用户
+登录后请尽快在管理后台修改密码。
 
-#### 音乐管理
-- 上传音乐文件（支持MP3格式）
-- 上传LRC歌词文件
-- 设置默认战歌
-- 配置询盘音效（增加/减少）
+## 仓库卫生（GitHub 必读）
 
-#### 庆祝语管理
-- 添加自定义庆祝语模板
-- 使用占位符：`{person}` `{platform}` `{amount}`
-- 删除不需要的庆祝语
+本项目运行时会生成/上传大量文件，仓库只应该保存“代码 + 必要静态资源”。
 
-#### TTS配置
-- 配置阿里云语音合成服务
-- 设置语音参数（音色、语速、音量等）
-- 测试TTS功能
+### 不入库（运行时数据 / 隐私 / 大文件）
 
-#### 首页设置
-- 设置询盘和成交目标
-- 配置目标重置周期
-- 手动调整当前数值
+- `data.json`
+- `public/music/`（除内置基础音效外）
+- `public/music/tts/`（TTS 缓存）
+- `public/music/custom/`（用户上传的音乐）
+- `public/images/users/`（用户头像，通常有隐私）
 
-## API 接口
+以上已由 `.gitignore` 排除。
 
-### 询盘相关
-- `GET /api/inquiries` - 获取询盘数量
-- `GET /api/inquiries/add` - 增加询盘（+1）
-- `GET /api/inquiries/reduce` - 减少询盘（-1）
-- `POST /api/inquiries/set` - 设置询盘数量
+## 常用 API（给外部触发用）
 
-### 成交相关
-- `GET /api/deals` - 获取成交金额
-- `GET /api/deals/add?zongjine=金额&fuzeren=负责人&laiyuanpingtai=平台` - 添加成交记录
-- `POST /api/deals/set` - 设置成交金额
+### 询盘
 
-### 数据统计
-- `GET /api/deals/leaderboard` - 获取成交排行榜
-- `GET /api/deals/recent` - 获取最近活动记录
-- `GET /api/activities` - 获取活动统计
+- `GET /api/inquiries` 获取
+- `GET /api/inquiries/add` +1
+- `GET /api/inquiries/reduce` -1
 
-## 开发指南
+### 成交
 
-### 添加新功能
-1. 后端API：在 `server.js` 中添加新的路由
-2. 前端逻辑：在 `public/js/` 目录下创建对应模块
-3. 样式：在 `public/css/` 目录下添加样式
-4. 数据结构：更新 `data.json` 结构定义
+- `GET /api/deals` 获取总额
+- `GET /api/deals/add?zongjine=1000&fuzeren=张三&laiyuanpingtai=阿里巴巴&userName=张三`
 
-### 调试功能
-- 使用浏览器控制台调用 `testDealAPI(金额, 负责人, 平台)` 测试成交功能
-- 查看 `data.json` 文件了解数据存储情况
-- 检查服务器日志排查问题
+### 播报相关
 
-### 部署注意事项
-- 确保 `public/music/` 目录有写入权限
-- 配置阿里云TTS服务（可选）
-- 定期备份 `data.json` 数据文件
-- 建议使用 PM2 等进程管理工具
+- `POST /api/text-to-speech`（前端用于生成/复用 TTS MP3）
+- `GET /api/defaultBattleSong/public`（前端获取默认战歌配置）
 
-## 更新日志
+## 部署提示（NAS / 局域网）
 
-### 最新版本特性
-- ✅ 支持用户头像上传和裁剪
-- ✅ 阿里云TTS语音合成集成
-- ✅ 自动TTS文件清理机制
-- ✅ TV显示优化和适配
-- ✅ 用户成交排行榜
-- ✅ 目标设置和进度追踪
-- ✅ 庆祝语模板系统
-
-### 已知问题
-- TTS文件可能占用较多存储空间（已配置自动清理）
-- 大量用户时建议优化数据存储方式
-- TV端某些浏览器可能存在兼容性问题
-
-### 规划功能
-- 📋 钉钉通讯录集成
-- 📋 数据库存储支持
-- 📋 多语言支持
-- 📋 WebSocket实时推送
-- 📋 移动端APP
-
-## 技术支持
-
-如需技术支持或功能定制，请联系我
-
----
-
-**项目作者**: 陈驰宇-Achord  
-**项目版本**: v2.0.0  
-**最后更新**: 2025年5月 
+- 确保 `public/music/` 可写（上传音乐、生成 TTS 都在这里）
+- `data.json` 是数据库，记得定期备份
+- 要长期运行建议用 PM2 或 Docker
