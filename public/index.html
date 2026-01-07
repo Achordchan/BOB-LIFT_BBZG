@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>巴布之光超级大屏</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/leaderboard.css">
+  <link rel="stylesheet" href="/css/tv-display.css">
+  <!-- 简化的TV检测 -->
+  <script>
+    // 检测TV浏览器并立即应用
+    (function() {
+      const userAgent = navigator.userAgent.toLowerCase();
+      const isTv = ['smart-tv', 'smarttv', 'tv', 'feiyu', 'webkit tv'].some(term => userAgent.includes(term));
+      
+      // 添加TV浏览器类
+      if (isTv || window.innerWidth >= 1920) {
+        document.documentElement.classList.add('tv-browser');
+      }
+      
+      // 如果是飞视浏览器，设置固定视口宽度
+      if (userAgent.includes('feiyu')) {
+        const metaViewport = document.querySelector('meta[name="viewport"]');
+        if (metaViewport) {
+          metaViewport.setAttribute('content', 'width=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
+      }
+    })();
+  </script>
+</head>
+<body class="leaderboard-page">
+  <!-- 全屏庆祝动画遮罩层 -->
+  <div class="celebration-overlay" id="celebrationOverlay">
+    <div class="celebration-pattern"></div>
+    <div class="celebration-firework"></div>
+    <div class="celebration-firework" style="left: 25%; animation-delay: 0.5s"></div>
+    <div class="celebration-firework" style="left: 75%; animation-delay: 1s"></div>
+    <div class="celebration-content">
+      <div class="celebration-badge">大单</div>
+      <div class="celebration-person" id="celebrationPerson">张三</div>
+      <div class="celebration-amount" id="celebrationAmount">¥ 10,000</div>
+      <div class="celebration-platform" id="celebrationPlatform">阿里巴巴</div>
+      <div class="celebration-message" id="celebrationMessage">
+        恭喜恭喜！又一大单入账！<br>
+        这个月KPI稳了！
+      </div>
+    </div>
+  </div>
+
+  <!-- 成交排队队列显示 -->
+  <div id="dealQueue" class="deal-queue" style="display: none;">
+    <div class="queue-header">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      <span>排队中</span>
+      <span class="queue-count" id="queueCount">0</span>
+    </div>
+    <div class="queue-list" id="queueList">
+      <!-- 排队项将动态插入这里 -->
+    </div>
+  </div>
+
+  <!-- 歌词显示容器 -->
+  <div class="lyrics-container" id="lyricsContainer" style="margin-top: -60px;">
+    <div class="lyrics-wrapper">
+      <div class="lyrics-content">
+        <div class="lyrics-scroll" id="lyricsScroll">
+          <!-- 歌词行将动态插入这里 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 苹果风格音乐控制条 -->
+  <div class="music-player" id="musicPlayer">
+    <div class="music-controls">
+      <div class="music-album-art" id="musicAlbumArt">
+        <!-- 音乐封面 -->
+      </div>
+      <div class="music-info">
+        <p class="music-title" id="musicTitle">未在播放</p>
+        <p class="music-artist" id="musicArtist">未知艺术家</p>
+      </div>
+      <div class="music-waves" id="musicWaves">
+        <div class="music-wave"></div>
+        <div class="music-wave"></div>
+        <div class="music-wave"></div>
+        <div class="music-wave"></div>
+        <div class="music-wave"></div>
+      </div>
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-bar" id="progressBar">
+          <div class="progress-handle"></div>
+        </div>
+      </div>
+      <div class="progress-time" id="currentTime">0:00</div>
+      <div class="progress-time" id="duration">0:00</div>
+      <button class="control-button" id="prevButton">
+        ⏮️
+      </button>
+      <button class="control-button play-pause" id="playPauseButton">
+        ▶️
+      </button>
+      <button class="control-button" id="nextButton">
+        ⏭️
+      </button>
+      <div class="volume-container">
+        <div class="volume-icon" id="volumeIcon">🔊</div>
+        <div class="volume-slider" id="volumeSlider">
+          <div class="volume-level" id="volumeLevel">
+            <div class="volume-handle"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增的大屏销售榜单主体内容 -->
+  <div class="leaderboard-container">
+    <!-- 头部区域 -->
+    <header class="leaderboard-header" style="
+    background-color: #c1121f; /* 移除透明度，使用不透明的颜色 */
+">
+      <div class="title-area">
+        <h1 class="main-title">巴布之光2.0无限公司</h1>
+        <h2 class="sub-title">无限进步</h2>
+      </div>
+      <div class="info-area">
+        <div class="date-time" id="dateTimeDisplay">2025年5月11日 周日 00:00:00</div>
+       
+      </div>
+    </header>
+
+    <!-- 主体展示区域 -->
+    <main class="leaderboard-main">
+      <!-- 左侧数据统计 -->
+      <div class="stats-panel">
+        <!-- 上半部分：询盘总数和成交金额 -->
+        <div class="stats-upper-section">
+        <div class="stats-card">
+          <h3>询盘总数</h3>
+          <div class="counter" id="inquiryCount">尝试加载中</div>
+          <!-- 添加询盘目标进度 -->
+          <div class="progress-container">
+            <div class="progress-info">
+              <span class="progress-label">目标进度</span>
+              <span class="progress-percentage" id="inquiryPercentage">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="inquiryProgressBar" style="width: 0%;">
+                  <div class="progress-glow"></div>
+                </div>
+              </div>
+            </div>
+            <div class="target-info">
+              <span id="inquiryTargetInfo">目标：尚未设置</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="stats-card">
+          <h3>成交金额</h3>
+          <div class="deal-amount" id="dealAmount">尝试加载中</div>
+          <!-- 添加成交目标进度 -->
+          <div class="progress-container">
+            <div class="progress-info">
+              <span class="progress-label">目标进度</span>
+              <span class="progress-percentage" id="dealPercentage">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="dealProgressBar" style="width: 0%;">
+                  <div class="progress-glow"></div>
+                </div>
+              </div>
+            </div>
+            <div class="target-info">
+              <span id="dealTargetInfo">目标：尚未设置</span>
+            </div>
+          </div>
+        </div>
+        </div>
+        
+        <!-- 下半部分：最近动态和平台目标切换区域 -->
+        <div class="recent-activity-section">
+          <div class="section-header">
+            <h3 id="sectionTitle">最近动态</h3>
+            <div class="section-indicator">
+              <span class="indicator-dot active" id="activityDot"></span>
+              <span class="indicator-dot" id="platformDot"></span>
+            </div>
+          </div>
+          
+          <!-- 最近动态内容 -->
+          <div class="activity-list" id="activityList">
+            <!-- 活动记录将通过JavaScript动态生成 -->
+          </div>
+          
+          <!-- 平台目标完成度内容 -->
+          <div class="platform-targets" id="platformTargets" style="display: none;">
+            <!-- 平台目标数据将通过JavaScript动态生成 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 团队成员展示 - 占据右侧全部区域 -->
+      <div class="team-members">
+        <h3>团队成员</h3>
+        <div class="team-photos" id="teamPhotos">
+          <!-- 团队成员照片将通过JavaScript动态加载 -->
+        </div>
+      </div>
+    </main>
+
+    <!-- 音频播放器 -->
+    <audio id="inquirySound" class="audio-player" preload="auto">
+      <source src="/music/xunpanluru.mp3" type="audio/mpeg">
+      您的浏览器不支持音频播放。
+    </audio>
+    
+    <!-- 删除音效播放器 -->
+    <audio id="deleteSound" class="audio-player" preload="auto">
+      <source src="/music/delete.mp3" type="audio/mpeg">
+      您的浏览器不支持音频播放。
+    </audio>
+
+    <!-- 成交音效播放器 -->
+    <audio id="dealSound" class="audio-player" preload="auto">
+      <source src="/music/xunpanluru.mp3" type="audio/mpeg">
+      您的浏览器不支持音频播放。
+    </audio>
+
+    <!-- 用户成交音乐播放器 -->
+    <audio id="userDealSound" class="audio-player" preload="auto">
+      <source src="" type="audio/mpeg">
+      您的浏览器不支持音频播放。
+    </audio>
+  </div>
+
+  <!-- 引入外部JS文件 -->
+  <script src="/js/main.js"></script>        <!-- 主要功能和逻辑控制 -->
+  <script src="/js/audioSystem.js"></script> <!-- 音频系统管理 -->
+  <script src="/js/sound.js"></script>       <!-- 音效处理功能 -->
+  <script src="/js/animation.js"></script>   <!-- 动画效果实现 -->
+  <script src="/js/musicPlayer.js"></script> <!-- 音乐播放器控制 -->
+  <script src="/js/dealQueue.js"></script>   <!-- 成交排队系统 -->
+  <script src="/js/data.js"></script>        <!-- 数据处理和管理 -->
+  <script src="/js/leaderboard.js"></script> <!-- 排行榜相关功能 -->
+  <script src="/js/platform-targets.js"></script> <!-- 平台目标管理 -->
+  <script src="/js/tv-display.js"></script>  <!-- 电视大屏幕显示优化 -->
+  <script src="/js/init.js"></script>        <!-- 系统初始化，放在最后确保所有依赖均已加载 -->
+  
+  <!-- 页面底部庆祝语显示区域 -->
+  <div class="bottom-announcement-container" id="announcementContainer" style="display: none;">
+    <div class="announcement-text" id="announcementText"></div>
+  </div>
+</body>
+</html> 

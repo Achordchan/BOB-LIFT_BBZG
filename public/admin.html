@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成交音乐管理系统</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <div class="container">
+    <h1>成交音乐管理系统</h1>
+    
+    <div id="messageContainer" class="message hidden"></div>
+    
+    <div class="tabs">
+      <div class="tab active" data-tab="users">用户管理</div>
+      <div class="tab" data-tab="music">音乐管理</div>
+      <div class="tab" data-tab="apis">API接口</div>
+      <div class="tab" data-tab="celebration">庆祝语管理</div>
+      <div class="tab" data-tab="platforms">平台目标</div>
+      <div class="tab" data-tab="settings">首页设置</div>
+      <a href="#" id="changePasswordBtn" style="margin-left: auto; margin-right: 10px; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 24px; font-weight: 500; transition: all 0.2s ease;">修改密码</a>
+      <a href="/logout" style="padding: 12px 24px; background-color: #ff3b30; color: white; text-decoration: none; border-radius: 24px; font-weight: 500; transition: all 0.2s ease;">退出登录</a>
+    </div>
+    
+    <div id="usersTab" class="tab-content active">
+      <div class="section">
+        <h2>用户列表</h2>
+        <div class="action-buttons">
+          <button id="showAddUserFormBtn" class="button-secondary">添加用户</button>
+          <button id="getDingTalkUsersBtn" style="background-color: #1E88E5;">获取成员</button>
+        </div>
+        
+        <!-- 用户模态框 -->
+        <div id="addUserModal" class="modal" style="display: none;">
+          <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 style="margin-bottom: 20px; font-size: 20px;">添加新用户</h3>
+
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="username">用户名称</label>
+                <input type="text" id="username" placeholder="请输入用户名称">
+              </div>
+              <div class="form-group">
+                <label for="userPosition">用户职位</label>
+                <input type="text" id="userPosition" placeholder="请输入用户职位">
+              </div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
+              <button id="cancelAddUserBtn" style="background-color: #e5e5ea; color: var(--text-primary);">取消</button>
+              <button id="addUserBtn" class="button-secondary">添加用户</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="userList">
+          <!-- 用户卡片会动态插入这里 -->
+        </div>
+        
+        <!-- 用户音乐配置部分改为隐藏，使用模态框替代 -->
+        <div class="subsection" style="display: none;">
+          <h2>用户音乐配置</h2>
+          <div class="form-group">
+            <label for="configUser">选择用户</label>
+            <select id="configUser">
+              <option value="">请选择用户</option>
+              <!-- 用户选项会动态插入这里 -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="configPosition">用户职位</label>
+            <input type="text" id="configPosition" readonly>
+          </div>
+          <div class="form-group">
+            <label for="configMusic">选择成交音乐</label>
+            <select id="configMusic">
+              <option value="">请选择音乐</option>
+              <!-- 音乐选项会动态插入这里 -->
+            </select>
+          </div>
+          <button id="saveConfigBtn">保存配置</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="musicTab" class="tab-content">
+      <div class="music-sub-tabs">
+        <div class="sub-tab active" data-music-subtab="library">音乐库</div>
+        <div class="sub-tab" data-music-subtab="sfx">音效库</div>
+        <div class="sub-tab" data-music-subtab="config">播放配置</div>
+      </div>
+      <div class="section" data-music-subtab="config">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">默认战歌</h2>
+          <button type="button" id="openDefaultBattleSongModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <span>配置</span>
+          </button>
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 10px;">点击配置设置默认战歌</p>
+      </div>
+
+      <div id="defaultBattleSongModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close">&times;</span>
+          <h2>默认战歌设置</h2>
+          <div class="modal-body">
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">当用户没有配置专属成交音乐时，系统将播放此默认战歌</p>
+          
+            <div id="defaultBattleSongContainer" style="margin-bottom: 20px; padding: 15px; border-radius: 12px; background-color: var(--card-background); box-shadow: var(--shadow);">
+              <div id="noDefaultSong" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                尚未设置默认战歌
+              </div>
+              <div id="defaultSongInfo" style="display: none; margin-bottom: 15px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                  <h3 style="margin: 0; font-size: 18px; color: var(--text-primary);">当前默认战歌</h3>
+                  <span id="defaultSongName" style="font-weight: 500; color: var(--primary-color);"></span>
+                </div>
+                <audio controls preload="none" id="defaultSongAudio" style="width: 100%; margin: 10px 0;">
+                  <source src="" type="audio/mpeg">
+                  您的浏览器不支持音频播放
+                </audio>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="defaultBattleSongFile">选择默认战歌文件</label>
+              <input type="file" id="defaultBattleSongFile" accept="audio/*">
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="uploadDefaultSongBtn" style="background-color: var(--primary-color);">上传默认战歌</button>
+            <button id="removeDefaultSongBtn" style="background-color: var(--danger-color); margin-left: 10px; display: none;">移除默认战歌</button>
+            <button type="button" id="cancelDefaultBattleSongBtn" style="background-color: #9c9c9c; margin-left: 10px;">关闭</button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="uploadMusicModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close">&times;</span>
+          <h2>添加音乐</h2>
+
+          <div class="modal-body">
+          
+          <!-- 音乐来源选择 -->
+          <div class="form-group">
+            <label>音乐来源</label>
+            <div class="music-source-options" style="margin-top: 12px;">
+              <label class="music-source-option">
+                <input type="radio" name="musicSource" value="local" id="musicSourceLocal" checked>
+                <div class="option-content">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                  <span>本地上传</span>
+                </div>
+              </label>
+              <label class="music-source-option">
+                <input type="radio" name="musicSource" value="external" id="musicSourceExternal">
+                <div class="option-content">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <span>音乐搜索</span>
+                </div>
+              </label>
+            </div>
+          </div>
+          
+          <!-- 本地上传表单 -->
+          <div id="localMusicForm">
+            <div class="form-group">
+              <label for="musicFile">选择音乐文件</label>
+              <input type="file" id="musicFile" accept="audio/*">
+            </div>
+
+            <div id="importedMusicHint" style="display: none; margin-top: 10px; padding: 10px 12px; background: #f5f5f7; border-radius: 12px; border: 1px solid var(--border-color);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 10px; height: 10px; border-radius: 999px; background: #34c759;"></div>
+                <div style="font-size: 13px; color: var(--text-secondary);">已导入到服务器：<span id="importedMusicHintText" style="color: #111; font-weight: 600;"></span>（无需选择文件）</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="lrcFile">选择LRC歌词文件（可选）</label>
+              <input type="file" id="lrcFile" accept=".lrc,text/plain">
+            </div>
+
+            <!-- 通用表单字段 -->
+            <div class="form-group">
+              <label for="musicName">音乐名称</label>
+              <input type="text" id="musicName" placeholder="请输入音乐名称">
+            </div>
+            <div class="form-group">
+              <label for="musicDescription">音乐描述</label>
+              <input type="text" id="musicDescription" placeholder="请输入音乐描述">
+            </div>
+            <div class="form-group">
+              <label for="lrcEditor">LRC歌词编辑（可选）</label>
+              <div class="lrc-editor-container">
+                <textarea id="lrcEditor" placeholder="[00:00.00]歌词开始&#10;[00:05.00]第一行歌词&#10;[00:10.00]第二行歌词" style="width: 100%; height: 200px; font-family: monospace; padding: 10px; border: 1px solid var(--border-color); border-radius: 12px; resize: vertical;"></textarea>
+                <div class="lrc-editor-toolbar" style="margin-top: 10px; display: flex; gap: 10px;">
+                  <button type="button" id="lrcEditorPreviewBtn" style="flex: 1; background-color: #5ac8fa;">预览歌词</button>
+                  <button type="button" id="lrcEditorApplyBtn" style="flex: 1; background-color: #34c759;">应用歌词</button>
+                  <button type="button" id="lrcEditorHelpBtn" style="flex: 1; background-color: #9c9c9c;">格式帮助</button>
+                </div>
+              </div>
+            </div>
+            <div id="lrcPreview" style="display: none; margin-top: 15px; padding: 15px; background-color: #f8f8f8; border-radius: 12px; max-height: 300px; overflow-y: auto;">
+              <h3 style="margin-top: 0; margin-bottom: 10px;">歌词预览</h3>
+              <div id="lrcPreviewContent" style="font-size: 16px; line-height: 1.6;"></div>
+            </div>
+          </div>
+          
+          <!-- 外链音乐表单 -->
+          <div id="externalMusicForm" style="display: none;">
+            <p style="color: var(--text-secondary); font-size: 14px; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#ffc107" stroke="#ffc107" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span>通过搜索添加音乐（后续接入 API），无需手工粘贴外链</span>
+            </p>
+            <div class="form-group">
+              <label for="externalMusicSearchQuery">音乐搜索</label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="externalMusicSearchQuery" placeholder="输入歌曲名 / 歌手名" style="flex: 1;">
+                <button type="button" id="externalMusicSearchBtn" style="background-color: #5ac8fa; white-space: nowrap;">搜索</button>
+              </div>
+              <div id="externalMusicAudition" style="display: none; margin-top: 10px; padding: 12px; background: #f5f5f7; border-radius: 12px; border: 1px solid var(--border-color);">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">试听</div>
+                <div data-audio-player="externalMusicAudition" style="display: flex; align-items: center; gap: 10px;">
+                  <button class="play-music-btn" style="background-color: #34c759; padding: 8px 16px; border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                    <svg class="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <svg class="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+                      <path d="M6 4h4v16H6zM14 4h4v16h-4z"/>
+                    </svg>
+                    <span class="play-text">播放</span>
+                  </button>
+                  <audio class="music-audio" id="externalMusicAuditionAudio" preload="none" style="display: none;">
+                    <source src="" type="audio/mpeg">
+                    您的浏览器不支持音频播放
+                  </audio>
+                  <div class="music-progress-wrap" style="display: flex; align-items: center; gap: 8px; min-width: 210px;">
+                    <div class="music-progress" style="width: 140px; height: 6px; background: #e5e5ea; border-radius: 999px; overflow: hidden; cursor: pointer;">
+                      <div class="music-progress-fill" style="height: 100%; width: 0%; background: #0071e3;"></div>
+                    </div>
+                    <div class="music-time" style="font-size: 12px; color: var(--text-secondary); min-width: 62px; text-align: right;">0:00/0:00</div>
+                  </div>
+                </div>
+              </div>
+              <div id="externalMusicSearchResults" style="margin-top: 12px; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; display: none;"></div>
+              <div id="externalMusicPagination" style="display: none; margin-top: 10px; justify-content: center; gap: 8px; align-items: center;"></div>
+              <div id="externalMusicImportProgress" style="display: none; margin-top: 12px; padding: 12px; background: #f5f5f7; border-radius: 12px; border: 1px solid var(--border-color);">
+                <div id="externalMusicImportProgressText" style="font-size: 13px; color: var(--text-secondary);">准备中...</div>
+                <div style="margin-top: 10px; width: 100%; height: 8px; background: #e5e5ea; border-radius: 999px; overflow: hidden;">
+                  <div id="externalMusicImportProgressFill" style="height: 100%; width: 0%; background: #0071e3;"></div>
+                </div>
+                <div id="externalMusicImportProgressMeta" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary); text-align: right;"></div>
+              </div>
+              <div style="margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid #e1e8ed; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+                <div style="font-size: 13px; color: #2d3748; line-height: 1.5;">
+                  <div style="font-weight: 600; margin-bottom: 6px;">致敬 / Thanks</div>
+                  <div>本功能基于开源项目实现，感谢作者。</div>
+                  <div style="margin-top: 8px;">
+                    <a href="https://github.com/Suxiaoqinx/Netease_url" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 6px; color: #0071e3; text-decoration: none; font-weight: 600;">
+                      <span>原仓库地址</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 3h7v7"></path>
+                        <path d="M10 14L21 3"></path>
+                        <path d="M21 14v7H3V3h7"></path>
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <input type="hidden" id="externalMusicId" value="">
+          </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="uploadMusicBtn">
+              <span id="uploadMusicBtnText">上传音乐</span>
+            </button>
+            <button type="button" id="cancelUploadMusicBtn" style="background-color: #9c9c9c; margin-left: 10px;">取消</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 音乐列表部分移动到上传音乐后面 -->
+      <div class="section" data-music-subtab="library">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">音乐列表</h2>
+          <button type="button" id="openUploadMusicModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+            <span>新增音乐</span>
+          </button>
+        </div>
+        <div id="musicList" class="music-list">
+          <!-- 音乐列表会动态插入这里 -->
+        </div>
+      </div>
+
+      <div id="uploadSoundEffectModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close">&times;</span>
+          <h2>上传音效</h2>
+
+          <div class="modal-body">
+            <p style="color: var(--text-secondary); margin-bottom: 10px;">注意：音效文件应小于2秒，用于询盘增减提示音等。</p>
+            <div class="form-group">
+              <label for="soundEffectFile">选择音效文件</label>
+              <input type="file" id="soundEffectFile" accept="audio/*">
+            </div>
+            <div class="form-group">
+              <label for="soundEffectName">音效名称</label>
+              <input type="text" id="soundEffectName" placeholder="请输入音效名称">
+            </div>
+            <div class="form-group">
+              <label for="soundEffectDescription">音效描述</label>
+              <input type="text" id="soundEffectDescription" placeholder="请输入音效描述">
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="uploadSoundEffectBtn">上传音效</button>
+            <button type="button" id="cancelUploadSoundEffectBtn" style="background-color: #9c9c9c; margin-left: 10px;">取消</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 新增音效列表部分 -->
+      <div class="section" data-music-subtab="sfx">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">音效列表</h2>
+          <button type="button" id="openUploadSoundEffectModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+            <span>新增音效</span>
+          </button>
+        </div>
+        <div id="soundEffectList" class="music-list">
+          <!-- 音效列表会动态插入这里 -->
+        </div>
+      </div>
+      
+      <div class="section" data-music-subtab="config">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">询盘音效配置</h2>
+          <button type="button" id="openInquirySoundConfigModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <span>配置</span>
+          </button>
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 10px;">点击配置设置询盘增减提示音</p>
+      </div>
+
+      <div id="inquirySoundConfigModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close">&times;</span>
+          <h2>询盘音效配置</h2>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="addInquiryMusic">增加询盘音效</label>
+              <select id="addInquiryMusic">
+                <option value="">请选择音乐</option>
+                <!-- 音乐选项会动态插入这里 -->
+              </select>
+              <div class="preview-container" id="addInquiryMusicPreview" style="margin-top: 10px; display: none;">
+                <div data-audio-player="addInquiryMusic" style="display: flex; align-items: center; gap: 10px;">
+                  <button class="play-music-btn" style="background-color: #34c759; padding: 8px 16px; border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                    <svg class="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <svg class="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+                      <path d="M6 4h4v16H6zM14 4h4v16h-4z"/>
+                    </svg>
+                    <span class="play-text">播放</span>
+                  </button>
+                  <audio class="music-audio" id="addInquiryMusicAudio" preload="none" style="display: none;">
+                    <source src="" type="audio/mpeg">
+                    您的浏览器不支持音频播放
+                  </audio>
+                  <div class="music-progress-wrap" style="display: flex; align-items: center; gap: 8px; min-width: 210px;">
+                    <div class="music-progress" style="width: 140px; height: 6px; background: #e5e5ea; border-radius: 999px; overflow: hidden; cursor: pointer;">
+                      <div class="music-progress-fill" style="height: 100%; width: 0%; background: #0071e3;"></div>
+                    </div>
+                    <div class="music-time" style="font-size: 12px; color: var(--text-secondary); min-width: 62px; text-align: right;">0:00/0:00</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="reduceInquiryMusic">减少询盘音效</label>
+              <select id="reduceInquiryMusic">
+                <option value="">请选择音乐</option>
+                <!-- 音乐选项会动态插入这里 -->
+              </select>
+              <div class="preview-container" id="reduceInquiryMusicPreview" style="margin-top: 10px; display: none;">
+                <div data-audio-player="reduceInquiryMusic" style="display: flex; align-items: center; gap: 10px;">
+                  <button class="play-music-btn" style="background-color: #34c759; padding: 8px 16px; border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                    <svg class="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <svg class="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+                      <path d="M6 4h4v16H6zM14 4h4v16h-4z"/>
+                    </svg>
+                    <span class="play-text">播放</span>
+                  </button>
+                  <audio class="music-audio" id="reduceInquiryMusicAudio" preload="none" style="display: none;">
+                    <source src="" type="audio/mpeg">
+                    您的浏览器不支持音频播放
+                  </audio>
+                  <div class="music-progress-wrap" style="display: flex; align-items: center; gap: 8px; min-width: 210px;">
+                    <div class="music-progress" style="width: 140px; height: 6px; background: #e5e5ea; border-radius: 999px; overflow: hidden; cursor: pointer;">
+                      <div class="music-progress-fill" style="height: 100%; width: 0%; background: #0071e3;"></div>
+                    </div>
+                    <div class="music-time" style="font-size: 12px; color: var(--text-secondary); min-width: 62px; text-align: right;">0:00/0:00</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="saveInquiryMusicBtn">保存配置</button>
+            <button type="button" id="cancelInquirySoundConfigBtn" style="background-color: #9c9c9c; margin-left: 10px;">关闭</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section" data-music-subtab="config">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">语音播报设置</h2>
+          <button type="button" id="openTtsSettingsModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <span>配置</span>
+          </button>
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 10px;">点击配置设置阿里云TTS参数</p>
+      </div>
+
+      <div class="section" data-music-subtab="config">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">启动音频</h2>
+          <button type="button" id="openStartupAudioModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <span>配置</span>
+          </button>
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 10px;">首页进入时播放的启动音频，可用阿里云TTS生成或上传替换</p>
+      </div>
+
+      <div class="section" data-music-subtab="config">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">个性化</h2>
+          <button type="button" id="openPersonalizedAudioModalBtn" style="background-color: var(--primary-color); padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <span>配置</span>
+          </button>
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 10px;">生成/上传个性化音频，并可一键发射到首页立即播放</p>
+      </div>
+
+      <div class="section" data-music-subtab="config">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 style="margin: 0; padding: 0; border: none;">音频清理</h2>
+          <button type="button" id="openAudioCleanupModalBtn" style="background-color: #ff9500; padding: 10px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px;">
+            <span>清理</span>
+          </button>
+        </div>
+        <p style="color: var(--text-secondary); margin-top: 10px;">扫描并删除未被引用的TTS/自定义音频文件</p>
+      </div>
+
+      <div id="ttsSettingsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close">&times;</span>
+          <h2>语音播报设置</h2>
+          
+          <div class="modal-body">
+        <!-- 添加阿里云TTS配置部分 -->
+        <div class="subsection">
+          <h3>阿里云TTS配置</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 15px;">设置阿里云语音合成服务的参数，用于文本转语音</p>
+          
+          <div style="background-color: #f0f7ff; border-left: 4px solid #1890ff; padding: 10px 15px; margin-bottom: 20px; border-radius: 4px;">
+            <p style="font-size: 14px; margin: 0;"><strong>重要说明：</strong>阿里云TTS需要三个不同的参数：</p>
+            <ul style="font-size: 14px; margin: 8px 0 0 20px; padding: 0;">
+              <li><strong>AccessKey ID</strong> - 用于获取Token的身份标识</li>
+              <li><strong>AccessKey Secret</strong> - 用于获取Token的密钥</li>
+              <li><strong>App Key</strong> - 语音合成服务专用的应用标识</li>
+            </ul>
+            <p style="font-size: 14px; margin: 8px 0 0 0;">请务必分别填写正确的值，否则会导致Token获取或语音合成失败。</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsUrl">服务地址 (URL):</label>
+            <input type="text" id="aliyunTtsUrl" placeholder="例如: wss://nls-gateway.cn-shanghai.aliyuncs.com/ws/v1">
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsAccessKeyId">AccessKey ID:</label>
+            <input type="text" id="aliyunTtsAccessKeyId" placeholder="输入您的AccessKey ID (用于获取Token)">
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsAppKey">App Key (语音合成专用):</label>
+            <input type="text" id="aliyunTtsAppKey" placeholder="输入您的阿里云语音合成AppKey">
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsAccessKeySecret">AccessKey Secret:</label>
+            <input type="password" id="aliyunTtsAccessKeySecret" placeholder="输入您的AccessKey Secret">
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+              <input type="checkbox" id="showAccessKeySecret" style="margin-right: 5px;">
+              <label for="showAccessKeySecret" style="font-size: 14px; margin: 0;">显示密钥</label>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsVoice">发音人:</label>
+            <select id="aliyunTtsVoice">
+              <option value="xiaoyun">小云</option>
+              <option value="xiaogang">小刚</option>
+              <option value="ruoxi">若西</option>
+              <option value="siqi">思琪</option>
+              <option value="sijia">思佳</option>
+              <option value="sicheng">思诚</option>
+              <option value="aiqi">艾琪</option>
+              <option value="aijia">艾佳</option>
+              <option value="aicheng">艾诚</option>
+              <option value="aida">艾达</option>
+              <option value="ninger">宁儿</option>
+              <option value="abin">阿彬</option>
+              <option value="zhixiaobai">知小白</option>
+              <option value="zhixiaoxia">知小夏</option>
+              <option value="zhixiaomei">知小梅</option>
+              <option value="zhigui">知桂</option>
+              <option value="zhishuo">知硕</option>
+              <option value="aixia">艾夏</option>
+              <option value="cally">Cally</option>
+              <option value="zhifeng_emo">知丰_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+              <option value="zhibing_emo">知冰_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+              <option value="zhimiao_emo">知淼_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+              <option value="zhimi_emo">知米_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+              <option value="zhiyan_emo">知言_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+              <option value="zhibei_emo">知贝_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+              <option value="zhitian_emo">知甜_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsFormat">音频格式:</label>
+            <select id="aliyunTtsFormat">
+              <option value="mp3">MP3</option>
+              <option value="wav">WAV</option>
+              <option value="pcm">PCM</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsSampleRate">采样率:</label>
+            <select id="aliyunTtsSampleRate">
+              <option value="8000">8000 Hz</option>
+              <option value="16000" selected>16000 Hz</option>
+              <option value="24000">24000 Hz</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label>音量:</label>
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <input type="range" id="aliyunTtsVolumeRange" min="0" max="100" step="1" value="50">
+              <span id="aliyunTtsVolumeValue">50</span>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label>语速:</label>
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <input type="range" id="aliyunTtsSpeechRateRange" min="-500" max="500" step="10" value="0">
+              <span id="aliyunTtsSpeechRateValue">0</span>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label>音调:</label>
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <input type="range" id="aliyunTtsPitchRateRange" min="-500" max="500" step="10" value="0">
+              <span id="aliyunTtsPitchRateValue">0</span>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="aliyunTtsTestText">测试文本:</label>
+            <input type="text" id="aliyunTtsTestText" value="阿里云语音合成测试" placeholder="输入测试文本">
+          </div>
+          
+          <div id="aliyunTokenTestResult" style="margin-top: 15px; display: none; padding: 10px; border-radius: 5px; background-color: #f5f5f5;">
+            <!-- Token测试结果将在这里显示 -->
+          </div>
+          
+          <div id="aliyunTtsTestResult" style="margin-top: 15px; display: none;">
+            <h3 style="margin-bottom: 10px; font-size: 16px;">测试结果</h3>
+            <audio controls preload="none" id="aliyunTtsTestAudio" style="width: 100%;">
+              <source src="" type="audio/mpeg">
+              您的浏览器不支持音频播放
+            </audio>
+          </div>
+        </div>
+          </div>
+          <div class="modal-footer">
+            <div class="tts-action-buttons">
+              <button id="testAliyunTokenBtn" style="background-color: #0077cc;">测试Token获取</button>
+              <button id="testAliyunTtsBtn" style="background-color: #0077cc;">测试阿里云语音</button>
+              <button id="saveAliyunTtsBtn" style="background-color: #34c759;">保存配置</button>
+              <button id="cleanupTtsBtn" style="background-color: #ff9500;">清理TTS文件</button>
+            </div>
+            <button type="button" id="cancelTtsSettingsBtn" style="background-color: #9c9c9c;">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="startupAudioModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>启动音频设置</h2>
+        <div class="modal-body">
+          <p style="color: var(--text-secondary); margin-bottom: 15px;">首页进入时会尝试播放启动音频用于激活音频系统。</p>
+
+          <div class="subsection" style="margin-top: 0;">
+            <h3>当前启动音频</h3>
+            <div class="api-url" id="startupCurrentLabel"></div>
+            <audio controls preload="none" id="startupAudioPreview" style="width: 100%; margin-top: 10px;">
+              <source src="" type="audio/mpeg">
+              您的浏览器不支持音频播放
+            </audio>
+          </div>
+
+          <div class="subsection" style="margin-top: 20px;">
+            <h3>选择来源</h3>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+              <label style="display: inline-flex; align-items: center; gap: 8px;">
+                <input type="radio" name="startupAudioMode" value="default" checked>
+                <span>使用默认 Go.mp3</span>
+              </label>
+              <label style="display: inline-flex; align-items: center; gap: 8px;">
+                <input type="radio" name="startupAudioMode" value="tts">
+                <span>使用阿里云TTS生成</span>
+              </label>
+              <label style="display: inline-flex; align-items: center; gap: 8px;">
+                <input type="radio" name="startupAudioMode" value="file">
+                <span>使用上传音频</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="subsection" style="margin-top: 20px;">
+            <h3>阿里云TTS生成</h3>
+            <div class="form-group">
+              <label for="startupTtsText">文本</label>
+              <input type="text" id="startupTtsText" placeholder="例如：系统已启动">
+            </div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="startupGenerateTtsBtn" style="background-color: #34c759;">生成并预览</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="subsection" style="margin-top: 20px;">
+            <h3>上传音频</h3>
+            <div class="form-group">
+              <label for="startupUploadFile">选择音频文件</label>
+              <input type="file" id="startupUploadFile" accept="audio/*">
+            </div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="startupUploadBtn" style="background-color: var(--primary-color);">上传并预览</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="saveStartupAudioBtn" style="background-color: #34c759;">保存配置</button>
+          <button type="button" id="cancelStartupAudioBtn" style="background-color: #9c9c9c;">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="personalizedAudioModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>个性化</h2>
+        <div class="modal-body">
+          <div class="subsection" style="margin-top: 0;">
+            <h3>已保存的音频</h3>
+            <div class="form-group">
+              <label for="personalizedAudioSelect">选择音频</label>
+              <select id="personalizedAudioSelect">
+                <option value="">请选择音频</option>
+              </select>
+            </div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="previewPersonalizedBtn" style="background-color: #5ac8fa;">预览播放</button>
+                <button type="button" id="firePersonalizedBtn" style="background-color: #ff3b30;">发射</button>
+              </div>
+            </div>
+            <audio controls preload="none" id="personalizedAudioPreview" style="width: 100%; margin-top: 10px;">
+              <source src="" type="audio/mpeg">
+              您的浏览器不支持音频播放
+            </audio>
+          </div>
+
+          <div class="subsection" style="margin-top: 20px;">
+            <h3>用阿里云TTS新增</h3>
+            <div class="form-group">
+              <label for="personalizedTtsName">名称</label>
+              <input type="text" id="personalizedTtsName" placeholder="例如：喊话1">
+            </div>
+            <div class="form-group">
+              <label for="personalizedTtsText">文本</label>
+              <input type="text" id="personalizedTtsText" placeholder="例如：加油！">
+            </div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="personalizedGenerateTtsBtn" style="background-color: #34c759;">生成并加入列表</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="subsection" style="margin-top: 20px;">
+            <h3>上传新增</h3>
+            <div class="form-group">
+              <label for="personalizedUploadName">名称</label>
+              <input type="text" id="personalizedUploadName" placeholder="例如：音效1">
+            </div>
+            <div class="form-group">
+              <label for="personalizedUploadFile">选择音频文件</label>
+              <input type="file" id="personalizedUploadFile" accept="audio/*">
+            </div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="personalizedUploadBtn" style="background-color: var(--primary-color);">上传并加入列表</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="cancelPersonalizedBtn" style="background-color: #9c9c9c;">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="audioCleanupModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>音频清理</h2>
+        <div class="modal-body">
+          <p style="color: var(--text-secondary); margin-bottom: 15px;">仅列出未被引用的 TTS/自定义音频文件。</p>
+          <div class="test-api">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button type="button" id="refreshAudioCleanupBtn" style="background-color: #5ac8fa;">重新扫描</button>
+            </div>
+          </div>
+          <div id="audioCleanupList"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="cancelAudioCleanupBtn" style="background-color: #9c9c9c;">关闭</button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="apisTab" class="tab-content">
+      <div class="section">
+        <h2>API接口</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 15px;">本页面内容以代码库中 server.js 的实际接口为准。你可以在这里查看接口说明，并一键发起调试请求。</p>
+
+        <div class="subsection" data-collapsible="true" data-collapsed="false">
+          <h3>基础诊断</h3>
+
+          <div class="form-group">
+            <label>健康检查：</label>
+            <div class="api-url" id="pingApiUrl"></div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="testPingBtn" style="min-width: 140px;">测试 /api/ping</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>路由清单（仅管理员）：</label>
+            <div class="api-url" id="routesApiUrl"></div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="listRoutesBtn" style="min-width: 140px;">获取路由列表</button>
+              </div>
+            </div>
+          </div>
+
+          <pre id="apiBaseResult" class="api-result" style="display: none;"></pre>
+        </div>
+
+        <div class="subsection" data-collapsible="true" data-collapsed="false">
+          <h3>询盘接口（inquiries）</h3>
+
+          <div class="form-group">
+            <label>增加询盘数量（GET）：</label>
+            <div class="api-url" id="addApiUrl"></div>
+            <div style="color: var(--text-secondary); font-size: 14px;">用途：让询盘数 +1，并根据配置触发音效与活动记录。</div>
+          </div>
+
+          <div class="form-group">
+            <label>减少询盘数量（GET）：</label>
+            <div class="api-url" id="reduceApiUrl"></div>
+            <div style="color: var(--text-secondary); font-size: 14px;">用途：让询盘数 -1（不小于 0），并根据配置触发音效与活动记录。</div>
+          </div>
+
+          <div class="form-group">
+            <label>测试询盘接口：</label>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="testAddInquiryBtn" style="flex: 1; min-width: 140px;">测试增加询盘</button>
+                <button id="testReduceInquiryBtn" style="flex: 1; min-width: 140px;">测试减少询盘</button>
+                <button id="getLatestInquiryBtn" style="flex: 1; min-width: 140px; background-color: #5ac8fa;">获取最近一次询盘</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>设置默认询盘数量（POST /api/inquiries/set）：</label>
+            <div class="api-url">示例：POST /api/inquiries/set  Body: {"count": 5}</div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="number" id="defaultInquiryCount" placeholder="询盘数量" style="flex: 1; min-width: 140px;" min="0" value="0">
+                <button id="setInquiryCountBtn" style="flex: 1; min-width: 140px;">设置</button>
+              </div>
+            </div>
+          </div>
+
+          <pre id="apiInquiryResult" class="api-result" style="display: none;"></pre>
+        </div>
+
+        <div class="subsection" data-collapsible="true" data-collapsed="false">
+          <h3>成交接口（deals）</h3>
+
+          <div class="form-group">
+            <label>增加成交金额（GET）：</label>
+            <div class="api-url" id="dealApiUrl"></div>
+            <div style="color: var(--text-secondary); font-size: 14px;">用途：增加成交金额，并触发成交音效/庆祝语/TTS/活动记录等。</div>
+          </div>
+
+          <div class="form-group">
+            <label>测试成交接口：</label>
+            <div class="test-api">
+              <div style="display: flex; margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
+                <input type="number" id="testAmount" placeholder="成交金额" style="flex: 1; min-width: 140px;">
+                <input type="text" id="testName" placeholder="负责人" style="flex: 1; min-width: 140px;">
+                <input type="text" id="testPlatform" placeholder="来源平台" style="flex: 1; min-width: 140px;">
+                <input type="text" id="testUserName" placeholder="用户名" style="flex: 1; min-width: 140px;">
+                <button id="testApiBtn" style="min-width: 100px;">测试</button>
+              </div>
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="getLatestDealBtn" style="flex: 1; min-width: 140px; background-color: #5ac8fa;">获取最近一次成交</button>
+                <button id="getDealLeaderboardBtn" style="flex: 1; min-width: 140px; background-color: #5ac8fa;">获取成交排行榜</button>
+                <button id="getDealRecentBtn" style="flex: 1; min-width: 140px; background-color: #5ac8fa;">获取最近成交列表</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>设置成交金额（POST /api/deals/set）：</label>
+            <div class="api-url">示例：POST /api/deals/set  Body: {"amount": 10000}</div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="number" id="defaultDealAmount" placeholder="成交金额" style="flex: 1; min-width: 140px;" min="0" value="0">
+                <button id="setDealAmountBtn" style="flex: 1; min-width: 140px;">设置</button>
+              </div>
+            </div>
+          </div>
+
+          <pre id="apiDealResult" class="api-result" style="display: none;"></pre>
+        </div>
+
+        <div class="subsection" data-collapsible="true" data-collapsed="true">
+          <h3>TTS 相关接口</h3>
+
+          <div class="form-group">
+            <label>文本转语音（POST /api/text-to-speech）：</label>
+            <div class="api-url">示例：POST /api/text-to-speech  Body: {"text":"测试","deviceType":"admin"}</div>
+          </div>
+
+          <div class="form-group">
+            <label>测试文本：</label>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="text" id="apiTtsText" placeholder="输入要合成的文本" style="flex: 1; min-width: 240px;" value="TTS 调试测试">
+                <button id="apiTestTtsBtn" style="min-width: 140px; background-color: #34c759;">合成并返回音频</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="apiTtsAudioWrap" style="display: none; margin-top: 10px;">
+            <audio controls preload="none" id="apiTtsAudio" style="width: 100%;">
+              <source src="" type="audio/mpeg">
+              您的浏览器不支持音频播放
+            </audio>
+          </div>
+
+          <pre id="apiTtsResult" class="api-result" style="display: none;"></pre>
+        </div>
+
+        <div class="subsection" data-collapsible="true" data-collapsed="true">
+          <h3>配置读取类接口</h3>
+
+          <div class="form-group">
+            <label>目标设置（GET /api/targets）：</label>
+            <div class="api-url" id="targetsApiUrl"></div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="getTargetsBtn" style="min-width: 140px;">获取目标设置</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>首页设置（GET /api/page-settings）：</label>
+            <div class="api-url" id="pageSettingsApiUrl"></div>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="getPageSettingsBtn" style="min-width: 140px;">获取首页设置</button>
+              </div>
+            </div>
+          </div>
+
+          <pre id="apiConfigResult" class="api-result" style="display: none;"></pre>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 新增: 庆祝语管理标签页 -->
+    <div id="celebrationTab" class="tab-content">
+      <div class="section">
+        <h2>庆祝语管理</h2>
+        <p class="section-description">
+          配置成交时显示的随机庆祝语，支持以下变量：
+        </p>
+
+        <div class="subsection">
+          <h3>变量说明</h3>
+          <div class="celebration-vars">
+            <div class="vars-grid">
+              <div class="var-card">
+                <div class="var-token"><code>{person}</code></div>
+                <div class="var-desc">负责人姓名</div>
+              </div>
+              <div class="var-card">
+                <div class="var-token"><code>{platform}</code></div>
+                <div class="var-desc">来源平台</div>
+              </div>
+              <div class="var-card">
+                <div class="var-token"><code>{amount}</code></div>
+                <div class="var-desc">成交金额</div>
+              </div>
+            </div>
+            <div class="var-example">示例：天呐！{person}刚刚从{platform}拿下{amount}元订单！别人家的运营真会玩，学到了学到了！</div>
+          </div>
+        </div>
+        
+        <!-- 添加新庆祝语 -->
+        <div class="subsection">
+          <h3>添加新庆祝语</h3>
+          <div class="input-group" style="margin-bottom: 20px;">
+            <div style="display: flex; width: 100%;">
+              <textarea id="newCelebrationMessage" placeholder="输入新的庆祝语，例如：天呐！{person}刚刚从{platform}拿下{amount}元订单！别人家的运营真会玩，学到了学到了！" style="flex: 1; height: 80px; border-radius: 8px; padding: 10px; border: 1px solid #ccc; resize: none;"></textarea>
+              <div style="display: flex; flex-direction: column; margin-left: 10px;">
+                <button id="insertPersonBtn" class="insert-var-btn" style="margin-bottom: 5px; padding: 8px; font-size: 14px;">插入负责人</button>
+                <button id="insertPlatformBtn" class="insert-var-btn" style="margin-bottom: 5px; padding: 8px; font-size: 14px;">插入平台</button>
+                <button id="insertAmountBtn" class="insert-var-btn" style="padding: 8px; font-size: 14px;">插入金额</button>
+              </div>
+            </div>
+            <button id="addCelebrationBtn" style="margin-top: 10px;">添加庆祝语</button>
+          </div>
+        </div>
+        
+        <!-- 庆祝语列表 -->
+        <div class="subsection">
+          <h3>当前庆祝语列表</h3>
+          <div id="celebrationMessagesList" style="margin-top: 10px;">
+            <div class="loading-spinner">加载中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 平台目标设置标签页 -->
+    <div id="platformsTab" class="tab-content">
+      <div class="section">
+        <h2>平台目标设置</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">设置各平台的销售目标，系统会自动统计每个平台的成交金额并计算完成度</p>
+        
+        <!-- 首页显示控制区域 -->
+        <div class="subsection control-section" data-collapsible="true" data-collapsed="true" style="margin-bottom: 25px; padding: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+          <h3 style="margin: 0 0 15px 0; font-size: 16px; color: var(--text-primary);">首页显示设置</h3>
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <strong>平台目标滚动显示</strong>
+              <p style="margin: 5px 0 0 0; color: var(--text-secondary); font-size: 14px;">
+                开启后，首页将自动滚动显示各平台目标进度；关闭时显示最近动态
+              </p>
+            </div>
+            <div class="toggle-switch">
+              <input type="checkbox" id="platformDisplayToggle" class="toggle-input">
+              <label for="platformDisplayToggle" class="toggle-label">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-buttons" style="margin-bottom: 20px;">
+          <button id="addPlatformBtn" class="button-secondary">添加平台</button>
+          <button id="resetPlatformDataBtn" class="button-danger">重置数据</button>
+          <button id="refreshPlatformDataBtn" class="button-primary">刷新数据</button>
+        </div>
+        
+        <div id="platformsList" class="platforms-list">
+          <div class="loading-spinner">加载中...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 新增首页设置标签页 -->
+    <div id="settingsTab" class="tab-content">
+      <div class="section">
+        <h2>首页显示设置</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 15px;">在这里可以修改首页展示的标题和字段名称</p>
+        
+        <div class="form-group">
+          <label>页面主标题：</label>
+          <input type="text" id="mainTitle" placeholder="例如：徐州巴布">
+        </div>
+        
+        <div class="form-group">
+          <label>页面副标题：</label>
+          <input type="text" id="subTitle" placeholder="例如：缜锦木断，水滴石穿">
+        </div>
+        
+        <div class="form-group">
+          <label>询盘总数标题：</label>
+          <input type="text" id="inquiryTitle" placeholder="例如：询盘总数">
+        </div>
+        
+        <div class="form-group">
+          <label>成交金额标题：</label>
+          <input type="text" id="dealTitle" placeholder="例如：成交金额">
+        </div>
+        
+        <div class="form-group">
+          <label>目标进度标题：</label>
+          <input type="text" id="progressTitle" placeholder="例如：目标进度">
+        </div>
+        
+        <div class="form-group">
+          <label>团队成员标题：</label>
+          <input type="text" id="teamTitle" placeholder="例如：团队成员">
+        </div>
+        
+        <div class="form-group">
+          <label>最近动态标题：</label>
+          <input type="text" id="activityTitle" placeholder="例如：最近动态">
+        </div>
+
+        <div class="subsection">
+          <h3>目标设置</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 15px;">设置询盘目标数和成交目标金额，这些目标会在首页以进度图表形式展示</p>
+
+          <div class="form-group">
+            <label>询盘目标数：</label>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="number" id="targetInquiryCount" placeholder="目标询盘数" style="flex: 1; min-width: 140px;" min="0" value="0">
+                <button id="setTargetInquiryBtn" class="target-button" style="flex: 1; min-width: 140px; background-color: #8e44ad;">设置询盘目标</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>成交目标金额：</label>
+            <div class="test-api">
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="number" id="targetDealAmount" placeholder="目标成交金额" style="flex: 1; min-width: 140px;" min="0" value="0">
+                <button id="setTargetDealBtn" class="target-button" style="flex: 1; min-width: 140px; background-color: #8e44ad;">设置金额目标</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="target-preview" style="margin-top: 20px; background-color: #f5f5f7; border-radius: 12px; padding: 20px;">
+            <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">当前目标配置</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">询盘目标</div>
+                <div id="currentTargetInquiry" style="font-size: 24px; color: #8e44ad;">尚未设置</div>
+              </div>
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: 500; margin-bottom: 8px;">成交目标</div>
+                <div id="currentTargetDeal" style="font-size: 24px; color: #8e44ad;">尚未设置</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <button id="saveSettingsBtn" style="background-color: #34c759;">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑音乐模态框 -->
+  <div id="editMusicModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close" id="closeEditMusicModal">&times;</span>
+      <h2>编辑音乐</h2>
+
+      <div class="modal-body">
+      
+      <!-- 音乐类型标识（不可修改） -->
+      <div id="editMusicTypeIndicator" style="margin-bottom: 15px; padding: 10px; background: #f5f5f7; border-radius: 8px; display: none;">
+        <span style="font-size: 14px; color: var(--text-secondary);">音乐类型：</span>
+        <span id="editMusicTypeText" style="font-weight: 500;"></span>
+      </div>
+      
+      <div class="form-group">
+        <label for="editMusicName">音乐名称</label>
+        <input type="text" id="editMusicName" placeholder="请输入音乐名称">
+      </div>
+      <div class="form-group">
+        <label for="editMusicDescription">音乐描述</label>
+        <input type="text" id="editMusicDescription" placeholder="请输入音乐描述">
+      </div>
+      
+      <div class="form-group">
+        <label for="editLrcEditor">LRC歌词编辑</label>
+        <div class="lrc-editor-container">
+          <textarea id="editLrcEditor" placeholder="[00:00.00]歌词开始&#10;[00:05.00]第一行歌词&#10;[00:10.00]第二行歌词" style="width: 100%; height: 200px; font-family: monospace; padding: 10px; border: 1px solid var(--border-color); border-radius: 12px; resize: vertical;"></textarea>
+          <div class="lrc-editor-toolbar" style="margin-top: 10px; display: flex; gap: 10px;">
+            <button type="button" id="editLrcPreviewBtn" style="flex: 1; background-color: #5ac8fa;">预览歌词</button>
+            <button type="button" id="editLrcHelpBtn" style="flex: 1; background-color: #9c9c9c;">格式帮助</button>
+          </div>
+        </div>
+      </div>
+      <div id="editLrcPreview" style="display: none; margin-top: 15px; padding: 15px; background-color: #f8f8f8; border-radius: 12px; max-height: 300px; overflow-y: auto;">
+        <h3 style="margin-top: 0; margin-bottom: 10px;">歌词预览</h3>
+        <div id="editLrcPreviewContent" style="font-size: 16px; line-height: 1.6;"></div>
+      </div>
+      </div>
+
+      <div class="modal-footer" style="text-align: right;">
+        <button id="editMusicCancelBtn" style="background-color: #e5e5ea; color: var(--text-primary); margin-right: 10px;">取消</button>
+        <button id="editMusicSaveBtn" style="background-color: var(--primary-color);">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加用户照片编辑模态框 -->
+  <div id="editUserModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 700px; width: 95%;">
+      <span class="close">&times;</span>
+      <h3 style="margin-bottom: 20px; font-size: 20px;">编辑用户信息</h3>
+
+      <div class="modal-body">
+      
+      <div class="form-group">
+        <label for="editUsername">用户名称</label>
+        <input type="text" id="editUsername" placeholder="请输入用户名称">
+      </div>
+      
+      <div class="form-group">
+        <label for="editUserPosition">用户职位</label>
+        <input type="text" id="editUserPosition" placeholder="请输入用户职位">
+      </div>
+
+      <div class="form-group">
+        <label for="editLoginUsername">登录账号（Egg Music）</label>
+        <input type="text" id="editLoginUsername" placeholder="例如：xiesiqi" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label for="editLoginPassword">重置密码（留空则不修改）</label>
+        <input type="password" id="editLoginPassword" placeholder="输入新密码" autocomplete="new-password">
+      </div>
+      
+      <!-- 新增音乐配置部分 -->
+      <div class="form-group">
+        <label for="editUserMusic">选择成交音乐</label>
+        <div class="custom-select-container" style="position: relative;">
+          <input type="text" id="editUserMusicInput" placeholder="请选择音乐" style="width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; box-sizing: border-box; font-size: 16px; cursor: pointer;" readonly>
+          <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="editUser-select-dropdown" style="display: none; position: absolute; width: 100%; max-height: 300px; overflow-y: auto; background-color: white; border: 1px solid var(--border-color); border-radius: 12px; margin-top: 5px; z-index: 100; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+            <div class="custom-select-option" data-value="" style="padding: 12px 16px; cursor: pointer; transition: background-color 0.2s;">请选择音乐</div>
+            <!-- 音乐选项会动态插入这里 -->
+          </div>
+          <select id="editUserMusic" style="display: none;">
+            <option value="">请选择音乐</option>
+            <!-- 音乐选项会动态插入这里 -->
+          </select>
+        </div>
+      </div>
+      <div id="editUserMusicPreview" style="margin-top: 15px; display: none;">
+        <h3 style="margin-bottom: 10px; font-size: 16px;">音乐预览</h3>
+        <div data-audio-player="editUserMusic" style="display: flex; align-items: center; gap: 10px;">
+          <button class="play-music-btn" id="editUserMusicPlayBtn" style="background-color: #34c759; padding: 8px 16px; border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+            <svg class="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg class="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+              <path d="M6 4h4v16H6zM14 4h4v16h-4z"/>
+            </svg>
+            <span class="play-text">播放</span>
+          </button>
+          <audio class="music-audio" preload="none" id="editUserMusicAudio" style="display: none;">
+            <source src="" type="audio/mpeg">
+            您的浏览器不支持音频播放
+          </audio>
+          <div class="music-progress-wrap" style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 210px;">
+            <div class="music-progress" style="width: 100%; max-width: 260px; height: 6px; background: #e5e5ea; border-radius: 999px; overflow: hidden; cursor: pointer;">
+              <div class="music-progress-fill" style="height: 100%; width: 0%; background: #0071e3;"></div>
+            </div>
+            <div class="music-time" style="font-size: 12px; color: var(--text-secondary); min-width: 62px; text-align: right;">0:00/0:00</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-tabs">
+        <div class="form-tab active" data-tab="halfPhoto">半身照</div>
+        <div class="form-tab" data-tab="fullPhoto">全身照</div>
+      </div>
+      
+      <div id="halfPhotoTab" class="photo-tab-content active">
+        <div class="form-group">
+          <label for="userPhoto">上传半身照 (建议1:1比例)</label>
+          <input type="file" id="userPhoto" accept="image/*">
+        </div>
+        
+        <div class="image-preview-container">
+          <div id="userPhotoPreview" class="image-preview">
+            <div class="image-preview-empty">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              <p>请选择半身照片</p>
+            </div>
+          </div>
+          
+          <div id="userPhotoCropper" class="image-cropper" style="display: none; height: 400px;">
+            <img id="userPhotoCropperImage" src="" alt="图片预览">
+            <div class="crop-tips" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;">
+              提示: 滚轮缩放, 鼠标拖拽移动, 两侧控制放大缩小
+            </div>
+          </div>
+        </div>
+        
+        <div class="crop-controls" style="display: none;">
+          <button type="button" id="cancelCropUserPhotoBtn" class="crop-button secondary">取消</button>
+          <button type="button" id="cropUserPhotoBtn" class="crop-button">裁剪确认</button>
+        </div>
+      </div>
+      
+      <div id="fullPhotoTab" class="photo-tab-content">
+        <div class="form-group">
+          <label for="userFullPhoto">上传全身照 (建议2:3比例)</label>
+          <input type="file" id="userFullPhoto" accept="image/*">
+        </div>
+        
+        <div class="image-preview-container">
+          <div id="userFullPhotoPreview" class="image-preview">
+            <div class="image-preview-empty">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              <p>请选择全身照片</p>
+            </div>
+          </div>
+          
+          <div id="userFullPhotoCropper" class="image-cropper" style="display: none; height: 500px;">
+            <img id="userFullPhotoCropperImage" src="" alt="图片预览">
+            <div class="crop-tips" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;">
+              提示: 滚轮缩放, 鼠标拖拽移动, 两侧控制放大缩小
+            </div>
+          </div>
+        </div>
+        
+        <div class="crop-controls" style="display: none;">
+          <button type="button" id="cancelCropUserFullPhotoBtn" class="crop-button secondary">取消</button>
+          <button type="button" id="cropUserFullPhotoBtn" class="crop-button">裁剪确认</button>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <div class="form-actions">
+          <button type="button" id="cancelEditUserBtn" class="button-secondary">取消</button>
+          <button type="button" id="saveUserBtn" class="button-primary">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 音乐配置模态框 -->
+  <div id="configMusicModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close" id="closeConfigMusicModal">&times;</span>
+      <h2>配置用户音乐</h2>
+
+      <div class="modal-body">
+      <div class="form-group">
+        <label for="modalConfigUser">用户</label>
+        <input type="text" id="modalConfigUser" readonly>
+        <input type="hidden" id="modalConfigUserId">
+      </div>
+      
+      <div class="form-group">
+        <label for="modalConfigPosition">职位</label>
+        <input type="text" id="modalConfigPosition" readonly>
+      </div>
+      
+      <div class="form-group">
+        <label for="modalConfigMusic">选择成交音乐</label>
+        <div class="custom-select-container" style="position: relative;">
+          <input type="text" id="modalConfigMusicInput" placeholder="请选择音乐" style="width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; box-sizing: border-box; font-size: 16px; cursor: pointer;" readonly>
+          <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="custom-select-dropdown" style="display: none; position: absolute; width: 100%; max-height: 300px; overflow-y: auto; background-color: white; border: 1px solid var(--border-color); border-radius: 12px; margin-top: 5px; z-index: 100; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+            <div class="custom-select-option" data-value="" style="padding: 12px 16px; cursor: pointer; transition: background-color 0.2s;">请选择音乐</div>
+            <!-- 音乐选项会动态插入这里 -->
+          </div>
+          <select id="modalConfigMusic" style="display: none;">
+            <option value="">请选择音乐</option>
+            <!-- 音乐选项会动态插入这里 -->
+          </select>
+        </div>
+      </div>
+      <div id="modalMusicPreview" style="margin-top: 15px; display: none;">
+        <h3 style="margin-bottom: 10px; font-size: 16px;">音乐预览</h3>
+        <audio controls preload="none" id="modalMusicAudio" style="width: 100%;">
+          <source src="" type="audio/mpeg">
+          您的浏览器不支持音频播放
+        </audio>
+      </div>
+      </div>
+
+      <div class="modal-footer" style="text-align: right;">
+        <button id="modalConfigCancelBtn" style="background-color: #e5e5ea; color: var(--text-primary); margin-right: 10px;">取消</button>
+        <button id="modalConfigSaveBtn" style="background-color: var(--primary-color);">保存配置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加修改密码的模态框 -->
+  <div id="changePasswordModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 450px; padding: 30px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15); border-radius: 16px; animation: modalFadeIn 0.3s ease-out;">
+      <span class="close" style="font-size: 24px; opacity: 0.6; cursor: pointer; transition: opacity 0.3s ease;" onMouseOver="this.style.opacity='1';" onMouseOut="this.style.opacity='0.6';">&times;</span>
+      <h3 style="margin-bottom: 25px; font-size: 22px; color: var(--text-primary); text-align: center; font-weight: 600;">修改管理员密码</h3>
+
+      <div class="modal-body">
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="currentPassword" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--text-primary);">当前密码</label>
+        <div style="position: relative;">
+          <input type="password" id="currentPassword" placeholder="请输入当前密码" style="width: 100%; padding: 12px 16px; padding-right: 40px; border: 1px solid var(--border-color); border-radius: 12px; box-sizing: border-box; font-size: 16px; transition: all 0.3s ease;" onFocus="this.style.borderColor='#007bff'; this.style.boxShadow='0 0 0 3px rgba(0, 123, 255, 0.25)';" onBlur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none';">
+          <button type="button" onclick="togglePasswordVisibility('currentPassword', this)" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; opacity: 0.5; transition: opacity 0.3s;" onMouseOver="this.style.opacity='1';" onMouseOut="this.style.opacity='0.5';">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="newPassword" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--text-primary);">新密码</label>
+        <div style="position: relative;">
+          <input type="password" id="newPassword" placeholder="请输入新密码" style="width: 100%; padding: 12px 16px; padding-right: 40px; border: 1px solid var(--border-color); border-radius: 12px; box-sizing: border-box; font-size: 16px; transition: all 0.3s ease;" onFocus="this.style.borderColor='#007bff'; this.style.boxShadow='0 0 0 3px rgba(0, 123, 255, 0.25)';" onBlur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none';">
+          <button type="button" onclick="togglePasswordVisibility('newPassword', this)" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; opacity: 0.5; transition: opacity 0.3s;" onMouseOver="this.style.opacity='1';" onMouseOut="this.style.opacity='0.5';">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 25px;">
+        <label for="confirmPassword" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--text-primary);">确认新密码</label>
+        <div style="position: relative;">
+          <input type="password" id="confirmPassword" placeholder="请再次输入新密码" style="width: 100%; padding: 12px 16px; padding-right: 40px; border: 1px solid var(--border-color); border-radius: 12px; box-sizing: border-box; font-size: 16px; transition: all 0.3s ease;" onFocus="this.style.borderColor='#007bff'; this.style.boxShadow='0 0 0 3px rgba(0, 123, 255, 0.25)';" onBlur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none';">
+          <button type="button" onclick="togglePasswordVisibility('confirmPassword', this)" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; opacity: 0.5; transition: opacity 0.3s;" onMouseOver="this.style.opacity='1';" onMouseOut="this.style.opacity='0.5';">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: flex-end;">
+        <button id="cancelChangePasswordBtn" style="background-color: #e5e5ea; color: var(--text-primary); padding: 12px 24px; border: none; border-radius: 12px; font-size: 16px; font-weight: 500; cursor: pointer; transition: all 0.3s ease;" onMouseOver="this.style.backgroundColor='#d5d5df';" onMouseOut="this.style.backgroundColor='#e5e5ea';">取消</button>
+        <button id="savePasswordBtn" style="background-color: #007bff; color: white; padding: 12px 30px; border: none; border-radius: 12px; font-size: 16px; font-weight: 500; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0, 123, 255, 0.2);" onMouseOver="this.style.backgroundColor='#0069d9'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 15px rgba(0, 123, 255, 0.25)';" onMouseOut="this.style.backgroundColor='#007bff'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 10px rgba(0, 123, 255, 0.2)';">保存</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 添加JavaScript文件 -->
+  <!-- 注意：这些脚本文件对系统功能至关重要，请勿删除或修改顺序 -->
+  <script src="/js/app-core.js"></script>
+  <script src="/js/admin-utils.js"></script>  <!-- 工具函数库，被其他脚本依赖 -->
+  <script src="/js/admin-users.js"></script>  <!-- 用户管理相关功能 -->
+  <script src="/js/audio-core.js"></script>
+  <script src="/js/modal-core.js"></script>
+  <script src="/js/music-model.js"></script>
+  <script src="/js/music-view.js"></script>
+  <script src="/js/music-presenter.js"></script>
+  <script src="/js/admin-music.js"></script>  <!-- 音乐管理基础功能 -->
+  <script src="/js/admin-music-edit.js"></script>  <!-- 音乐编辑功能 -->
+  <script src="/js/admin-modals.js"></script>  <!-- 模态框控制功能 -->
+  <script src="/js/admin-celebration.js"></script>  <!-- 庆祝语管理功能 -->
+  <script src="/js/admin-tts.js"></script>  <!-- 阿里云TTS配置功能 -->
+  <script src="/js/admin-audio-config.js"></script>
+<script src="/js/admin-platforms.js"></script>  <!-- 平台目标管理功能 -->
+<script src="/js/admin-init.js"></script>  <!-- 初始化脚本，必须放在最后加载 -->
+
+  <!-- 添加Cropper.js和相关CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+
+  <!-- 用户卡片模板 -->
+  <template id="userCardTemplate">
+    <div class="user-card" data-user-id="{id}">
+      <div class="user-card-content">
+        <div class="user-card-header">
+          <div class="user-avatar" data-initial="{initial}" data-user-id="{id}">{initial}</div>
+          <div class="user-info">
+            <h3>{name}</h3>
+            <p class="user-position">{position}</p>
+          </div>
+          <div class="mvp-crown" title="MVP - 排名第一">{mvpCrown}</div>
+          <div class="sort-position" title="排序位置">#{sortPosition}</div>
+        </div>
+        
+        <div class="user-music-info">
+          <div class="music-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 18V5L21 3V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="2"/>
+              <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="music-details">
+            <p class="music-name">{musicName}</p>
+            <p class="music-status {musicStatusClass}">
+              {musicStatus}
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card-actions">
+        <!-- 添加排序控制按钮 -->
+        <div class="sort-controls">
+          <button class="sort-btn sort-up-btn" data-user-id="{id}" title="上移">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 15l-6-6-6 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="sort-btn sort-down-btn" data-user-id="{id}" title="下移">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 9l6 6 6-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="button-group">
+          <button class="edit-user-btn" data-user-id="{id}" data-user-name="{name}" data-user-position="{position}" data-photo-url="{photoUrl}" data-full-photo-url="{fullPhotoUrl}" style="background-color: #4CAF50; width: 100%;">
+            <span class="button-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            编辑
+          </button>
+          <button class="delete-user-btn button-danger" data-user-id="{id}" style="width: 55px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- 添加平台模态框 -->
+  <div id="addPlatformModal" class="modal add-platform-modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h3 style="margin-bottom: 20px; font-size: 20px;">添加新平台</h3>
+      <div class="modal-body">
+        <div class="add-platform-form">
+          <div class="form-group">
+            <label for="platformName">平台名称</label>
+            <input type="text" id="platformName" placeholder="请输入平台名称，如：阿里巴巴">
+          </div>
+          <div class="form-group">
+            <label for="platformTarget">目标金额</label>
+            <input type="number" id="platformTarget" placeholder="请输入目标金额" min="0" step="1000">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelAddPlatformBtn" style="background-color: #e5e5ea; color: var(--text-primary);">取消</button>
+        <button id="confirmAddPlatformBtn" class="button-secondary">添加平台</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示信息 -->
+  <div id="messageBox" class="message-box" style="display: none;">
+    <div class="message-content">
+      <span id="messageText"></span>
+    </div>
+  </div>
+</body>
+</html> 

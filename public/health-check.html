@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统健康检查 - BBZG</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+        }
+        h1 {
+            color: #1d1d1f;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .check-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border: 1px solid #d2d2d7;
+        }
+        .check-item.success {
+            background-color: #f0fff4;
+            border-color: #34c759;
+        }
+        .check-item.error {
+            background-color: #fff5f5;
+            border-color: #ff3b30;
+        }
+        .check-item.loading {
+            background-color: #f0f8ff;
+            border-color: #007aff;
+        }
+        .status-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        .check-content {
+            flex: 1;
+        }
+        .check-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .check-details {
+            font-size: 14px;
+            color: #6e6e73;
+        }
+        .refresh-btn {
+            background-color: #007aff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 20px auto;
+            display: block;
+        }
+        .refresh-btn:hover {
+            background-color: #005bb5;
+        }
+        .api-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>系统健康检查</h1>
+        
+        <div id="basicCheck" class="check-item loading">
+            <div class="status-icon">⏳</div>
+            <div class="check-content">
+                <div class="check-title">基础连接检查</div>
+                <div class="check-details">正在检查服务器连接...</div>
+            </div>
+        </div>
+        
+        <div id="apiCheck" class="check-item loading">
+            <div class="status-icon">⏳</div>
+            <div class="check-content">
+                <div class="check-title">API端点检查</div>
+                <div class="check-details">正在检查关键API端点...</div>
+            </div>
+        </div>
+        
+        <div id="authCheck" class="check-item loading">
+            <div class="status-icon">⏳</div>
+            <div class="check-content">
+                <div class="check-title">认证状态检查</div>
+                <div class="check-details">正在检查登录状态...</div>
+            </div>
+        </div>
+        
+        <div id="routesCheck" class="check-item loading">
+            <div class="status-icon">⏳</div>
+            <div class="check-content">
+                <div class="check-title">路由注册检查</div>
+                <div class="check-details">正在获取已注册的路由...</div>
+            </div>
+        </div>
+        
+        <button class="refresh-btn" onclick="runHealthCheck()">重新检查</button>
+        
+        <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+            <h3>说明</h3>
+            <p>此页面用于诊断生产环境中的API端点问题。如果看到404错误，通常是以下原因：</p>
+            <ul>
+                <li>服务器代码版本不是最新的</li>
+                <li>某些API路由没有正确注册</li>
+                <li>中间件配置有问题</li>
+                <li>会话状态异常</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // 要检查的关键API端点
+        const criticalApis = [
+            { url: '/api/users', method: 'GET', name: '用户列表' },
+            { url: '/api/platforms/targets', method: 'GET', name: '平台目标' },
+            { url: '/api/platform-display-settings', method: 'GET', name: '平台显示设置' },
+            { url: '/api/users/update-sort', method: 'POST', name: '用户排序' }
+        ];
+        
+        async function runHealthCheck() {
+            console.log('开始健康检查...');
+            
+            // 重置状态
+            document.querySelectorAll('.check-item').forEach(item => {
+                item.className = 'check-item loading';
+                item.querySelector('.status-icon').textContent = '⏳';
+            });
+            
+            await checkBasicConnection();
+            await checkApiEndpoints();
+            await checkAuthStatus();
+            await checkRegisteredRoutes();
+        }
+        
+        async function checkBasicConnection() {
+            const item = document.getElementById('basicCheck');
+            try {
+                const response = await fetch(window.location.href);
+                if (response.ok) {
+                    updateCheckItem(item, 'success', '✅', '服务器连接正常', `响应状态: ${response.status}`);
+                } else {
+                    updateCheckItem(item, 'error', '❌', '服务器响应异常', `状态码: ${response.status}`);
+                }
+            } catch (error) {
+                updateCheckItem(item, 'error', '❌', '无法连接到服务器', error.message);
+            }
+        }
+        
+        async function checkApiEndpoints() {
+            const item = document.getElementById('apiCheck');
+            const results = [];
+            
+            for (const api of criticalApis) {
+                try {
+                    const options = api.method === 'POST' ? {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    } : {};
+                    
+                    const response = await fetch(api.url, options);
+                    results.push({
+                        name: api.name,
+                        url: api.url,
+                        method: api.method,
+                        status: response.status,
+                        ok: response.ok || response.status === 400 // 400可能是参数错误，但端点存在
+                    });
+                } catch (error) {
+                    results.push({
+                        name: api.name,
+                        url: api.url,
+                        method: api.method,
+                        status: 'ERROR',
+                        ok: false,
+                        error: error.message
+                    });
+                }
+            }
+            
+            const failedApis = results.filter(r => !r.ok);
+            const successCount = results.length - failedApis.length;
+            
+            if (failedApis.length === 0) {
+                updateCheckItem(item, 'success', '✅', '所有关键API端点正常', 
+                    `${successCount}/${results.length} 个端点可用`);
+            } else {
+                const details = failedApis.map(api => 
+                    `${api.method} ${api.url} (${api.status})`
+                ).join('<br>');
+                updateCheckItem(item, 'error', '❌', '部分API端点不可用', 
+                    `${successCount}/${results.length} 个端点可用<br>失败的端点:<br>${details}`);
+            }
+        }
+        
+        async function checkAuthStatus() {
+            const item = document.getElementById('authCheck');
+            try {
+                const response = await fetch('/api/users');
+                if (response.ok) {
+                    updateCheckItem(item, 'success', '✅', '已登录状态', '可以访问需要认证的API');
+                } else if (response.status === 401) {
+                    updateCheckItem(item, 'error', '⚠️', '未登录状态', '需要登录才能访问管理功能');
+                } else {
+                    updateCheckItem(item, 'error', '❌', '认证检查失败', `状态码: ${response.status}`);
+                }
+            } catch (error) {
+                updateCheckItem(item, 'error', '❌', '认证检查失败', error.message);
+            }
+        }
+        
+        async function checkRegisteredRoutes() {
+            const item = document.getElementById('routesCheck');
+            try {
+                const response = await fetch('/api/debug/routes');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.routes) {
+                        const routesList = data.routes.map(route => 
+                            `${route.methods.join(',')} ${route.path}`
+                        ).join('\n');
+                        
+                        updateCheckItem(item, 'success', '✅', '路由信息获取成功', 
+                            `找到 ${data.routes.length} 个API路由<div class="api-list">${routesList}</div>`);
+                    } else {
+                        updateCheckItem(item, 'error', '❌', '路由信息格式异常', JSON.stringify(data));
+                    }
+                } else if (response.status === 401) {
+                    updateCheckItem(item, 'error', '⚠️', '需要登录获取路由信息', '请先登录管理后台');
+                } else {
+                    updateCheckItem(item, 'error', '❌', '路由检查失败', `状态码: ${response.status}`);
+                }
+            } catch (error) {
+                updateCheckItem(item, 'error', '❌', '路由检查失败', error.message);
+            }
+        }
+        
+        function updateCheckItem(item, status, icon, title, details) {
+            item.className = `check-item ${status}`;
+            item.querySelector('.status-icon').textContent = icon;
+            item.querySelector('.check-title').textContent = title;
+            item.querySelector('.check-details').innerHTML = details;
+        }
+        
+        // 页面加载时自动运行检查
+        document.addEventListener('DOMContentLoaded', runHealthCheck);
+    </script>
+</body>
+</html> 

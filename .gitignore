@@ -1,0 +1,24 @@
+# OS / Editor
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data / local state
+data.json
+
+# Uploaded / generated media (keep only minimal built-in sounds)
+public/music/*
+!public/music/Go.mp3
+!public/music/xunpanluru.mp3
+!public/music/delete.mp3
+!public/music/dededede.mp3
+
+# Generated TTS cache
+public/music/tts/
+
+# Optional custom uploads folder (generated)
+public/music/custom/

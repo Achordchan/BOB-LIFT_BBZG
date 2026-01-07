@@ -1,0 +1,290 @@
+/* TV大屏幕响应式布局 - 简化版 */
+:root {
+  --scale-factor: 1;
+}
+
+/* 大屏电视 - 4K */
+@media screen and (min-width: 3840px) {
+  :root {
+    --scale-factor: 1.5;
+  }
+  
+  html {
+    font-size: 16px;
+  }
+}
+
+/* 标准电视 - 1080p */
+@media screen and (min-width: 1920px) and (max-width: 3839px) {
+  :root {
+    --scale-factor: 1;
+  }
+  
+  html {
+    font-size: 16px;
+  }
+}
+
+/* 小屏幕设备 */
+@media screen and (max-width: 1919px) {
+  :root {
+    --scale-factor: 0.8;
+  }
+  
+  html {
+    font-size: 14px;
+  }
+}
+
+/* 专门针对飞视浏览器的优化 */
+.tv-browser {
+  --scale-factor: 1;
+  font-size: 16px;
+}
+
+/* 强制优化55寸电视 */
+@media screen and (min-width: 1800px) and (min-height: 900px) {
+  html.tv-browser {
+    --scale-factor: 1;
+    font-size: 16px;
+  }
+}
+
+/* 专门针对电视不同尺寸的优化 */
+@media screen and (min-width: 3500px) { /* 约75寸+ 电视 */
+  html.tv-browser {
+    --scale-factor: 1.3;
+  }
+}
+
+@media screen and (min-width: 2500px) and (max-width: 3499px) { /* 约65寸电视 */
+  html.tv-browser {
+    --scale-factor: 1.2;
+  }
+}
+
+@media screen and (min-width: 1920px) and (max-width: 2499px) { /* 约55寸电视 */
+  html.tv-browser {
+    --scale-factor: 1;
+  }
+}
+
+/* 全局调整 */
+html.tv-browser,
+body.tv-browser {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  font-size: 16px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 容器调整 */
+.leaderboard-container {
+  width: 100%;
+  height: 100vh;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 头部样式简化 */
+.leaderboard-header {
+  height: 8vh;
+  padding: 0.7rem 2rem;
+}
+
+/* 专门为电视和Android设备添加头部背景色 */
+html.tv-browser .leaderboard-header,
+@media screen and (max-width: 960px) and (max-height: 540px) {
+  .leaderboard-header {
+    background-color: #483e97 !important; /* 强制应用不透明背景色 */
+  }
+}
+
+.main-title {
+  font-size: calc(3.5rem * var(--scale-factor));
+}
+
+.sub-title {
+  font-size: calc(1.8rem * var(--scale-factor));
+}
+
+.date-time, .exchange-rate {
+  font-size: calc(1.8rem * var(--scale-factor));
+}
+
+/* 主内容区域 */
+.leaderboard-main {
+  display: grid;
+  grid-template-columns: 40% 60%;
+  gap: 20px;
+  height: calc(92vh - 20px);
+  padding: 10px;
+  overflow: hidden;
+}
+
+/* 团队成员显示优化 */
+.team-photos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  padding: 10px;
+  height: calc(100% - 50px);
+  overflow-y: auto;
+}
+
+.team-member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+ 
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.member-photo {
+  width: 120px;
+  height: 120px;
+  border-radius: 10px;
+  margin-bottom: 0.8rem;
+  object-fit: cover;
+}
+
+.member-name {
+  font-size: calc(1.8rem * var(--scale-factor));
+  margin-bottom: calc(0.5rem * var(--scale-factor));
+}
+
+.member-position {
+  font-size: calc(1.4rem * var(--scale-factor));
+}
+
+.member-stats {
+  margin-top: calc(0.8rem * var(--scale-factor));
+}
+
+.member-deals, .member-amount {
+  font-size: calc(1.6rem * var(--scale-factor));
+}
+
+/* 音乐播放器 */
+.music-player {
+  height: calc(80px * var(--scale-factor));
+}
+
+.music-controls {
+  padding: calc(0.8rem * var(--scale-factor));
+}
+
+.music-title {
+  font-size: calc(1.4rem * var(--scale-factor));
+}
+
+.music-artist {
+  font-size: calc(1.2rem * var(--scale-factor));
+}
+
+/* 底部通知 */
+.bottom-announcement-container {
+  height: calc(80px * var(--scale-factor));
+  padding: calc(1rem * var(--scale-factor));
+}
+
+.announcement-text {
+  font-size: calc(2rem * var(--scale-factor));
+}
+
+/* 优化触摸目标大小 */
+button, .control-button {
+  min-width: calc(44px * var(--scale-factor));
+  min-height: calc(44px * var(--scale-factor));
+}
+
+/* 调试功能保留 */
+.debug-mode {
+  position: fixed;
+  top: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 10px;
+  font-size: 14px;
+  z-index: 9999;
+  max-width: 250px;
+  display: none;
+}
+
+.debug-mode.active {
+  display: block;
+}
+
+.debug-toggle {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  background-color: rgba(255, 0, 0, 0.5);
+  border-radius: 50%;
+  z-index: 9999;
+  cursor: pointer;
+}
+
+/* 调试器激活时的视觉指示 */
+body.debug-active:after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background-color: rgba(255, 0, 0, 0.7);
+  z-index: 9998;
+}
+
+/* 针对55寸电视的特定优化 */
+@media screen and (min-width: 1920px) {
+  html.tv-browser {
+    font-size: 16px;
+  }
+  
+  .leaderboard-main {
+    grid-template-columns: 40% 60% !important;
+  }
+  
+  .team-photos {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 15px !important;
+  }
+  
+  .member-photo {
+    width: 120px !important;
+    height: 120px !important;
+  }
+}
+
+/* 专门针对55寸电视飞视浏览器 */
+html.tv-browser.feiyu-browser body {
+  zoom: 1 !important;
+}
+
+html.tv-browser.feiyu-browser .leaderboard-container {
+  max-width: 1920px;
+  margin: 0 auto;
+}
+
+html.tv-browser.feiyu-browser .team-photos {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+/* 确保不出现滚动条 */
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  
+  overflow: hidden;
+} 

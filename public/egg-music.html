@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>巴布之光2.0系统 音乐搜索</title>
+  <style>
+    :root{
+      --bg: #0b1220;
+      --card: rgba(255,255,255,0.06);
+      --card2: rgba(255,255,255,0.09);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.62);
+      --border: rgba(255,255,255,0.10);
+      --primary: #7c5cff;
+      --primary2: #28d3ff;
+      --good: #34c759;
+      --warn: #ffc107;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial;
+      background: radial-gradient(1200px 600px at 15% 10%, rgba(124,92,255,0.35) 0%, rgba(124,92,255,0) 60%),
+                  radial-gradient(900px 600px at 85% 15%, rgba(40,211,255,0.28) 0%, rgba(40,211,255,0) 55%),
+                  radial-gradient(900px 700px at 55% 85%, rgba(52,199,89,0.16) 0%, rgba(52,199,89,0) 55%),
+                  var(--bg);
+      color:var(--text);
+      min-height:100vh;
+    }
+
+    .wrap{
+      width:min(980px, 92vw);
+      margin:0 auto;
+      padding:28px 0 110px;
+    }
+
+    .hero{
+      padding:22px 18px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%);
+      border-radius:18px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.45);
+    }
+
+    .heroTop{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:14px;
+    }
+
+    .title{
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+
+    .badge{
+      width:44px;
+      height:44px;
+      border-radius:14px;
+      background: linear-gradient(135deg, rgba(124,92,255,1) 0%, rgba(40,211,255,1) 100%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
+      box-shadow: 0 12px 30px rgba(124,92,255,0.35);
+    }
+
+    .badge svg{ display:block; }
+
+    h1{
+      margin:0;
+      font-size:18px;
+      letter-spacing:0.2px;
+    }
+
+    .sub{
+      margin-top:6px;
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.5;
+    }
+
+    .tools{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:16px;
+    }
+
+    .input{
+      flex: 1;
+      min-width: 220px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .input svg{ flex:0 0 auto; opacity:0.85; }
+
+    input[type="text"]{
+      width:100%;
+      background:transparent;
+      border:none;
+      outline:none;
+      color:var(--text);
+      font-size:14px;
+    }
+
+    .btn{
+      appearance:none;
+      border:none;
+      padding:12px 14px;
+      border-radius:14px;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:700;
+      font-size:13px;
+      letter-spacing:0.2px;
+      border:1px solid rgba(255,255,255,0.12);
+      transition: transform 0.05s ease, background 0.2s ease, opacity 0.2s ease;
+    }
+
+    .btn:hover{ background: rgba(255,255,255,0.11); }
+    .btn:active{ transform: translateY(1px); }
+    .btn[disabled]{ opacity:0.5; cursor:not-allowed; }
+
+    .btnPrimary{
+      background: linear-gradient(135deg, rgba(124,92,255,1) 0%, rgba(40,211,255,1) 100%);
+      border: none;
+      box-shadow: 0 14px 34px rgba(124,92,255,0.25);
+    }
+
+    .btnPrimary:hover{ filter: brightness(1.05); }
+
+    .panel{
+      margin-top:16px;
+      border:1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+      background: rgba(255,255,255,0.04);
+    }
+
+    .panelHeader{
+      padding:12px 14px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    .list{ display:block; }
+
+    .item{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px 14px;
+      border-bottom:1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .item:nth-child(2n){ background: rgba(255,255,255,0.03); }
+    .item:last-child{ border-bottom:none; }
+
+    .meta{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      flex: 1;
+      min-width:0;
+    }
+
+    .cover{
+      width:46px;
+      height:46px;
+      border-radius:12px;
+      object-fit:cover;
+      border:1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.07);
+      flex:0 0 auto;
+    }
+
+    .texts{ min-width:0; }
+
+    .name{
+      font-weight:800;
+      font-size:14px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .desc{
+      margin-top:4px;
+      font-size:12px;
+      color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex:0 0 auto;
+    }
+
+    .btnSmall{
+      padding:10px 12px;
+      border-radius:12px;
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .btnGood{
+      background: rgba(52,199,89,0.18);
+      border: 1px solid rgba(52,199,89,0.35);
+    }
+
+    .btnGood:hover{ background: rgba(52,199,89,0.22); }
+
+    .btnLink{
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--text);
+    }
+
+    .pager{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding:12px 14px;
+      border-top:1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .pill{
+      font-size:12px;
+      color: var(--muted);
+      padding:10px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .modalOverlay{
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0,0,0,0.50);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 2000;
+    }
+
+    .modalCard{
+      width: min(420px, 92vw);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+      padding: 16px;
+    }
+
+    .modalTitle{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom: 10px;
+    }
+
+    .modalTitle h2{
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.2px;
+    }
+
+    .modalClose{
+      appearance:none;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 900;
+    }
+
+    .modalBody{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap: 6px;
+    }
+
+    .label{
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .input2{
+      width: 100%;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      outline: none;
+      font-size: 14px;
+    }
+
+    .modalFooter{
+      display:flex;
+      gap: 10px;
+      margin-top: 12px;
+      justify-content: flex-end;
+    }
+
+    .credits{
+      margin-top: 10px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      font-size:12px;
+      color: var(--muted);
+    }
+
+    .authorCard{
+      margin-top: 12px;
+      padding: 12px 12px;
+      border-radius: 16px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%);
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .authorLeft{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .avatar{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.18);
+      object-fit: cover;
+      background: rgba(255,255,255,0.06);
+      flex: 0 0 auto;
+    }
+
+    .authorText{ min-width: 0; }
+    .authorName{ font-weight: 900; font-size: 13px; color: rgba(255,255,255,0.92); }
+    .authorSub{ margin-top: 4px; font-size: 12px; color: rgba(255,255,255,0.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .authorLinks{ display:flex; align-items:center; gap: 8px; flex-wrap:wrap; justify-content:flex-end; }
+    .linkBtn{
+      display:inline-flex;
+      align-items:center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      color: rgba(255,255,255,0.9);
+      text-decoration:none;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .linkBtn:hover{ background: rgba(255,255,255,0.08); }
+
+    .credits a{
+      color: rgba(255,255,255,0.88);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(255,255,255,0.28);
+    }
+
+    .credits a:hover{
+      border-bottom-color: rgba(255,255,255,0.55);
+    }
+
+    .chip{
+      padding:6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .player{
+      position:fixed;
+      left:0;
+      right:0;
+      bottom:0;
+      z-index:3000;
+      background: rgba(10,16,30,0.75);
+      border-top: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(10px);
+    }
+
+    .playerInner{
+      width:min(980px, 92vw);
+      margin:0 auto;
+      padding:12px 0;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .now{
+      flex:1;
+      min-width:0;
+    }
+
+    .nowWrap{
+      display:flex;
+      align-items:center;
+      gap: 12px;
+      min-width:0;
+    }
+
+    .nowCover{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      flex: 0 0 auto;
+    }
+
+    .nowTitle{
+      font-size:13px;
+      font-weight:800;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .nowSub{
+      margin-top:4px;
+      font-size:12px;
+      color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .play-music-btn{
+      background-color: #34c759;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 12px;
+      color: white;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+
+    .music-progress-wrap{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width: 220px;
+    }
+
+    .music-progress{
+      width: 160px;
+      height: 6px;
+      background: rgba(255,255,255,0.16);
+      border-radius: 999px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .music-progress-fill{
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(124,92,255,1) 0%, rgba(40,211,255,1) 100%);
+    }
+
+    .music-time{
+      font-size: 12px;
+      color: rgba(255,255,255,0.70);
+      min-width: 72px;
+      text-align: right;
+    }
+
+    .toast{
+      position:fixed;
+      top:18px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:9999;
+      padding:10px 12px;
+      border-radius:14px;
+      background: rgba(0,0,0,0.55);
+      border:1px solid rgba(255,255,255,0.14);
+      color:rgba(255,255,255,0.92);
+      font-size:13px;
+      display:none;
+      max-width:min(720px, 92vw);
+    }
+
+    .eggUserAvatar{
+      width:22px;
+      height:22px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.22);
+      object-fit:cover;
+      background: rgba(255,255,255,0.08);
+      flex: 0 0 auto;
+    }
+
+    .eggBroadcastBar{
+      display:none;
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .eggBroadcastRow{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .eggBroadcastLabel{
+      color: rgba(255,255,255,0.78);
+      font-size: 13px;
+    }
+
+    .eggBroadcastCurrent{
+      color: rgba(255,255,255,0.84);
+      font-size: 13px;
+      max-width: min(520px, 80vw);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .eggBroadcastList{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      max-height: min(62vh, 520px);
+      overflow:auto;
+    }
+
+    .eggBroadcastItem{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .eggBroadcastItemTitle{
+      color: rgba(255,255,255,0.92);
+      font-size: 13px;
+      line-height: 1.2;
+      max-width: min(520px, 56vw);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .eggBroadcastItemActions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex: 0 0 auto;
+    }
+
+    @media (max-width: 540px){
+      .heroTop{ flex-direction:column; }
+      .playerInner{ flex-direction:column; align-items:stretch; }
+      .music-progress{ width: 100%; }
+      .music-progress-wrap{ min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <div class="wrap">
+    <div class="hero">
+      <div class="heroTop">
+        <div>
+          <div class="title">
+            <div class="badge" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <div>
+              <h1>巴布之光2.0系统音乐搜索</h1>
+              
+              <div class="authorCard">
+                <div class="authorLeft">
+                  <img class="avatar" src="https://avatars.githubusercontent.com/u/179492542?v=4" alt="Achord" />
+                  <div class="authorText">
+                    <div class="authorName">作者：Achord</div>
+                    <div class="authorSub">From 巴布之光2.0</div>
+                  </div>
+                </div>
+                <div class="authorLinks">
+                  <a class="linkBtn" href="https://github.com/achordchan" target="_blank" rel="noopener noreferrer">GitHub</a>
+                  <a class="linkBtn" href="https://ifdian.net/a/achord" target="_blank" rel="noopener noreferrer">赞助我</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button class="btn btnSmall" id="accountBtn" type="button" style="display:flex; align-items:center; gap:8px;">登录</button>
+            <div class="pill" id="statusPill">准备就绪</div>
+          </div>
+          <div class="eggBroadcastBar" id="eggBroadcastBar">
+            <div class="eggBroadcastRow">
+              <div class="eggBroadcastCurrent" id="eggBroadcastCurrent">当前播报：—</div>
+              <button class="btn btnSmall" id="eggBroadcastEditBtn" type="button">修改</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tools">
+        <div class="input">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: rgba(255,255,255,0.7)">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input id="q" type="text" placeholder="歌名 / 歌手" autocomplete="off" />
+        </div>
+        <button class="btn btnPrimary" id="searchBtn" type="button">搜索</button>
+        <button class="btn" id="clearBtn" type="button">清空</button>
+      </div>
+    </div>
+
+    <div class="panel" id="panel" style="display:none;">
+      <div class="panelHeader">
+        <div id="resultMeta">结果</div>
+        <div id="hint">点击“试听”会在底部播放器播放；“下载”将保存到你的电脑</div>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="pager" id="pager" style="display:none;">
+        <button class="btn btnSmall" id="prevBtn" type="button">上一页</button>
+        <div class="pill" id="pageInfo">1/1</div>
+        <button class="btn btnSmall" id="nextBtn" type="button">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="player" id="player" style="display:none;">
+    <div class="playerInner">
+      <div class="now">
+        <div class="nowWrap">
+          <img class="nowCover" id="nowCover" alt="cover" style="display:none;" />
+          <div style="min-width:0;">
+            <div class="nowTitle" id="nowTitle">未播放</div>
+            <div class="nowSub" id="nowSub">—</div>
+          </div>
+        </div>
+      </div>
+      <div data-audio-player="eggMusic" id="eggMusicPlayer" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end;">
+        <button class="play-music-btn" type="button">
+          <svg class="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg class="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+            <path d="M6 4h4v16H6zM14 4h4v16h-4z"/>
+          </svg>
+          <span class="play-text">播放</span>
+        </button>
+        <audio class="music-audio" id="eggMusicAudio" preload="none" style="display:none;">
+          <source src="" type="audio/mpeg">
+          您的浏览器不支持音频播放
+        </audio>
+        <div class="music-progress-wrap">
+          <div class="music-progress">
+            <div class="music-progress-fill"></div>
+          </div>
+          <div class="music-time">0:00/0:00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="/js/audio-core.js"></script>
+  <script defer src="/js/egg-music.js"></script>
+
+  <div class="modalOverlay" id="eggBroadcastModal" aria-hidden="true">
+    <div class="modalCard" role="dialog" aria-modal="true">
+      <div class="modalTitle">
+        <h2>选择播报音乐</h2>
+        <button class="modalClose" id="eggBroadcastCloseBtn" type="button">×</button>
+      </div>
+      <div class="modalBody">
+        <div class="eggBroadcastList" id="eggBroadcastList"></div>
+      </div>
+      <div class="modalFooter">
+        <button class="btn" id="eggBroadcastCancelBtn" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modalOverlay" id="eggLoginModal" aria-hidden="true">
+    <div class="modalCard" role="dialog" aria-modal="true">
+      <div class="modalTitle">
+        <h2>登录</h2>
+        <button class="modalClose" id="eggLoginCloseBtn" type="button">×</button>
+      </div>
+      <div class="modalBody">
+        <div class="field">
+          <div class="label">账号</div>
+          <input class="input2" id="eggLoginUsername" type="text" autocomplete="username" placeholder="请输入账号" />
+        </div>
+        <div class="field">
+          <div class="label">密码</div>
+          <input class="input2" id="eggLoginPassword" type="password" autocomplete="current-password" placeholder="请输入密码" />
+        </div>
+      </div>
+      <div class="modalFooter">
+        <button class="btn" id="eggLoginCancelBtn" type="button">取消</button>
+        <button class="btn btnPrimary" id="eggLoginSubmitBtn" type="button">登录</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modalOverlay" id="eggPwdModal" aria-hidden="true">
+    <div class="modalCard" role="dialog" aria-modal="true">
+      <div class="modalTitle">
+        <h2>修改密码</h2>
+        <button class="modalClose" id="eggPwdCloseBtn" type="button">×</button>
+      </div>
+      <div class="modalBody">
+        <div class="field">
+          <div class="label">当前密码</div>
+          <input class="input2" id="eggPwdCurrent" type="password" autocomplete="current-password" placeholder="请输入当前密码" />
+        </div>
+        <div class="field">
+          <div class="label">新密码</div>
+          <input class="input2" id="eggPwdNew" type="password" autocomplete="new-password" placeholder="请输入新密码" />
+        </div>
+      </div>
+      <div class="modalFooter">
+        <button class="btn" id="eggPwdCancelBtn" type="button">取消</button>
+        <button class="btn btnPrimary" id="eggPwdSubmitBtn" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
