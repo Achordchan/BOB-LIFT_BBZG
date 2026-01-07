@@ -44,22 +44,6 @@ npm start
 
 本项目运行时会产生本地数据与上传文件。为了避免仓库膨胀/泄露隐私，以下内容**不应提交到 GitHub**（已通过 `.gitignore` 排除）。
 
-### 不入库（运行时数据）
-
-- `data.json`
-  - 本地 JSON 数据库：用户、目标、历史记录、配置（含 TTS 配置）等。
-  - 首次启动若不存在会自动生成。
-- `public/music/` 下的大部分文件
-  - 上传/生成的音乐、歌词、TTS 缓存等。
-  - 仓库仅保留基础内置音效（如 `Go.mp3`、`delete.mp3` 等）。
-- `public/images/users/`
-  - 用户头像通常属于业务数据/隐私，建议不入库。
-
-### 入库（代码与必要资源）
-
-- `server.js`、`routes/`、`app/`、`lib/`
-- `public/`（除上传/生成目录外）
-- `package.json` / `package-lock.json`
 
 ## 常用 API（用于集成/触发）
 
@@ -114,6 +98,4 @@ curl "http://localhost:3000/api/deals/add?zongjine=1000&fuzeren=张三&laiyuanpi
 
 如果你要把触发接口暴露到公网（例如给外部系统调用），建议额外增加鉴权（例如 token 参数校验、IP 白名单、反向代理认证等），避免被他人刷接口。
 
-## License
 
-内部项目默认不附带 License。如需开源/授权，请补充 License 文件。
