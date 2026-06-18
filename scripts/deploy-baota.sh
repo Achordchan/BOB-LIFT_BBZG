@@ -66,7 +66,10 @@ REMOTE_BACKUP
 
 ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   MUSIC_API_PATH="${MUSIC_API_PATH}" \
-  'mkdir -p "${MUSIC_API_PATH}"'
+  'bash -s' <<'REMOTE_MKDIR'
+set -euo pipefail
+mkdir -p "${MUSIC_API_PATH}"
+REMOTE_MKDIR
 
 rsync -az --delete \
   --omit-dir-times \
