@@ -1,14 +1,23 @@
 const fs = require('fs');
 
 function registerPageSettingsRoutes(app, deps) {
-  const { dataPath } = deps;
+  const { dataPath, getData: injectedGetData, saveData: injectedSaveData } = deps || {};
+
+  const getData = typeof injectedGetData === 'function'
+    ? injectedGetData
+    : () => JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+
+  const saveData = typeof injectedSaveData === 'function'
+    ? injectedSaveData
+    : (data) => {
+        fs.writeFileSync(dataPath, JSON.stringify(data));
+        return true;
+      };
 
   // API: 获取首页设置 (无需鉴权，供主显示页面使用)
   app.get('/api/page-settings', (req, res) => {
     try {
-      const startTime = performance.now();
-      const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-      console.log(`数据读取时间: ${(performance.now() - startTime).toFixed(3)}ms`);
+      const data = getData();
 
       // 如果没有首页设置，使用默认值
       const defaultSettings = {
@@ -45,9 +54,7 @@ function registerPageSettingsRoutes(app, deps) {
     }
 
     try {
-      const startTime = performance.now();
-      const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-      console.log(`数据读取时间: ${(performance.now() - startTime).toFixed(3)}ms`);
+      const data = getData();
       const { settings } = req.body;
 
       if (!settings) {
@@ -80,9 +87,13 @@ function registerPageSettingsRoutes(app, deps) {
         updatedAt: new Date().toISOString()
       };
 
-      const saveStartTime = performance.now();
-      fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-      console.log(`数据保存时间: ${(performance.now() - saveStartTime).toFixed(3)}ms`);
+      const saved = saveData(data);
+      if (!saved) {
+        return res.status(500).json({
+          success: false,
+          message: '保存首页设置失败'
+        });
+      }
 
       res.json({
         success: true,

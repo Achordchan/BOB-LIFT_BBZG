@@ -181,10 +181,10 @@ body.leaderboard-page {
 
 /* 进度条相关样式调整 */
 .progress-container {
-  
+
   margin-bottom: 1.5rem; /* 增加底部空间，确保目标信息显示 */
   position: relative;
- 
+
   display: block; /* 确保显示为块级元素 */
   visibility: visible; /* 确保可见性 */
 }
@@ -249,9 +249,9 @@ body.leaderboard-page {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, 
-    rgba(255, 255, 255, 0) 0%, 
-    rgba(255, 255, 255, 0.3) 50%, 
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
     rgba(255, 255, 255, 0) 100%);
   background-size: 200% 100%;
   animation: shimmer 2s infinite;
@@ -410,7 +410,7 @@ body.leaderboard-page {
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   border-radius: 0.75rem;
   padding: 1.25rem;
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(226, 232, 240, 0.8);
@@ -432,7 +432,7 @@ body.leaderboard-page {
 
 .platform-item:hover {
   transform: translateY(-4px) scale(1.02);
-  box-shadow: 
+  box-shadow:
     0 20px 25px -5px rgba(0, 0, 0, 0.1),
     0 10px 10px -5px rgba(0, 0, 0, 0.04);
   border-color: var(--primary-color);
@@ -547,7 +547,7 @@ body.leaderboard-page {
   left: 0;
   bottom: 0;
   right: 0;
-  background: linear-gradient(90deg, 
+  background: linear-gradient(90deg,
     transparent,
     rgba(255, 255, 255, 0.3),
     transparent
@@ -727,23 +727,23 @@ body.leaderboard-page {
     gap: 0.75rem;
     padding: 0.25rem;
   }
-  
+
   .platform-targets.list-layout {
     gap: 0.5rem;
     padding: 0.25rem;
   }
-  
+
   .platform-item {
     padding: 1rem;
   }
-  
+
   .platform-item.list-item {
     flex-direction: column;
     align-items: stretch;
     min-height: auto;
     padding: 0.875rem 1rem;
   }
-  
+
   .list-item .platform-header {
     margin-right: 0;
     margin-bottom: 0.75rem;
@@ -752,27 +752,27 @@ body.leaderboard-page {
     justify-content: space-between;
     min-width: auto;
   }
-  
+
   .list-item .platform-progress-section {
     margin-left: 0;
     margin-bottom: 0.5rem;
   }
-  
+
   .list-item-info {
     margin-left: 0;
     min-width: auto;
     justify-content: center;
   }
-  
+
   .platform-metrics.single-platform-metrics {
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
   }
-  
+
   .metric-value {
     font-size: 1.1rem;
   }
-  
+
   .platform-name {
     font-size: 1rem;
   }
@@ -783,43 +783,43 @@ body.leaderboard-page {
   .platform-targets.list-layout {
     padding: 0;
   }
-  
+
   .platform-item {
     padding: 0.75rem;
     margin: 0.25rem;
   }
-  
+
   .platform-item.list-item {
     padding: 0.75rem;
     margin: 0.25rem 0;
   }
-  
+
   .list-item .platform-name {
     font-size: 0.9rem;
   }
-  
+
   .list-item .platform-status {
     font-size: 0.625rem;
     padding: 0.125rem 0.375rem;
   }
-  
+
   .list-item .progress-percentage {
     font-size: 0.8rem;
   }
-  
+
   .current-amount {
     font-size: 0.9rem;
   }
-  
+
   .target-amount {
     font-size: 0.7rem;
   }
-  
+
   .platform-metrics {
     grid-template-columns: 1fr;
     gap: 0.75rem;
   }
-  
+
   .platform-metrics.single-platform-metrics {
     grid-template-columns: 1fr;
   }
@@ -893,14 +893,39 @@ body.leaderboard-page {
   flex: 0 0 30px; /* 减少图标宽度 */
   width: 30px;
   height: 30px;
-  background-color: var(--primary-color);
+  background: linear-gradient(135deg, #c1121f, #e63946);
   border-radius: 50%;
   display: flex;
   justify-content: center;
   align-items: center;
   color: white;
   margin-right: 0.5rem;
-  font-size: 1.1rem; /* 减小图标大小 */
+  box-shadow: 0 3px 8px rgba(193, 18, 31, 0.24);
+}
+
+.stats-panel .activity-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.stats-panel .activity-icon--deal {
+  background: linear-gradient(135deg, #c1121f, #e63946);
+  box-shadow: 0 3px 8px rgba(193, 18, 31, 0.24);
+}
+
+.stats-panel .activity-icon--inquiry-add {
+  background: linear-gradient(135deg, #1f9d57, #2dbf6b);
+  box-shadow: 0 3px 8px rgba(45, 191, 107, 0.28);
+}
+
+.stats-panel .activity-icon--inquiry-reduce {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  box-shadow: 0 3px 8px rgba(245, 158, 11, 0.28);
 }
 
 .stats-panel .activity-content {
@@ -988,7 +1013,7 @@ body.leaderboard-page {
   align-items: center;
   width: 90%;
   transition: transform 0.3s ease;
-  
+
   justify-content: space-between;
   max-height: 300px;
 }
@@ -1082,7 +1107,7 @@ body.leaderboard-page {
   font-size: 1.6rem;
   font-weight: bold;
   color: var(--dark-text);
-  
+
   text-align: center;
 }
 
@@ -1133,17 +1158,17 @@ body.leaderboard-page {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
   }
-  
+
   .stats-panel {
     grid-column: 1 / 2;
     grid-row: 1 / 2;
   }
-  
+
   .leaderboard-panel {
     grid-column: 1 / 2;
     grid-row: 2 / 3;
   }
-  
+
   .recent-activity {
     grid-column: 1 / 2;
     grid-row: 3 / 4;
@@ -1156,24 +1181,24 @@ body.leaderboard-page {
     align-items: flex-start;
     height: auto;
   }
-  
+
   .main-title {
     font-size: 2.5rem;
   }
-  
+
   .sub-title {
     font-size: 1.5rem;
   }
-  
+
   .info-area {
     align-items: flex-start;
     margin-top: 1rem;
   }
-  
+
   .date-time, .exchange-rate {
     font-size: 1.2rem;
   }
-  
+
   .dealer-list {
     grid-template-columns: 1fr;
   }
@@ -1181,7 +1206,7 @@ body.leaderboard-page {
 
 /* 目标进度条样式 */
 .progress-container {
-  
+
   margin-bottom: 1.5rem; /* 增加下边距，为目标信息文本提供更多空间 */
   position: relative; /* 添加定位上下文 */
 }
@@ -1189,7 +1214,7 @@ body.leaderboard-page {
 .progress-info {
   display: flex;
   justify-content: space-between;
-  
+
 }
 
 .progress-label {
@@ -1245,9 +1270,9 @@ body.leaderboard-page {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, 
-    rgba(255, 255, 255, 0) 0%, 
-    rgba(255, 255, 255, 0.3) 50%, 
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
     rgba(255, 255, 255, 0) 100%);
   background-size: 200% 100%;
   animation: shimmer 2s infinite;
@@ -1280,15 +1305,15 @@ body.leaderboard-page {
     margin-top: 10px;
     margin-bottom: 25px; /* 在小屏幕上提供更多空间 */
   }
-  
+
   .progress-bar-container {
     height: 10px;
   }
-  
+
   .progress-label, .progress-percentage {
     font-size: 12px;
   }
-  
+
   .target-info {
     font-size: 0.8rem;
     /* 移除bottom定位，使用相对定位 */
@@ -1354,31 +1379,31 @@ body.leaderboard-page {
     min-height: 280px; /* 小屏幕下减少高度，但仍确保足够空间 */
     margin-bottom: 0.6rem; /* 保持安全距离 */
   }
-  
+
   .stats-card:nth-child(2) .progress-container {
     margin-bottom: 1.5rem; /* 保持与基础样式一致，确保目标信息有足够空间 */
   }
-  
+
   .target-info {
     font-size: 0.7rem; /* 更小的字体 */
     /* 移除bottom定位，使用相对定位 */
     padding: 0 2px; /* 减少内边距 */
   }
-  
+
   /* 优化最近动态区域 */
   .recent-activity-section {
     max-height: 62%; /* 增加最近动态区域的高度占比 */
     height: 62%; /* 设置固定高度 */
     padding: 0.3rem; /* 减少内边距 */
   }
-  
+
   /* 调整最近动态区域的标题 */
   .recent-activity-section h3 {
     font-size: 1.1rem;
     margin-bottom: 0.2rem;
     padding-bottom: 0.1rem;
   }
-  
+
   /* 调整活动项目的大小 */
   .stats-panel .activity-item {
     min-height: 1.6rem; /* 减小最小高度 */
@@ -1386,33 +1411,37 @@ body.leaderboard-page {
     padding: 0.25rem; /* 减少内边距 */
     margin-bottom: 0.15rem; /* 减少项目间距 */
   }
-  
+
   /* 调整活动时间宽度和字体 */
   .stats-panel .activity-time {
     flex: 0 0 35px; /* 减少时间宽度 */
     font-size: 0.85rem; /* 减小时间字体 */
   }
-  
+
   /* 调整活动图标大小 */
   .stats-panel .activity-icon {
     flex: 0 0 22px; /* 减少图标宽度 */
     width: 22px;
     height: 22px;
-    font-size: 0.85rem; /* 减小图标大小 */
     margin-right: 0.2rem; /* 减少右边距 */
   }
-  
+
+  .stats-panel .activity-icon svg {
+    width: 12px;
+    height: 12px;
+  }
+
   /* 减小活动内容文字大小 */
   .stats-panel .activity-content {
     font-size: 0.85rem;
   }
-  
+
   /* 减小金额文字大小 */
   .stats-panel .activity-amount {
     flex: 0 0 65px;
     font-size: 1rem;
   }
-  
+
   /* 确保最近动态区域中的内容可见 */
   .stats-panel .activity-list {
     max-height: calc(100% - 25px); /* 确保列表不会溢出容器 */
@@ -1427,47 +1456,47 @@ body.leaderboard-page {
     min-height: 250px; /* 极小屏幕下的最小高度 */
     margin-bottom: 0.5rem; /* 保持安全距离 */
   }
-  
+
   /* 调整卡片内部间距 */
   .stats-card {
     padding: 0;
     margin-bottom: 0.2rem;
   }
-  
+
   /* 缩小标题文字 */
   .stats-card h3 {
     font-size: 1.2rem;
     margin: 0 0 0.1rem 0;
   }
-  
+
   /* 缩小计数器文字 */
   .stats-panel .counter {
     font-size: 2.5rem;
     margin: 0;
     line-height: 1;
   }
-  
+
   /* 缩小金额文字 */
   .stats-panel .deal-amount {
     font-size: 2rem;
     margin: 0; /* 与询盘计数器保持一致 */
     line-height: 1;
   }
-  
+
   /* 缩小进度条标签 */
   .progress-label, .progress-percentage {
     font-size: 0.9rem;
   }
-  
+
   /* 进一步优化最近动态区域 */
   .recent-activity-section {
     max-height: 64%; /* 给最近动态更多空间 */
     height: 64%;
     padding: 0.2rem;
   }
-  
+
   /* 确保最近动态区域中的内容可见 */
   .stats-panel .activity-list {
     max-height: calc(100% - 20px);
   }
-} 
+}

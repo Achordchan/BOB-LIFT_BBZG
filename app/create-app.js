@@ -7,7 +7,7 @@ function configureApp(app) {
   app.use(session({
     secret: 'bbzg-admin-secret',
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
     cookie: { maxAge: 3600000 } // 1小时过期
   }));
   console.timeLog('启动总时间', 'Session配置完成');
@@ -16,7 +16,13 @@ function configureApp(app) {
 
   // 记录所有API请求
   const apiLogLastTime = new Map();
+  const enableApiLog = process.env.BBZG_API_LOG === '1';
   app.use('/api/', (req, res, next) => {
+    if (!enableApiLog) {
+      next();
+      return;
+    }
+
     const logKey = `${req.method} ${req.path}`;
     const now = Date.now();
     const isHighFreqGet = req.method === 'GET' && (
@@ -73,6 +79,7 @@ function configureApp(app) {
       '/aliyun-tts-config',
       '/ping',
       '/dashboard',
+      '/stream/main',
       '/page-settings',
       '/users',
       '/deals',

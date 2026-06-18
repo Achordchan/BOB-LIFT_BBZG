@@ -6,6 +6,8 @@ const path = require('path');
 function registerPublicMusicRoutes(app) {
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+  const NETEASE_API_BASE = 'http://music.baymaxgroup.com';
+
   async function withInsecureTls(fn) {
     const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -102,21 +104,29 @@ function registerPublicMusicRoutes(app) {
 
   async function resolveNeteasePlayableUrl(neteaseId) {
     async function requestLevel(level) {
-      const resp = await withInsecureTls(() => axios.post('https://wyapi-1.toubiec.cn/api/music/url', {
+      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, {
         id: String(neteaseId),
-        level
+        level,
+        type: 'url'
       }, {
         timeout: 15000,
         httpsAgent: insecureHttpsAgent,
         headers: { 'Content-Type': 'application/json' }
       }));
 
-      const data = resp && resp.data;
-      if (!data || data.code !== 200 || !Array.isArray(data.data) || !data.data[0]) {
-        throw new Error((data && data.msg) ? data.msg : '获取播放链接失败');
+      const payload = resp && resp.data;
+      if (!payload || payload.success === false) {
+        throw new Error((payload && payload.message) ? payload.message : '获取播放链接失败');
       }
 
-      return String(data.data[0].url || '').trim();
+      const data = payload && payload.data ? payload.data : null;
+      const url = (data && typeof data.url === 'string')
+        ? data.url
+        : (data && data.data && Array.isArray(data.data) && data.data[0] && typeof data.data[0].url === 'string')
+          ? data.data[0].url
+          : '';
+
+      return String(url || '').trim();
     }
 
     const exhigh = await requestLevel('exhigh').catch(() => '');
@@ -136,6 +146,46 @@ function registerPublicMusicRoutes(app) {
     const v = (value == null) ? '' : String(value);
     if (!v) return;
     try { res.setHeader(name, v); } catch (e) {}
+  }
+
+  function extractSearchSongsAndTotal(payload) {
+    const d = (payload && payload.data) ? payload.data : {};
+
+    const pagination = (payload && payload.pagination && typeof payload.pagination === 'object')
+      ? payload.pagination
+      : null;
+
+    if (Array.isArray(d)) {
+      const total = (pagination && typeof pagination.total === 'number') ? pagination.total : null;
+      return { rawSongs: d, total };
+    }
+
+    const rootResult = (payload && payload.result && typeof payload.result === 'object') ? payload.result : null;
+    const dataResult = (d && d.result && typeof d.result === 'object') ? d.result : null;
+    const result = dataResult || rootResult;
+
+    const rawSongs = Array.isArray(d && d.songs)
+      ? d.songs
+      : (d && d.data && Array.isArray(d.data.songs))
+        ? d.data.songs
+        : (result && Array.isArray(result.songs))
+          ? result.songs
+          : (result && result.data && Array.isArray(result.data.songs))
+            ? result.data.songs
+            : [];
+
+    const total = (d && typeof d.total === 'number')
+      ? d.total
+      : (result && typeof result.songCount === 'number')
+        ? result.songCount
+        : (result && typeof result.total === 'number')
+          ? result.total
+          : (result && result.data && typeof result.data.songCount === 'number')
+            ? result.data.songCount
+            : 0;
+
+    const paginationTotal = (pagination && typeof pagination.total === 'number') ? pagination.total : null;
+    return { rawSongs, total: (paginationTotal != null ? paginationTotal : total) };
   }
 
   const metaCache = new Map();
@@ -315,39 +365,98 @@ function registerPublicMusicRoutes(app) {
       }
 
       const page = clampInt(req.query.page, 1, 1, 200);
-      const limit = clampInt(req.query.limit, 10, 1, 20);
+      const limit = clampInt(req.query.limit, 10, 1, 50);
 
-      const resp = await withInsecureTls(() => axios.post('https://wyapi-1.toubiec.cn/api/music/search', {
+      const offset = (page - 1) * limit;
+
+      const searchPayload = {
         keywords,
-        page,
+        keyword: keywords,
         limit,
-        pageSize: limit
+        offset,
+        page,
+        pageNo: page,
+        pageSize: limit,
+        type: 1
+      };
+
+      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/search`, {
+        ...searchPayload
       }, {
         timeout: 15000,
         httpsAgent: insecureHttpsAgent,
         headers: { 'Content-Type': 'application/json' }
       }));
 
-      const data = resp && resp.data;
-      if (!data || data.code !== 200 || !data.data || !Array.isArray(data.data.songs)) {
-        throw new Error((data && data.msg) ? data.msg : '搜索失败');
+      const payload = resp && resp.data;
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('上游返回异常：请检查音乐 API 地址/端口是否正确');
+      }
+      if (!payload || payload.success === false) {
+        throw new Error((payload && payload.message) ? payload.message : '搜索失败');
       }
 
-      const total = (data.data && typeof data.data.total === 'number') ? data.data.total : 0;
+      let extracted = extractSearchSongsAndTotal(payload);
 
-      const songs = data.data.songs.map(song => {
-        const albumObj = song.album || song.al || null;
-        const picUrl = (song.picUrl || (albumObj && albumObj.picUrl)) || '';
+      if ((!extracted.total || extracted.total <= 0) && (!extracted.rawSongs || extracted.rawSongs.length === 0)) {
+        const qs = new URLSearchParams({
+          keywords,
+          keyword: keywords,
+          limit: String(limit),
+          offset: String(offset),
+          page: String(page),
+          pageNo: String(page),
+          pageSize: String(limit),
+          type: '1'
+        });
 
-        const artists = Array.isArray(song.ar)
+        const resp2 = await withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/search?${qs.toString()}`, {
+          timeout: 15000,
+          httpsAgent: insecureHttpsAgent,
+          headers: { 'Content-Type': 'application/json' }
+        }));
+
+        const payload2 = resp2 && resp2.data;
+        if (payload2 && typeof payload2 === 'object' && payload2.success !== false) {
+          extracted = extractSearchSongsAndTotal(payload2);
+        }
+      }
+
+      const rawSongs = extracted && Array.isArray(extracted.rawSongs) ? extracted.rawSongs : [];
+      let total = (extracted && typeof extracted.total === 'number') ? extracted.total : null;
+
+      // 上游没有 total 时：用“是否满页”来推断是否还有下一页
+      if (!Number.isFinite(total) || total == null) {
+        if (rawSongs.length >= limit) {
+          total = (page * limit) + 1;
+        } else {
+          total = ((page - 1) * limit) + rawSongs.length;
+        }
+      }
+
+      const songs = rawSongs.map(song => {
+        const albumObj = song && (song.album || song.al) ? (song.album || song.al) : null;
+        const picUrl = (song && song.picUrl) || (albumObj && albumObj.picUrl) || '';
+
+        const artists = (song && Array.isArray(song.ar))
           ? song.ar.map(a => a && a.name ? a.name : '').filter(Boolean).join(' / ')
-          : (song.artists || (Array.isArray(song.artists) ? song.artists.join(' / ') : ''));
+          : (song && Array.isArray(song.artists))
+            ? song.artists.map(a => a && a.name ? a.name : '').filter(Boolean).join(' / ')
+            : (song && typeof song.artists === 'string')
+              ? song.artists
+              : (song && typeof song.artist_string === 'string')
+                ? song.artist_string
+                : '';
 
-        const album = (albumObj && (albumObj.name || albumObj.album)) ? (albumObj.name || albumObj.album) : (song.album || '');
+        const album = (song && typeof song.album === 'string' && song.album)
+          ? String(song.album)
+          : (albumObj && albumObj.name)
+            ? String(albumObj.name)
+            : '';
 
         return {
-          id: song.id,
-          name: song.name,
+          id: song && song.id != null ? song.id : '',
+          name: song && song.name ? song.name : '',
           picUrl,
           artists,
           album

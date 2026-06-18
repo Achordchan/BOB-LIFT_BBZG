@@ -10,6 +10,7 @@ const {
   configureStaticMusic
 } = require('./app/create-app');
 const { getData: getDataFromStore, saveData: saveDataFromStore } = require('./lib/data-store');
+const { createMainStreamHub } = require('./lib/main-stream-hub');
 const { createInitialData } = require('./lib/data-bootstrap');
 const { createUpload } = require('./services/uploads');
 const { registerAudioPlaybackRoutes } = require('./routes/audio-playback');
@@ -83,9 +84,16 @@ function getData() {
   return getDataFromStore(DATA_PATH);
 }
 
+const mainStreamHub = createMainStreamHub({ getData, dataPath: DATA_PATH });
+mainStreamHub.registerRoutes(app);
+
 // 保存数据
 function saveData(data) {
-  return saveDataFromStore(DATA_PATH, data);
+  const saved = saveDataFromStore(DATA_PATH, data);
+  if (saved) {
+    mainStreamHub.broadcastSnapshot('saveData', data);
+  }
+  return saved;
 }
 
 registerAudioPlaybackRoutes(app, {
@@ -164,11 +172,15 @@ registerAuthRoutes(app, {
 });
 
 registerPlatformDisplaySettingsRoutes(app, {
-  dataPath: DATA_PATH
+  dataPath: DATA_PATH,
+  getData,
+  saveData
 });
 
 registerPageSettingsRoutes(app, {
-  dataPath: DATA_PATH
+  dataPath: DATA_PATH,
+  getData,
+  saveData
 });
 
 registerPublicMusicRoutes(app);

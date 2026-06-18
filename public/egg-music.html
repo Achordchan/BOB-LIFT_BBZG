@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>巴布之光2.0系统 音乐搜索</title>
+  <title>巴布之光3.0系统 音乐搜索</title>
   <style>
     :root{
       --bg: #0b1220;
@@ -253,6 +253,28 @@
       padding:12px 14px;
       border-top:1px solid var(--border);
       background: rgba(255,255,255,0.03);
+    }
+
+    .pagerJump{
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .pagerJumpInput{
+      width: 86px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      outline: none;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .pagerJumpInput::placeholder{
+      color: rgba(255,255,255,0.45);
     }
 
     .pill{
@@ -644,7 +666,7 @@
               </svg>
             </div>
             <div>
-              <h1>巴布之光2.0系统音乐搜索</h1>
+              <h1>巴布之光3.0系统音乐搜索</h1>
               
               <div class="authorCard">
                 <div class="authorLeft">
@@ -698,6 +720,10 @@
       <div class="pager" id="pager" style="display:none;">
         <button class="btn btnSmall" id="prevBtn" type="button">上一页</button>
         <div class="pill" id="pageInfo">1/1</div>
+        <div class="pagerJump">
+          <input class="pagerJumpInput" id="jumpPageInput" type="number" inputmode="numeric" min="1" step="1" placeholder="跳转页" />
+          <button class="btn btnSmall" id="jumpPageBtn" type="button">跳转</button>
+        </div>
         <button class="btn btnSmall" id="nextBtn" type="button">下一页</button>
       </div>
     </div>

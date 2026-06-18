@@ -1,0 +1,14 @@
+services:
+  bbzg:
+    image: node:20-bullseye
+    container_name: bbzg
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "server.js"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /opt/apps/bbzg:/app
+    environment:
+      TZ: Asia/Shanghai
+      PORT: 3000

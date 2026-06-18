@@ -4,7 +4,8 @@
   "description": "巴布之光庆祝系统",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy:baota": "bash scripts/deploy-baota.sh"
   },
   "dependencies": {
     "@alicloud/pop-core": "^1.8.0",

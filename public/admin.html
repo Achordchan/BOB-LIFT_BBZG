@@ -9,9 +9,9 @@
 <body>
   <div class="container">
     <h1>成交音乐管理系统</h1>
-    
+
     <div id="messageContainer" class="message hidden"></div>
-    
+
     <div class="tabs">
       <div class="tab active" data-tab="users">用户管理</div>
       <div class="tab" data-tab="music">音乐管理</div>
@@ -22,7 +22,7 @@
       <a href="#" id="changePasswordBtn" style="margin-left: auto; margin-right: 10px; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 24px; font-weight: 500; transition: all 0.2s ease;">修改密码</a>
       <a href="/logout" style="padding: 12px 24px; background-color: #ff3b30; color: white; text-decoration: none; border-radius: 24px; font-weight: 500; transition: all 0.2s ease;">退出登录</a>
     </div>
-    
+
     <div id="usersTab" class="tab-content active">
       <div class="section">
         <h2>用户列表</h2>
@@ -30,7 +30,7 @@
           <button id="showAddUserFormBtn" class="button-secondary">添加用户</button>
           <button id="getDingTalkUsersBtn" style="background-color: #1E88E5;">获取成员</button>
         </div>
-        
+
         <!-- 用户模态框 -->
         <div id="addUserModal" class="modal" style="display: none;">
           <div class="modal-content">
@@ -58,7 +58,7 @@
         <div id="userList">
           <!-- 用户卡片会动态插入这里 -->
         </div>
-        
+
         <!-- 用户音乐配置部分改为隐藏，使用模态框替代 -->
         <div class="subsection" style="display: none;">
           <h2>用户音乐配置</h2>
@@ -84,7 +84,7 @@
         </div>
       </div>
     </div>
-    
+
     <div id="musicTab" class="tab-content">
       <div class="music-sub-tabs">
         <div class="sub-tab active" data-music-subtab="library">音乐库</div>
@@ -107,7 +107,7 @@
           <h2>默认战歌设置</h2>
           <div class="modal-body">
             <p style="color: var(--text-secondary); margin-bottom: 15px;">当用户没有配置专属成交音乐时，系统将播放此默认战歌</p>
-          
+
             <div id="defaultBattleSongContainer" style="margin-bottom: 20px; padding: 15px; border-radius: 12px; background-color: var(--card-background); box-shadow: var(--shadow);">
               <div id="noDefaultSong" style="text-align: center; padding: 20px; color: var(--text-secondary);">
                 尚未设置默认战歌
@@ -123,7 +123,7 @@
                 </audio>
               </div>
             </div>
-            
+
             <div class="form-group">
               <label for="defaultBattleSongFile">选择默认战歌文件</label>
               <input type="file" id="defaultBattleSongFile" accept="audio/*">
@@ -137,14 +137,14 @@
           </div>
         </div>
       </div>
-      
+
       <div id="uploadMusicModal" class="modal" style="display: none;">
         <div class="modal-content">
           <span class="close">&times;</span>
           <h2>添加音乐</h2>
 
           <div class="modal-body">
-          
+
           <!-- 音乐来源选择 -->
           <div class="form-group">
             <label>音乐来源</label>
@@ -171,7 +171,7 @@
               </label>
             </div>
           </div>
-          
+
           <!-- 本地上传表单 -->
           <div id="localMusicForm">
             <div class="form-group">
@@ -215,7 +215,7 @@
               <div id="lrcPreviewContent" style="font-size: 16px; line-height: 1.6;"></div>
             </div>
           </div>
-          
+
           <!-- 外链音乐表单 -->
           <div id="externalMusicForm" style="display: none;">
             <p style="color: var(--text-secondary); font-size: 14px; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
@@ -294,7 +294,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- 音乐列表部分移动到上传音乐后面 -->
       <div class="section" data-music-subtab="library">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
@@ -339,7 +339,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- 新增音效列表部分 -->
       <div class="section" data-music-subtab="sfx">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
@@ -356,7 +356,7 @@
           <!-- 音效列表会动态插入这里 -->
         </div>
       </div>
-      
+
       <div class="section" data-music-subtab="config">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
           <h2 style="margin: 0; padding: 0; border: none;">询盘音效配置</h2>
@@ -440,7 +440,7 @@
           </div>
         </div>
       </div>
-      
+
       <div class="section" data-music-subtab="config">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
           <h2 style="margin: 0; padding: 0; border: none;">语音播报设置</h2>
@@ -485,13 +485,13 @@
         <div class="modal-content">
           <span class="close">&times;</span>
           <h2>语音播报设置</h2>
-          
+
           <div class="modal-body">
         <!-- 添加阿里云TTS配置部分 -->
         <div class="subsection">
           <h3>阿里云TTS配置</h3>
           <p style="color: var(--text-secondary); margin-bottom: 15px;">设置阿里云语音合成服务的参数，用于文本转语音</p>
-          
+
           <div style="background-color: #f0f7ff; border-left: 4px solid #1890ff; padding: 10px 15px; margin-bottom: 20px; border-radius: 4px;">
             <p style="font-size: 14px; margin: 0;"><strong>重要说明：</strong>阿里云TTS需要三个不同的参数：</p>
             <ul style="font-size: 14px; margin: 8px 0 0 20px; padding: 0;">
@@ -501,22 +501,22 @@
             </ul>
             <p style="font-size: 14px; margin: 8px 0 0 0;">请务必分别填写正确的值，否则会导致Token获取或语音合成失败。</p>
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsUrl">服务地址 (URL):</label>
             <input type="text" id="aliyunTtsUrl" placeholder="例如: wss://nls-gateway.cn-shanghai.aliyuncs.com/ws/v1">
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsAccessKeyId">AccessKey ID:</label>
             <input type="text" id="aliyunTtsAccessKeyId" placeholder="输入您的AccessKey ID (用于获取Token)">
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsAppKey">App Key (语音合成专用):</label>
             <input type="text" id="aliyunTtsAppKey" placeholder="输入您的阿里云语音合成AppKey">
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsAccessKeySecret">AccessKey Secret:</label>
             <input type="password" id="aliyunTtsAccessKeySecret" placeholder="输入您的AccessKey Secret">
@@ -525,7 +525,7 @@
               <label for="showAccessKeySecret" style="font-size: 14px; margin: 0;">显示密钥</label>
             </div>
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsVoice">发音人:</label>
             <select id="aliyunTtsVoice">
@@ -557,7 +557,7 @@
               <option value="zhitian_emo">知甜_多情感 <span style="color: #ff6600; font-size: 0.8em; font-weight: bold;">[推荐]</span></option>
             </select>
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsFormat">音频格式:</label>
             <select id="aliyunTtsFormat">
@@ -566,7 +566,7 @@
               <option value="pcm">PCM</option>
             </select>
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsSampleRate">采样率:</label>
             <select id="aliyunTtsSampleRate">
@@ -575,7 +575,7 @@
               <option value="24000">24000 Hz</option>
             </select>
           </div>
-          
+
           <div class="form-group">
             <label>音量:</label>
             <div style="display: flex; align-items: center; gap: 15px;">
@@ -583,7 +583,7 @@
               <span id="aliyunTtsVolumeValue">50</span>
             </div>
           </div>
-          
+
           <div class="form-group">
             <label>语速:</label>
             <div style="display: flex; align-items: center; gap: 15px;">
@@ -591,7 +591,7 @@
               <span id="aliyunTtsSpeechRateValue">0</span>
             </div>
           </div>
-          
+
           <div class="form-group">
             <label>音调:</label>
             <div style="display: flex; align-items: center; gap: 15px;">
@@ -599,16 +599,16 @@
               <span id="aliyunTtsPitchRateValue">0</span>
             </div>
           </div>
-          
+
           <div class="form-group">
             <label for="aliyunTtsTestText">测试文本:</label>
             <input type="text" id="aliyunTtsTestText" value="阿里云语音合成测试" placeholder="输入测试文本">
           </div>
-          
+
           <div id="aliyunTokenTestResult" style="margin-top: 15px; display: none; padding: 10px; border-radius: 5px; background-color: #f5f5f5;">
             <!-- Token测试结果将在这里显示 -->
           </div>
-          
+
           <div id="aliyunTtsTestResult" style="margin-top: 15px; display: none;">
             <h3 style="margin-bottom: 10px; font-size: 16px;">测试结果</h3>
             <audio controls preload="none" id="aliyunTtsTestAudio" style="width: 100%;">
@@ -784,7 +784,7 @@
         </div>
       </div>
     </div>
-    
+
     <div id="apisTab" class="tab-content">
       <div class="section">
         <h2>API接口</h2>
@@ -952,7 +952,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- 新增: 庆祝语管理标签页 -->
     <div id="celebrationTab" class="tab-content">
       <div class="section">
@@ -981,7 +981,7 @@
             <div class="var-example">示例：天呐！{person}刚刚从{platform}拿下{amount}元订单！别人家的运营真会玩，学到了学到了！</div>
           </div>
         </div>
-        
+
         <!-- 添加新庆祝语 -->
         <div class="subsection">
           <h3>添加新庆祝语</h3>
@@ -997,7 +997,7 @@
             <button id="addCelebrationBtn" style="margin-top: 10px;">添加庆祝语</button>
           </div>
         </div>
-        
+
         <!-- 庆祝语列表 -->
         <div class="subsection">
           <h3>当前庆祝语列表</h3>
@@ -1007,13 +1007,13 @@
         </div>
       </div>
     </div>
-    
+
     <!-- 平台目标设置标签页 -->
     <div id="platformsTab" class="tab-content">
       <div class="section">
         <h2>平台目标设置</h2>
         <p style="color: var(--text-secondary); margin-bottom: 20px;">设置各平台的销售目标，系统会自动统计每个平台的成交金额并计算完成度</p>
-        
+
         <!-- 首页显示控制区域 -->
         <div class="subsection control-section" data-collapsible="true" data-collapsed="true" style="margin-bottom: 25px; padding: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
           <h3 style="margin: 0 0 15px 0; font-size: 16px; color: var(--text-primary);">首页显示设置</h3>
@@ -1038,49 +1038,49 @@
           <button id="resetPlatformDataBtn" class="button-danger">重置数据</button>
           <button id="refreshPlatformDataBtn" class="button-primary">刷新数据</button>
         </div>
-        
+
         <div id="platformsList" class="platforms-list">
           <div class="loading-spinner">加载中...</div>
         </div>
       </div>
     </div>
-    
+
     <!-- 新增首页设置标签页 -->
     <div id="settingsTab" class="tab-content">
       <div class="section">
         <h2>首页显示设置</h2>
         <p style="color: var(--text-secondary); margin-bottom: 15px;">在这里可以修改首页展示的标题和字段名称</p>
-        
+
         <div class="form-group">
           <label>页面主标题：</label>
           <input type="text" id="mainTitle" placeholder="例如：徐州巴布">
         </div>
-        
+
         <div class="form-group">
           <label>页面副标题：</label>
           <input type="text" id="subTitle" placeholder="例如：缜锦木断，水滴石穿">
         </div>
-        
+
         <div class="form-group">
           <label>询盘总数标题：</label>
           <input type="text" id="inquiryTitle" placeholder="例如：询盘总数">
         </div>
-        
+
         <div class="form-group">
           <label>成交金额标题：</label>
           <input type="text" id="dealTitle" placeholder="例如：成交金额">
         </div>
-        
+
         <div class="form-group">
           <label>目标进度标题：</label>
           <input type="text" id="progressTitle" placeholder="例如：目标进度">
         </div>
-        
+
         <div class="form-group">
           <label>团队成员标题：</label>
           <input type="text" id="teamTitle" placeholder="例如：团队成员">
         </div>
-        
+
         <div class="form-group">
           <label>最近动态标题：</label>
           <input type="text" id="activityTitle" placeholder="例如：最近动态">
@@ -1124,7 +1124,7 @@
             </div>
           </div>
         </div>
-        
+
         <button id="saveSettingsBtn" style="background-color: #34c759;">保存设置</button>
       </div>
     </div>
@@ -1137,13 +1137,13 @@
       <h2>编辑音乐</h2>
 
       <div class="modal-body">
-      
+
       <!-- 音乐类型标识（不可修改） -->
       <div id="editMusicTypeIndicator" style="margin-bottom: 15px; padding: 10px; background: #f5f5f7; border-radius: 8px; display: none;">
         <span style="font-size: 14px; color: var(--text-secondary);">音乐类型：</span>
         <span id="editMusicTypeText" style="font-weight: 500;"></span>
       </div>
-      
+
       <div class="form-group">
         <label for="editMusicName">音乐名称</label>
         <input type="text" id="editMusicName" placeholder="请输入音乐名称">
@@ -1152,7 +1152,7 @@
         <label for="editMusicDescription">音乐描述</label>
         <input type="text" id="editMusicDescription" placeholder="请输入音乐描述">
       </div>
-      
+
       <div class="form-group">
         <label for="editLrcEditor">LRC歌词编辑</label>
         <div class="lrc-editor-container">
@@ -1183,12 +1183,12 @@
       <h3 style="margin-bottom: 20px; font-size: 20px;">编辑用户信息</h3>
 
       <div class="modal-body">
-      
+
       <div class="form-group">
         <label for="editUsername">用户名称</label>
         <input type="text" id="editUsername" placeholder="请输入用户名称">
       </div>
-      
+
       <div class="form-group">
         <label for="editUserPosition">用户职位</label>
         <input type="text" id="editUserPosition" placeholder="请输入用户职位">
@@ -1203,7 +1203,7 @@
         <label for="editLoginPassword">重置密码（留空则不修改）</label>
         <input type="password" id="editLoginPassword" placeholder="输入新密码" autocomplete="new-password">
       </div>
-      
+
       <!-- 新增音乐配置部分 -->
       <div class="form-group">
         <label for="editUserMusic">选择成交音乐</label>
@@ -1248,18 +1248,18 @@
           </div>
         </div>
       </div>
-      
+
       <div class="form-tabs">
         <div class="form-tab active" data-tab="halfPhoto">半身照</div>
         <div class="form-tab" data-tab="fullPhoto">全身照</div>
       </div>
-      
+
       <div id="halfPhotoTab" class="photo-tab-content active">
         <div class="form-group">
           <label for="userPhoto">上传半身照 (建议1:1比例)</label>
           <input type="file" id="userPhoto" accept="image/*">
         </div>
-        
+
         <div class="image-preview-container">
           <div id="userPhotoPreview" class="image-preview">
             <div class="image-preview-empty">
@@ -1271,7 +1271,7 @@
               <p>请选择半身照片</p>
             </div>
           </div>
-          
+
           <div id="userPhotoCropper" class="image-cropper" style="display: none; height: 400px;">
             <img id="userPhotoCropperImage" src="" alt="图片预览">
             <div class="crop-tips" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;">
@@ -1279,19 +1279,19 @@
             </div>
           </div>
         </div>
-        
+
         <div class="crop-controls" style="display: none;">
           <button type="button" id="cancelCropUserPhotoBtn" class="crop-button secondary">取消</button>
           <button type="button" id="cropUserPhotoBtn" class="crop-button">裁剪确认</button>
         </div>
       </div>
-      
+
       <div id="fullPhotoTab" class="photo-tab-content">
         <div class="form-group">
           <label for="userFullPhoto">上传全身照 (建议2:3比例)</label>
           <input type="file" id="userFullPhoto" accept="image/*">
         </div>
-        
+
         <div class="image-preview-container">
           <div id="userFullPhotoPreview" class="image-preview">
             <div class="image-preview-empty">
@@ -1303,7 +1303,7 @@
               <p>请选择全身照片</p>
             </div>
           </div>
-          
+
           <div id="userFullPhotoCropper" class="image-cropper" style="display: none; height: 500px;">
             <img id="userFullPhotoCropperImage" src="" alt="图片预览">
             <div class="crop-tips" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;">
@@ -1311,13 +1311,13 @@
             </div>
           </div>
         </div>
-        
+
         <div class="crop-controls" style="display: none;">
           <button type="button" id="cancelCropUserFullPhotoBtn" class="crop-button secondary">取消</button>
           <button type="button" id="cropUserFullPhotoBtn" class="crop-button">裁剪确认</button>
         </div>
       </div>
-      
+
       <div class="modal-footer">
         <div class="form-actions">
           <button type="button" id="cancelEditUserBtn" class="button-secondary">取消</button>
@@ -1339,12 +1339,12 @@
         <input type="text" id="modalConfigUser" readonly>
         <input type="hidden" id="modalConfigUserId">
       </div>
-      
+
       <div class="form-group">
         <label for="modalConfigPosition">职位</label>
         <input type="text" id="modalConfigPosition" readonly>
       </div>
-      
+
       <div class="form-group">
         <label for="modalConfigMusic">选择成交音乐</label>
         <div class="custom-select-container" style="position: relative;">
@@ -1431,7 +1431,7 @@
       </div>
     </div>
   </div>
-  
+
   <!-- 添加JavaScript文件 -->
   <!-- 注意：这些脚本文件对系统功能至关重要，请勿删除或修改顺序 -->
   <script src="/js/app-core.js"></script>
@@ -1468,7 +1468,7 @@
           <div class="mvp-crown" title="MVP - 排名第一">{mvpCrown}</div>
           <div class="sort-position" title="排序位置">#{sortPosition}</div>
         </div>
-        
+
         <div class="user-music-info">
           <div class="music-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1485,22 +1485,37 @@
           </div>
         </div>
       </div>
-      
+
       <div class="card-actions">
         <!-- 添加排序控制按钮 -->
         <div class="sort-controls">
-          <button class="sort-btn sort-up-btn" data-user-id="{id}" title="上移">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18 15l-6-6-6 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <div class="sort-controls-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M8 6H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M8 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M8 18H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M4 4V20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
-          </button>
-          <button class="sort-btn sort-down-btn" data-user-id="{id}" title="下移">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 9l6 6 6-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
+            <span>调整顺序</span>
+          </div>
+          <div class="sort-controls-buttons">
+            <button class="sort-btn sort-up-btn" data-user-id="{id}" title="上移">
+              <svg class="sort-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 19V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M7 12L12 7L17 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>上移</span>
+            </button>
+            <button class="sort-btn sort-down-btn" data-user-id="{id}" title="下移">
+              <svg class="sort-btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 5V17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M7 12L12 17L17 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>下移</span>
+            </button>
+          </div>
         </div>
-        
+
         <div class="button-group">
           <button class="edit-user-btn" data-user-id="{id}" data-user-name="{name}" data-user-position="{position}" data-photo-url="{photoUrl}" data-full-photo-url="{fullPhotoUrl}" style="background-color: #4CAF50; width: 100%;">
             <span class="button-icon">
@@ -1552,4 +1567,4 @@
     </div>
   </div>
 </body>
-</html> 
+</html>

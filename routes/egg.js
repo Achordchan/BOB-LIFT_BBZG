@@ -8,6 +8,8 @@ function registerEggRoutes(app, deps) {
 
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
+  const NETEASE_API_BASE = 'http://music.baymaxgroup.com';
+
   async function withInsecureTls(fn) {
     const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -85,20 +87,29 @@ function registerEggRoutes(app, deps) {
 
   async function resolveNeteasePlayableUrl(neteaseId) {
     async function requestLevel(level) {
-      const resp = await withInsecureTls(() => axios.post('https://wyapi-1.toubiec.cn/api/music/url', {
+      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, {
         id: String(neteaseId),
-        level
+        level,
+        type: 'url'
       }, {
         timeout: 15000,
         httpsAgent: insecureHttpsAgent,
         headers: { 'Content-Type': 'application/json' }
       }));
 
-      const data = resp && resp.data;
-      if (!data || data.code !== 200 || !Array.isArray(data.data) || !data.data[0]) {
-        throw new Error((data && data.msg) ? data.msg : '获取播放链接失败');
+      const payload = resp && resp.data;
+      if (!payload || payload.success === false) {
+        throw new Error((payload && payload.message) ? payload.message : '获取播放链接失败');
       }
-      return String(data.data[0].url || '').trim();
+
+      const data = payload && payload.data ? payload.data : null;
+      const url = (data && typeof data.url === 'string')
+        ? data.url
+        : (data && data.data && Array.isArray(data.data) && data.data[0] && typeof data.data[0].url === 'string')
+          ? data.data[0].url
+          : '';
+
+      return String(url || '').trim();
     }
 
     const exhigh = await requestLevel('exhigh').catch(() => '');

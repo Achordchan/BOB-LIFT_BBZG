@@ -8,6 +8,8 @@
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
   const pageInfo = document.getElementById('pageInfo');
+  const jumpPageInput = document.getElementById('jumpPageInput');
+  const jumpPageBtn = document.getElementById('jumpPageBtn');
   const statusPill = document.getElementById('statusPill');
   const resultMeta = document.getElementById('resultMeta');
   const accountBtn = document.getElementById('accountBtn');
@@ -690,9 +692,30 @@
       }
     }
 
+    if (jumpPageInput) {
+      try { jumpPageInput.max = String(totalPages2); } catch (e) {}
+      try { jumpPageInput.placeholder = `跳转 ${totalPages2}`; } catch (e) {}
+    }
+
     if (prevBtn) prevBtn.disabled = page <= 1;
     if (nextBtn) nextBtn.disabled = page >= totalPages2;
     if (pageInfo) pageInfo.textContent = `${page}/${totalPages2}`;
+  }
+
+  function jumpToPage() {
+    const totalPages2 = total ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
+    const v = jumpPageInput ? String(jumpPageInput.value || '').trim() : '';
+    const n = Number.parseInt(v, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      showToast('请输入要跳转的页码', 'error');
+      return;
+    }
+    const target = Math.max(1, Math.min(totalPages2, n));
+    if (target !== n) {
+      showToast(`页码范围：1-${totalPages2}`, 'error');
+      return;
+    }
+    runSearch(target);
   }
 
   function runSearch(newPage) {
@@ -756,6 +779,16 @@
 
   if (prevBtn) prevBtn.addEventListener('click', function () { runSearch(page - 1); });
   if (nextBtn) nextBtn.addEventListener('click', function () { runSearch(page + 1); });
+
+  if (jumpPageBtn) jumpPageBtn.addEventListener('click', function () { jumpToPage(); });
+  if (jumpPageInput) {
+    jumpPageInput.addEventListener('keydown', function (e) {
+      if (e && e.key === 'Enter') {
+        e.preventDefault();
+        jumpToPage();
+      }
+    });
+  }
 
   setBusy(false);
 })();

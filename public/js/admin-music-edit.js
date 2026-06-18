@@ -25,7 +25,7 @@ function initMusicUploadEvents() {
     radio.addEventListener('change', function() {
       const localForm = document.getElementById('localMusicForm');
       const externalForm = document.getElementById('externalMusicForm');
-      
+
       if (this.value === 'local') {
         localForm.style.display = 'block';
         externalForm.style.display = 'none';
@@ -40,7 +40,7 @@ function initMusicUploadEvents() {
       }
     });
   });
-  
+
   const externalMusicSearchBtn = document.getElementById('externalMusicSearchBtn');
   const externalMusicSearchQuery = document.getElementById('externalMusicSearchQuery');
   const externalMusicSearchResults = document.getElementById('externalMusicSearchResults');
@@ -61,6 +61,15 @@ function initMusicUploadEvents() {
   let externalSearchTotal = 0;
   const auditionUrlCache = new Map();
   let importedLocalMusicId = null;
+  let importEventSource = null;
+
+  function closeImportEventSource() {
+    if (!importEventSource) return;
+    try {
+      importEventSource.close();
+    } catch (e) {}
+    importEventSource = null;
+  }
 
   function safeStopAudition() {
     if (auditionWrap) auditionWrap.style.display = 'none';
@@ -260,6 +269,7 @@ function initMusicUploadEvents() {
   }
 
   function startImportNeteaseSong(payload) {
+    closeImportEventSource();
     showImportProgressUI('开始导入...', 0, '');
     return fetch('/api/music/import-netease', {
       method: 'POST',
@@ -272,55 +282,86 @@ function initMusicUploadEvents() {
           throw new Error((data && data.message) ? data.message : '导入失败');
         }
 
-        const jobId = String(data.jobId);
-        let timer = null;
-        let done = false;
+        if (typeof window.EventSource === 'undefined') {
+          throw new Error('当前浏览器不支持实时进度，请升级浏览器');
+        }
 
-        function stop() {
-          if (done) return;
-          done = true;
-          if (timer) {
-            try { clearInterval(timer); } catch (e) {}
-            timer = null;
+        const jobId = String(data.jobId);
+        let finished = false;
+
+        function finish() {
+          if (finished) return;
+          finished = true;
+          closeImportEventSource();
+        }
+
+        function handleJobEvent(job) {
+          if (!job) return;
+          const p = (typeof job.percent === 'number') ? job.percent : 0;
+          const meta = job.progressText || job.message || '';
+          const title = job.phase ? String(job.phase) : '';
+          showImportProgressUI(title ? `${title}...` : '导入中...', p, meta);
+
+          if (job.status === 'done') {
+            finish();
+            if (typeof window.showMessage === 'function') window.showMessage('导入成功');
+            if (typeof window.loadMusic === 'function') window.loadMusic();
+            if (job.musicId) scrollToMusicItem(String(job.musicId));
+
+            switchToLocalTabAndPrefill(payload);
+            setImportedMode(job.musicId || null, payload && payload.name ? payload.name : '');
+            hideImportProgressUI();
+            return;
+          }
+
+          if (job.status === 'error') {
+            finish();
+            const errMsg = job.error || job.message || '导入失败';
+            if (typeof window.showMessage === 'function') window.showMessage(String(errMsg), 'error');
           }
         }
 
-        function pollOnce() {
-          return fetch(`/api/music/import-status/${encodeURIComponent(jobId)}`, { cache: 'no-cache' })
-            .then(r => r.json())
-            .then(d => {
-              if (!d || !d.success || !d.job) throw new Error((d && d.message) ? d.message : '获取进度失败');
-              const job = d.job;
-              const p = (typeof job.percent === 'number') ? job.percent : 0;
-              const meta = job.progressText || job.message || '';
-              const title = job.phase ? String(job.phase) : '';
-              showImportProgressUI(title ? `${title}...` : '导入中...', p, meta);
-
-              if (job.status === 'done') {
-                stop();
-                if (typeof window.showMessage === 'function') window.showMessage('导入成功');
-                if (typeof window.loadMusic === 'function') window.loadMusic();
-                if (job.musicId) scrollToMusicItem(String(job.musicId));
-
-                // 导入完成后：切回“本地上传”并预填信息（不强制关闭弹窗）
-                switchToLocalTabAndPrefill(payload);
-                setImportedMode(job.musicId || null, payload && payload.name ? payload.name : '');
-                hideImportProgressUI();
-                return;
-              }
-
-              if (job.status === 'error') {
-                stop();
-                const errMsg = job.error || job.message || '导入失败';
-                if (typeof window.showMessage === 'function') window.showMessage(String(errMsg), 'error');
-              }
-            });
+        function parseEventJob(evt) {
+          if (!evt || typeof evt.data !== 'string') return null;
+          try {
+            const dataObj = JSON.parse(evt.data);
+            return dataObj && dataObj.job ? dataObj.job : null;
+          } catch (e) {
+            return null;
+          }
         }
 
-        timer = setInterval(pollOnce, 800);
-        return pollOnce();
+        importEventSource = new EventSource(`/api/music/import-events/${encodeURIComponent(jobId)}`);
+
+        importEventSource.addEventListener('progress', function (evt) {
+          const job = parseEventJob(evt);
+          if (job) handleJobEvent(job);
+        });
+
+        importEventSource.addEventListener('done', function (evt) {
+          const job = parseEventJob(evt);
+          if (job) handleJobEvent(job);
+        });
+
+        importEventSource.addEventListener('error', function (evt) {
+          const job = parseEventJob(evt);
+          if (job) handleJobEvent(job);
+        });
+
+        importEventSource.onerror = function () {
+          if (finished) return;
+          if (!importEventSource || importEventSource.readyState === EventSource.CLOSED) {
+            finish();
+            if (typeof window.showMessage === 'function') {
+              window.showMessage('导入连接已断开，请重试', 'error');
+            }
+          }
+        };
+
+        return null;
       })
       .catch(err => {
+        closeImportEventSource();
         if (typeof window.showMessage === 'function') {
           window.showMessage(err && err.message ? err.message : '导入失败', 'error');
         }
@@ -332,29 +373,9 @@ function initMusicUploadEvents() {
     if (!idStr) return Promise.reject(new Error('缺少歌曲ID'));
     if (auditionUrlCache.has(idStr)) return Promise.resolve(auditionUrlCache.get(idStr));
 
-    function requestLevel(level) {
-      return fetch('https://wyapi-1.toubiec.cn/api/music/url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: idStr, level })
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (!data || data.code !== 200 || !data.data || !data.data[0]) {
-            throw new Error((data && data.msg) ? data.msg : '获取试听链接失败');
-          }
-          const url = String(data.data[0].url || '').trim();
-          if (!url) throw new Error('获取试听链接失败');
-          return url;
-        });
-    }
-
-    return requestLevel('exhigh')
-      .catch(() => requestLevel('standard'))
-      .then(url => {
-        auditionUrlCache.set(idStr, url);
-        return url;
-      });
+    const url = `/api/public/music/stream?id=${encodeURIComponent(idStr)}`;
+    auditionUrlCache.set(idStr, url);
+    return Promise.resolve(url);
   }
 
   function renderExternalSearchResults(items, meta) {
@@ -464,7 +485,7 @@ function initMusicUploadEvents() {
           })
           .catch(err => {
             console.error('获取试听链接失败:', err);
-            showMessage(`试听失败：${err && err.message ? err.message : '未知错误'}（可能被浏览器跨域拦截，必要时需后端代理）`, 'error');
+            showMessage(`试听失败：${err && err.message ? err.message : '未知错误'}`, 'error');
           })
           .finally(() => {
             auditionBtn.disabled = false;
@@ -582,32 +603,24 @@ function initMusicUploadEvents() {
       externalMusicSearchBtn.textContent = '搜索中...';
     }
 
-    fetch('https://wyapi-1.toubiec.cn/api/music/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        keywords: q,
-        page: externalSearchPage,
-        limit: externalSearchPageSize,
-        pageSize: externalSearchPageSize
-      })
-    })
+    fetch(`/api/public/music/search?keywords=${encodeURIComponent(q)}&page=${encodeURIComponent(externalSearchPage)}&limit=${encodeURIComponent(externalSearchPageSize)}`)
       .then(res => res.json())
       .then(data => {
-        if (!data || data.code !== 200 || !data.data || !Array.isArray(data.data.songs)) {
-          throw new Error((data && data.msg) ? data.msg : '搜索失败');
+        if (!data || data.success === false || !Array.isArray(data.songs)) {
+          throw new Error((data && data.message) ? data.message : '搜索失败');
         }
-        const total = (data && data.data && typeof data.data.total === 'number') ? data.data.total : 0;
-        renderExternalSearchResults(data.data.songs, { total, page: externalSearchPage });
+        const total = (typeof data.total === 'number') ? data.total : 0;
+        renderExternalSearchResults(data.songs, { total, page: externalSearchPage });
       })
       .catch(err => {
         console.error('搜索音乐失败:', err);
-        showMessage(`搜索失败：${err && err.message ? err.message : '未知错误'}（可能被浏览器跨域拦截，必要时需后端代理）`, 'error');
+        showMessage(`搜索失败：${err && err.message ? err.message : '未知错误'}`, 'error');
         if (externalMusicSearchResults) {
           externalMusicSearchResults.style.display = 'none';
           externalMusicSearchResults.innerHTML = '';
         }
       })
+
       .finally(() => {
         if (externalMusicSearchBtn) {
           externalMusicSearchBtn.disabled = false;
@@ -759,6 +772,7 @@ function initMusicUploadEvents() {
     document.getElementById('musicDescription').value = '';
     document.getElementById('lrcPreview').style.display = 'none';
 
+    closeImportEventSource();
     safeStopAudition();
     hideImportProgressUI();
   }

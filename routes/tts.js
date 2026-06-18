@@ -537,8 +537,7 @@ function registerTtsRoutes(app, deps) {
   cron.schedule('0 3 * * *', () => {
     cleanupTtsFiles();
   }, {
-    scheduled: true,
-    timezone: "Asia/Shanghai" // 使用中国时区
+    scheduled: true
   });
 
   // 服务器启动时执行一次清理

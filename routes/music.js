@@ -15,6 +15,8 @@ function registerMusicRoutes(app, deps) {
 
   const importJobs = new Map();
 
+  const NETEASE_API_BASE = 'http://music.baymaxgroup.com';
+
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
   async function withInsecureTls(fn) {
@@ -84,34 +86,113 @@ function registerMusicRoutes(app, deps) {
       musicId: null,
       filename: null,
       error: null,
-      progressText: ''
+      progressText: '',
+      subscribers: new Set(),
+      lastProgressEmitAt: 0
     };
     importJobs.set(jobId, job);
     return job;
   }
 
+  function toImportJobPayload(job) {
+    return {
+      id: job.id,
+      status: job.status,
+      phase: job.phase,
+      message: job.message,
+      downloadedBytes: job.downloadedBytes,
+      totalBytes: job.totalBytes,
+      percent: job.percent,
+      progressText: job.progressText,
+      musicId: job.musicId,
+      filename: job.filename,
+      error: job.error
+    };
+  }
+
+  function closeImportJobSubscribers(job) {
+    if (!job || !job.subscribers || !job.subscribers.size) return;
+    for (const sub of Array.from(job.subscribers)) {
+      try { sub.res.end(); } catch (e) {}
+    }
+    job.subscribers.clear();
+  }
+
+  function broadcastImportJob(job, eventType, opts) {
+    if (!job || !job.subscribers || !job.subscribers.size) return;
+
+    const options = opts || {};
+    const isTerminal = eventType === 'done' || eventType === 'error';
+    if (eventType === 'progress' && !options.force) {
+      const now = Date.now();
+      if (now - (job.lastProgressEmitAt || 0) < 300) return;
+      job.lastProgressEmitAt = now;
+    }
+
+    const payload = JSON.stringify({
+      success: true,
+      job: toImportJobPayload(job)
+    });
+
+    for (const sub of Array.from(job.subscribers)) {
+      try {
+        sub.res.write(`event: ${eventType}\n`);
+        sub.res.write(`data: ${payload}\n\n`);
+      } catch (e) {
+        try { sub.res.end(); } catch (err) {}
+        job.subscribers.delete(sub);
+      }
+    }
+
+    if (isTerminal) {
+      closeImportJobSubscribers(job);
+    }
+  }
+
+  function updateImportJob(job, patch, options) {
+    if (!job) return;
+    if (patch && typeof patch === 'object') {
+      Object.assign(job, patch);
+    }
+    const eventType = options && options.eventType ? options.eventType : 'progress';
+    broadcastImportJob(job, eventType, { force: options && options.force });
+  }
+
   function cleanupImportJobLater(jobId) {
     setTimeout(() => {
+      const job = importJobs.get(jobId);
+      if (job) {
+        closeImportJobSubscribers(job);
+      }
       importJobs.delete(jobId);
     }, 30 * 60 * 1000);
   }
 
   async function resolveNeteasePlayableUrl(neteaseId) {
     async function requestLevel(level) {
-      const resp = await withInsecureTls(() => axios.post('https://wyapi-1.toubiec.cn/api/music/url', {
+      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, {
         id: String(neteaseId),
-        level
+        level,
+        type: 'url'
       }, {
         timeout: 15000,
         httpsAgent: insecureHttpsAgent,
         headers: { 'Content-Type': 'application/json' }
       }));
 
-      const data = resp && resp.data;
-      if (!data || data.code !== 200 || !Array.isArray(data.data) || !data.data[0]) {
-        throw new Error((data && data.msg) ? data.msg : '获取播放链接失败');
+      const payload = resp && resp.data;
+      if (!payload || payload.success === false) {
+        throw new Error((payload && payload.message) ? payload.message : '获取播放链接失败');
       }
-      return String(data.data[0].url || '').trim();
+
+      const data = payload && payload.data ? payload.data : null;
+      const url = (data && typeof data.url === 'string')
+        ? data.url
+        : (data && data.data && Array.isArray(data.data) && data.data[0] && typeof data.data[0].url === 'string')
+          ? data.data[0].url
+          : '';
+
+      return String(url || '').trim();
     }
 
     const exhigh = await requestLevel('exhigh').catch(() => '');
@@ -122,15 +203,19 @@ function registerMusicRoutes(app, deps) {
   }
 
   async function startImportDownload(job, payload) {
-    job.status = 'running';
-    job.phase = 'resolving';
-    job.message = '解析播放链接...';
+    updateImportJob(job, {
+      status: 'running',
+      phase: 'resolving',
+      message: '解析播放链接...'
+    }, { eventType: 'progress', force: true });
 
     const playableUrl = await resolveNeteasePlayableUrl(payload.neteaseId);
     if (!playableUrl) throw new Error('获取播放链接失败');
 
-    job.phase = 'downloading';
-    job.message = '下载中...';
+    updateImportJob(job, {
+      phase: 'downloading',
+      message: '下载中...'
+    }, { eventType: 'progress', force: true });
 
     const musicDir = ensureMusicDir();
     let ext = guessExtByUrl(playableUrl);
@@ -173,6 +258,7 @@ function registerMusicRoutes(app, deps) {
           job.percent = 0;
           job.progressText = `${formatBytes(job.downloadedBytes)}`;
         }
+        broadcastImportJob(job, 'progress');
       });
 
       response.data.on('error', err => {
@@ -190,8 +276,10 @@ function registerMusicRoutes(app, deps) {
       response.data.pipe(writer);
     });
 
-    job.phase = 'saving';
-    job.message = '写入本地库...';
+    updateImportJob(job, {
+      phase: 'saving',
+      message: '写入本地库...'
+    }, { eventType: 'progress', force: true });
 
     const data = getData();
     if (!data.music) data.music = [];
@@ -223,12 +311,14 @@ function registerMusicRoutes(app, deps) {
     data.music.push(musicRecord);
     saveData(data);
 
-    job.status = 'done';
-    job.phase = 'done';
-    job.message = '完成';
-    job.musicId = musicId;
-    job.percent = 100;
-    job.progressText = job.totalBytes ? `${formatBytes(job.totalBytes)} / ${formatBytes(job.totalBytes)}` : job.progressText;
+    updateImportJob(job, {
+      status: 'done',
+      phase: 'done',
+      message: '完成',
+      musicId,
+      percent: 100,
+      progressText: job.totalBytes ? `${formatBytes(job.totalBytes)} / ${formatBytes(job.totalBytes)}` : job.progressText
+    }, { eventType: 'done', force: true });
 
     cleanupImportJobLater(job.id);
   }
@@ -373,10 +463,12 @@ function registerMusicRoutes(app, deps) {
         lrcContent: lrcContent || ''
       }).catch(err => {
         console.error('导入网易云音乐失败:', err);
-        job.status = 'error';
-        job.phase = 'error';
-        job.message = '导入失败';
-        job.error = err && err.message ? String(err.message) : '未知错误';
+        updateImportJob(job, {
+          status: 'error',
+          phase: 'error',
+          message: '导入失败',
+          error: err && err.message ? String(err.message) : '未知错误'
+        }, { eventType: 'error', force: true });
         cleanupImportJobLater(job.id);
         if (job.filename) {
           try {
@@ -405,20 +497,61 @@ function registerMusicRoutes(app, deps) {
     }
     res.json({
       success: true,
-      job: {
-        id: job.id,
-        status: job.status,
-        phase: job.phase,
-        message: job.message,
-        downloadedBytes: job.downloadedBytes,
-        totalBytes: job.totalBytes,
-        percent: job.percent,
-        progressText: job.progressText,
-        musicId: job.musicId,
-        filename: job.filename,
-        error: job.error
-      }
+      job: toImportJobPayload(job)
     });
+  });
+
+  app.get('/api/music/import-events/:jobId', requireLogin, (req, res) => {
+    const jobId = req.params.jobId;
+    const job = importJobs.get(jobId);
+    if (!job) {
+      res.status(404).setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({
+        success: false,
+        message: '任务不存在或已过期'
+      }));
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    res.write('retry: 2000\n\n');
+
+    const sub = { res };
+    job.subscribers.add(sub);
+    let heartbeat = null;
+    const cleanup = () => {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
+      if (job.subscribers) job.subscribers.delete(sub);
+    };
+
+    req.on('close', cleanup);
+    req.on('end', cleanup);
+    req.on('error', cleanup);
+
+    const currentEvent = job.status === 'done'
+      ? 'done'
+      : job.status === 'error'
+        ? 'error'
+        : 'progress';
+    broadcastImportJob(job, currentEvent, { force: true });
+
+    if (currentEvent === 'done' || currentEvent === 'error') {
+      cleanup();
+      return;
+    }
+
+    heartbeat = setInterval(() => {
+      try {
+        res.write(': keep-alive\n\n');
+      } catch (e) {}
+    }, 25000);
   });
 
   // API: 获取LRC歌词文件

@@ -25,60 +25,61 @@ document.addEventListener('DOMContentLoaded', function() {
         .finally(() => clearTimeout(timeoutId));
     };
   }
-  
+
   // 初始化全局变量
   window.celebrationData = null;
   window.celebrationActive = false;
   window.celebrationAnimationTimers = [];
-  
+
   // 确保在页面加载时检查并隐藏庆祝框
   const celebrationOverlay = document.getElementById('celebrationOverlay');
   if (celebrationOverlay) {
     celebrationOverlay.style.display = 'none';
   }
-  
+
   // 确保在页面加载时隐藏歌词容器
   const lyricsContainer = document.getElementById('lyricsContainer');
   if (lyricsContainer) {
     lyricsContainer.classList.remove('show');
   }
-  
+
   // 确保在页面加载时隐藏音乐播放器
   const musicPlayer = document.getElementById('musicPlayer');
   if (musicPlayer) {
     musicPlayer.classList.remove('show');
   }
-  
+
   // 移除可能残留的庆祝模式类
   document.body.classList.remove('celebration-mode');
-  
+
   // 初始化音乐播放器事件监听
   setupMusicPlayerEvents();
-  
+
   // 页面加载完成时
   console.log('页面加载完成，初始化音频系统');
 
   // 播放启动音频以激活音频系统（可配置，默认 Go.mp3）
   loadStartupAudioAndPlay();
-  
+
   // 设置TTS系统已初始化标志
   window.audioSystemInitialized = true;
   window.userHasInteracted = true;
-  
+
   // 获取询盘音效配置
   loadInquiryMusicConfig();
-  
+
   // 获取目标数据
   loadTargetData();
-  
-  startMainPolling();
 
-  startPersonalizedFirePolling();
-  
+  // 一次性初始化快照，避免页面在 SSE 首帧前长期停留“尝试加载中”
+  bootstrapMainSnapshotOnce('init');
+
+  startMainEventStream();
+
   // 音频预加载
   ensureAudioLoaded(inquirySound, 'inquiryAudioReady');
   ensureAudioLoaded(deleteSound, 'deleteAudioReady');
-  
+
   console.log('初始化完成');
 });
 
@@ -97,105 +98,285 @@ function loadStartupAudioAndPlay() {
   return req;
 }
 
-function startMainPolling() {
-  const BASE_INTERVAL_MS = 1000;
-  const MAX_INTERVAL_MS = 60000;
-  const REQUEST_TIMEOUT_MS = 4000;
-
-  let currentInterval = BASE_INTERVAL_MS;
-  let inFlight = false;
-  let stopped = false;
-  let lastTargetUiUpdateAt = 0;
-
-  async function tick() {
-    if (stopped) return;
-    if (typeof document !== 'undefined' && document.hidden) {
-      currentInterval = Math.min(MAX_INTERVAL_MS, Math.max(currentInterval, 30000));
-      scheduleNext(currentInterval);
-      return;
-    }
-    if (inFlight) {
-      scheduleNext(currentInterval);
-      return;
-    }
-
-    inFlight = true;
-    let success = true;
-
-    try {
-      const resp = await (window.fetchWithTimeout ? window.fetchWithTimeout('/api/dashboard', { timeoutMs: REQUEST_TIMEOUT_MS }) : fetch('/api/dashboard'));
-      if (!resp.ok) throw new Error(`dashboard ${resp.status}`);
-      const dash = await resp.json();
-      if (!dash || dash.success === false) throw new Error('dashboard not success');
-
-      if (typeof applyInquirySnapshot === 'function') {
-        await applyInquirySnapshot({
-          inquiryCount: dash.inquiryCount,
-          latestInquiry: dash.latestInquiry || null
-        });
-      } else {
-        await fetchInquiryCount();
-      }
-
-      if (typeof applyDealSnapshot === 'function') {
-        await applyDealSnapshot({
-          dealAmount: dash.dealAmount,
-          latestDeal: dash.latestDeal || null
-        });
-      } else {
-        await checkDealAmountChange();
-      }
-
-      const now = Date.now();
-      if (typeof updateTargetUI === 'function' && now - lastTargetUiUpdateAt >= 10000) {
-        lastTargetUiUpdateAt = now;
-        updateTargetUI();
-      }
-    } catch (e) {
-      try {
-        await fetchInquiryCount();
-        await checkDealAmountChange();
-      } catch (fallbackErr) {
-        console.error('[轮询] dashboard失败且回退也失败:', fallbackErr);
-      }
-      success = false;
-      console.error('[轮询] 本轮请求失败，将自动退避:', e);
-    } finally {
-      inFlight = false;
-    }
-
-    if (success) {
-      currentInterval = BASE_INTERVAL_MS;
-    } else {
-      currentInterval = Math.min(MAX_INTERVAL_MS, currentInterval * 2);
-    }
-
-    scheduleNext(currentInterval);
+function readNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
+  return null;
+}
 
-  function scheduleNext(ms) {
-    window.mainPollingTimer = setTimeout(tick, ms);
-  }
-
-  window.stopMainPolling = function stopMainPolling() {
-    stopped = true;
-    if (window.mainPollingTimer) {
-      clearTimeout(window.mainPollingTimer);
+function getSavedPersonalizedFireId() {
+  try {
+    const saved = localStorage.getItem('lastPersonalizedFireId');
+    if (saved && /^[0-9]+$/.test(saved)) {
+      return Number(saved);
     }
-  };
+  } catch (e) {}
+  return 0;
+}
+
+function playPersonalizedFireAudio(audioPath) {
+  const src = (typeof audioPath === 'string' && audioPath.trim()) ? audioPath.trim() : '';
+  if (!src) return;
 
   try {
-    if (typeof document !== 'undefined' && document.addEventListener) {
-      document.addEventListener('visibilitychange', () => {
-        if (stopped) return;
-        if (document.hidden) return;
-        if (inFlight) return;
-        tick();
-      });
+    if (typeof window.stopAllAudio === 'function') {
+      window.stopAllAudio();
     }
   } catch (e) {}
 
-  tick();
+  const audio = new Audio(`${src}?t=${Date.now()}`);
+  audio.volume = 1.0;
+  const p = audio.play();
+  if (p && typeof p.catch === 'function') {
+    p.catch(() => {
+      document.body.addEventListener('click', function() {
+        audio.play().catch(() => {});
+      }, { once: true });
+    });
+  }
+}
+
+function consumePersonalizedFireEvent(eventLike) {
+  if (!eventLike || typeof eventLike !== 'object') return;
+  if (!eventLike.id || !eventLike.audioPath) return;
+
+  if (typeof window.__lastPersonalizedFireId !== 'number') {
+    window.__lastPersonalizedFireId = getSavedPersonalizedFireId();
+  }
+
+  const id = Number(eventLike.id);
+  if (!Number.isFinite(id) || id <= window.__lastPersonalizedFireId) return;
+
+  window.__lastPersonalizedFireId = id;
+  try {
+    localStorage.setItem('lastPersonalizedFireId', String(id));
+  } catch (e) {}
+  playPersonalizedFireAudio(eventLike.audioPath);
+}
+
+function extractSnapshotFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+
+  if (payload.snapshot && typeof payload.snapshot === 'object') {
+    return payload.snapshot;
+  }
+
+  if (payload.type === 'snapshot' && payload.data && typeof payload.data === 'object') {
+    return payload.data;
+  }
+
+  if (payload.payload && typeof payload.payload === 'object') {
+    return payload.payload;
+  }
+
+  return payload;
+}
+
+async function applyMainStreamSnapshot(snapshot, rawPayload) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+
+  const dashboard = snapshot.dashboard && typeof snapshot.dashboard === 'object' ? snapshot.dashboard : snapshot;
+  const inquiryCount = readNumber(dashboard.inquiryCount);
+  const dealAmount = readNumber(dashboard.dealAmount);
+
+  if (inquiryCount !== null || dealAmount !== null) {
+    window.__mainSnapshotReceived = true;
+  }
+
+  if (inquiryCount !== null && typeof applyInquirySnapshot === 'function') {
+    await applyInquirySnapshot({
+      inquiryCount,
+      latestInquiry: dashboard.latestInquiry || null
+    });
+  }
+
+  if (dealAmount !== null && typeof applyDealSnapshot === 'function') {
+    await applyDealSnapshot({
+      dealAmount,
+      latestDeal: dashboard.latestDeal || null
+    });
+  }
+
+  if (typeof updateTargetUI === 'function') {
+    updateTargetUI();
+  }
+
+  const downstream = [
+    window.applyMainStreamSnapshotForLeaderboard,
+    window.applyMainStreamSnapshotForPlatformTargets
+  ];
+  downstream.forEach(fn => {
+    if (typeof fn === 'function') {
+      try {
+        fn(snapshot, rawPayload);
+      } catch (e) {
+        console.error('[SSE] 下游模块处理 snapshot 失败:', e);
+      }
+    }
+  });
+}
+
+function findPersonalizedFireCandidate(payload, snapshot) {
+  const candidates = [
+    payload && payload.personalizedFire,
+    payload && payload.personalized_fire,
+    payload && payload.event,
+    snapshot && snapshot.personalizedFire,
+    snapshot && snapshot.personalized_fire,
+    snapshot && snapshot.personalized
+  ];
+  for (let i = 0; i < candidates.length; i++) {
+    const item = candidates[i];
+    if (item && typeof item === 'object' && item.id && item.audioPath) {
+      return item;
+    }
+  }
+  return null;
+}
+
+async function handleMainStreamPayload(payload, eventName) {
+  if (payload && payload.ts) {
+    if (window.__lastMainStreamPayloadTs && window.__lastMainStreamPayloadTs === payload.ts) {
+      return;
+    }
+    window.__lastMainStreamPayloadTs = payload.ts;
+  }
+
+  const snapshot = extractSnapshotFromPayload(payload);
+  const normalizedEvent = String(eventName || '').toLowerCase();
+  const hasSnapshotFields = !!(snapshot && typeof snapshot === 'object' && (
+    snapshot.inquiryCount !== undefined ||
+    snapshot.dealAmount !== undefined ||
+    snapshot.dashboard ||
+    snapshot.pageSettings ||
+    snapshot.recentActivity ||
+    snapshot.platformTargets ||
+    snapshot.platformDisplaySettings
+  ));
+
+  if (normalizedEvent.includes('snapshot') || normalizedEvent === 'message' || hasSnapshotFields) {
+    await applyMainStreamSnapshot(snapshot, payload);
+  }
+
+  const personalized = findPersonalizedFireCandidate(payload, snapshot);
+  if (personalized) {
+    consumePersonalizedFireEvent(personalized);
+  }
+}
+
+function bootstrapMainSnapshotOnce(trigger) {
+  if (window.__mainSnapshotBootstrapTried) return;
+  window.__mainSnapshotBootstrapTried = true;
+
+  return (window.fetchWithTimeout
+    ? window.fetchWithTimeout('/api/dashboard', { timeoutMs: 4000 })
+    : fetch('/api/dashboard')
+  )
+    .then(response => {
+      if (!response.ok) throw new Error(`dashboard ${response.status}`);
+      return response.json();
+    })
+    .then(data => {
+      if (!data || data.success === false) {
+        throw new Error((data && data.message) ? data.message : 'dashboard not success');
+      }
+      return applyMainStreamSnapshot({
+        dashboard: {
+          inquiryCount: data.inquiryCount,
+          dealAmount: data.dealAmount,
+          latestInquiry: data.latestInquiry || null,
+          latestDeal: data.latestDeal || null
+        }
+      }, { source: 'bootstrap', trigger: trigger || 'unknown' });
+    })
+    .catch(error => {
+      console.error('[SSE] 一次性初始化快照失败:', error);
+    });
+}
+
+function bindMainStreamEvent(source, eventName) {
+  source.addEventListener(eventName, async function(evt) {
+    try {
+      const payload = evt && typeof evt.data === 'string' && evt.data ? JSON.parse(evt.data) : {};
+      await handleMainStreamPayload(payload, eventName);
+    } catch (error) {
+      console.error(`[SSE] 处理事件 ${eventName} 失败:`, error);
+    }
+  });
+}
+
+function startMainEventStream() {
+  if (window.mainEventStreamStarted) return;
+
+  if (typeof EventSource === 'undefined') {
+    console.error('当前浏览器不支持 EventSource，首页实时更新不可用');
+    bootstrapMainSnapshotOnce('eventsource-unsupported');
+    return;
+  }
+
+  window.mainEventStreamStarted = true;
+  window.__lastPersonalizedFireId = getSavedPersonalizedFireId();
+
+  if (window.mainEventSource) {
+    try {
+      window.mainEventSource.close();
+    } catch (e) {}
+  }
+
+  const sseClientId = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const source = new EventSource(`/api/stream/main?cid=${encodeURIComponent(sseClientId)}`);
+  window.mainEventSource = source;
+
+  source.onopen = function() {
+    console.log('[SSE] /api/stream/main 已连接');
+  };
+
+  source.onmessage = async function(evt) {
+    try {
+      const payload = evt && typeof evt.data === 'string' && evt.data ? JSON.parse(evt.data) : {};
+      await handleMainStreamPayload(payload, 'message');
+    } catch (error) {
+      console.error('[SSE] 处理默认 message 失败:', error);
+    }
+  };
+
+  source.onerror = function(error) {
+    console.error('[SSE] 主通道异常，等待 EventSource 自动重连:', error);
+    if (!window.__mainSnapshotReceived) {
+      bootstrapMainSnapshotOnce('sse-error-before-first-snapshot');
+    }
+  };
+
+  [
+    'snapshot',
+    'main_snapshot',
+    'dashboard',
+    'update',
+    'personalized_fire',
+    'personalizedFire',
+    'page_settings',
+    'recent_activity',
+    'platform_targets',
+    'platform_display_settings'
+  ].forEach(name => bindMainStreamEvent(source, name));
+}
+
+function stopMainEventStream() {
+  window.mainEventStreamStarted = false;
+  if (window.mainEventSource) {
+    try {
+      window.mainEventSource.close();
+    } catch (e) {}
+    window.mainEventSource = null;
+  }
+}
+
+function startMainPolling() {
+  console.warn('startMainPolling 已停用，改为 SSE');
+  startMainEventStream();
 }
 
 // 播放激活音频（Go.mp3）
@@ -204,22 +385,22 @@ function playActivationSound(src) {
   console.log('播放激活音频:', audioSrc);
   const activationSound = new Audio(audioSrc);
   activationSound.volume = 0.3; // 设置较低音量
-  
+
   activationSound.oncanplaythrough = function() {
     console.log('激活音频已加载，准备播放');
   };
-  
+
   activationSound.onended = function() {
     console.log('激活音频播放完成，音频系统已启动');
   };
-  
+
   activationSound.onerror = function(e) {
     console.error('激活音频播放失败', e);
   };
-  
+
   // 播放音频
   const playPromise = activationSound.play();
-  
+
   if (playPromise !== undefined) {
     playPromise.then(() => {
       console.log('激活音频开始播放');
@@ -234,102 +415,14 @@ function playActivationSound(src) {
 }
 
 function startPersonalizedFirePolling() {
-  const BASE_INTERVAL_MS = 3000;
-  const MAX_INTERVAL_MS = 5000;
-
-  let currentInterval = BASE_INTERVAL_MS;
-  let inFlight = false;
-
-  const saved = localStorage.getItem('lastPersonalizedFireId');
-  let lastId = saved && /^[0-9]+$/.test(saved) ? Number(saved) : 0;
-
-  let stopped = false;
-
-  function scheduleNext(ms) {
-    if (window.personalizedFirePollingTimer) {
-      clearTimeout(window.personalizedFirePollingTimer);
-    }
-    window.personalizedFirePollingTimer = setTimeout(tick, ms);
-  }
-
-  window.stopPersonalizedFirePolling = function stopPersonalizedFirePolling() {
-    stopped = true;
-    if (window.personalizedFirePollingTimer) {
-      clearTimeout(window.personalizedFirePollingTimer);
-      window.personalizedFirePollingTimer = null;
-    }
-  };
-
-  function playPersonalizedAudio(audioPath) {
-    const src = (typeof audioPath === 'string' && audioPath.trim()) ? audioPath.trim() : '';
-    if (!src) return;
-
-    try {
-      if (typeof window.stopAllAudio === 'function') {
-        window.stopAllAudio();
-      }
-    } catch (e) {}
-
-    const audio = new Audio(`${src}?t=${Date.now()}`);
-    audio.volume = 1.0;
-    const p = audio.play();
-    if (p && typeof p.catch === 'function') {
-      p.catch(() => {
-        document.body.addEventListener('click', function() {
-          audio.play().catch(() => {});
-        }, { once: true });
-      });
-    }
-  }
-
-  async function tick() {
-    if (stopped) return;
-    if (typeof document !== 'undefined' && document.hidden) {
-      currentInterval = Math.min(MAX_INTERVAL_MS, Math.max(currentInterval, 5000));
-      scheduleNext(currentInterval);
-      return;
-    }
-    if (inFlight) return;
-    inFlight = true;
-
-    try {
-      const url = `/api/personalized/fire?after=${encodeURIComponent(String(lastId || 0))}`;
-      const response = await (window.fetchWithTimeout ? window.fetchWithTimeout(url, { timeoutMs: 4000 }) : fetch(url));
-      if (!response.ok) throw new Error(`fire poll ${response.status}`);
-      const data = await response.json();
-      const ev = data && data.event;
-
-      if (ev && ev.id && ev.audioPath) {
-        const id = Number(ev.id);
-        if (Number.isFinite(id) && id > lastId) {
-          lastId = id;
-          try { localStorage.setItem('lastPersonalizedFireId', String(lastId)); } catch (e) {}
-          playPersonalizedAudio(ev.audioPath);
-        }
-      }
-
-      currentInterval = BASE_INTERVAL_MS;
-    } catch (e) {
-      currentInterval = Math.min(MAX_INTERVAL_MS, currentInterval * 2);
-    } finally {
-      inFlight = false;
-      scheduleNext(currentInterval);
-    }
-  }
-
-  if (!window.__personalizedFireVisibilityBound) {
-    window.__personalizedFireVisibilityBound = true;
-    document.addEventListener('visibilitychange', function() {
-      if (!document.hidden) {
-        try {
-          scheduleNext(0);
-        } catch (e) {}
-      }
-    });
-  }
-
-  scheduleNext(0);
+  console.warn('startPersonalizedFirePolling 已停用，改为 SSE');
+  startMainEventStream();
 }
+
+window.stopMainPolling = stopMainEventStream;
+window.stopPersonalizedFirePolling = function stopPersonalizedFirePolling() {
+  console.warn('stopPersonalizedFirePolling 已停用，个性化发射改为 SSE');
+};
 
 // 测试连接函数，用于在页面加载时测试与服务器的连接
 function testConnection() {
@@ -356,16 +449,16 @@ function initLocalUIOnly() {
   // 设置示例数据
   const inquiryCount = document.getElementById('inquiryCount');
   if (inquiryCount) inquiryCount.textContent = '加载中...';
-  
+
   const dealAmount = document.getElementById('dealAmount');
   if (dealAmount) dealAmount.textContent = '加载中...';
-  
+
   const inquiryPercentage = document.getElementById('inquiryPercentage');
   if (inquiryPercentage) inquiryPercentage.textContent = '0%';
-  
+
   const dealPercentage = document.getElementById('dealPercentage');
   if (dealPercentage) dealPercentage.textContent = '0%';
-  
+
   // 显示错误消息
   const activityList = document.getElementById('activityList');
   if (activityList) {
@@ -379,4 +472,4 @@ function initLocalUIOnly() {
 }
 
 // 页面加载后测试连接
-setTimeout(testConnection, 2000); 
+setTimeout(testConnection, 2000);
