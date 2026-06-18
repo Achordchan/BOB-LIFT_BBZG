@@ -733,8 +733,20 @@
 
       setBusy(true);
 
-      fetch(`/api/public/music/search?keywords=${encodeURIComponent(keywords)}&page=${encodeURIComponent(page)}&limit=${encodeURIComponent(PAGE_SIZE)}`)
-        .then(r => r.json())
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 9000) : null;
+
+      fetch(`/api/public/music/search?keywords=${encodeURIComponent(keywords)}&page=${encodeURIComponent(page)}&limit=${encodeURIComponent(PAGE_SIZE)}`, {
+        signal: controller ? controller.signal : undefined
+      })
+        .then(r => {
+          if (!r || !r.ok) {
+            return r.json().catch(() => null).then(data => {
+              throw new Error((data && data.message) ? data.message : `搜索失败（${r ? r.status : '网络错误'}）`);
+            });
+          }
+          return r.json();
+        })
         .then(data => {
           if (!data || !data.success) throw new Error((data && data.message) ? data.message : '搜索失败');
           items = Array.isArray(data.songs) ? data.songs : [];
@@ -747,9 +759,11 @@
           items = [];
           total = 0;
           render();
-          showToast(err && err.message ? err.message : '搜索失败', 'error');
+          const message = (err && err.name === 'AbortError') ? '搜索请求超时，请稍后重试' : (err && err.message ? err.message : '搜索失败');
+          showToast(message, 'error');
         })
         .finally(() => {
+          if (timeoutId) clearTimeout(timeoutId);
           setBusy(false);
         });
     });

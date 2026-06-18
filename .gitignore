@@ -31,3 +31,10 @@ logs/
 # 备份与大包
 *.bak-*
 *.tar.gz
+
+# 内部网易云服务运行时文件
+music-api/cookie.txt
+music-api/downloads/
+music-api/music_api.log
+music-api/.venv/
+music-api/__pycache__/

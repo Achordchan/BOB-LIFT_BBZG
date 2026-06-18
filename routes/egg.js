@@ -8,7 +8,7 @@ function registerEggRoutes(app, deps) {
 
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-  const NETEASE_API_BASE = 'http://music.baymaxgroup.com';
+  const NETEASE_API_BASE = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
 
   async function withInsecureTls(fn) {
     const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;

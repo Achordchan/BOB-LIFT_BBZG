@@ -6,7 +6,8 @@ const path = require('path');
 function registerPublicMusicRoutes(app) {
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-  const NETEASE_API_BASE = 'http://music.baymaxgroup.com';
+  const NETEASE_API_BASE = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
+  const SEARCH_TIMEOUT_MS = Number.parseInt(process.env.BBZG_MUSIC_SEARCH_TIMEOUT_MS || '6000', 10);
 
   async function withInsecureTls(fn) {
     const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
@@ -26,6 +27,83 @@ function registerPublicMusicRoutes(app) {
     const v = Number.parseInt(String(n), 10);
     if (!Number.isFinite(v)) return fallback;
     return Math.max(min, Math.min(max, v));
+  }
+
+
+  function isTimeoutError(error) {
+    if (!error) return false;
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return true;
+    return /timeout|timed out/i.test(String(error.message || ''));
+  }
+
+  function isConnectionError(error) {
+    if (!error) return false;
+    const code = String(error.code || '');
+    if (['ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH'].includes(code)) return true;
+    return /socket hang up|network error/i.test(String(error.message || ''));
+  }
+
+  function searchTimeout() {
+    return Number.isFinite(SEARCH_TIMEOUT_MS) && SEARCH_TIMEOUT_MS > 0 ? SEARCH_TIMEOUT_MS : 6000;
+  }
+
+  function assertSearchPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('上游返回异常：请检查音乐 API 地址/端口是否正确');
+    }
+    if (payload.success === false) {
+      throw new Error(payload.message ? String(payload.message) : '搜索失败');
+    }
+    return payload;
+  }
+
+  async function requestSearchByPost(searchPayload) {
+    const resp = await axios.post(`${NETEASE_API_BASE}/search`, { ...searchPayload }, {
+      timeout: searchTimeout(),
+      httpsAgent: insecureHttpsAgent,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return assertSearchPayload(resp && resp.data);
+  }
+
+  async function requestSearchByGet(searchPayload) {
+    const qs = new URLSearchParams({
+      keywords: searchPayload.keywords,
+      keyword: searchPayload.keyword,
+      limit: String(searchPayload.limit),
+      offset: String(searchPayload.offset),
+      page: String(searchPayload.page),
+      pageNo: String(searchPayload.pageNo),
+      pageSize: String(searchPayload.pageSize),
+      type: String(searchPayload.type)
+    });
+
+    const resp = await axios.get(`${NETEASE_API_BASE}/search?${qs.toString()}`, {
+      timeout: searchTimeout(),
+      httpsAgent: insecureHttpsAgent,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return assertSearchPayload(resp && resp.data);
+  }
+
+  async function searchMusicApi(searchPayload) {
+    const errors = [];
+    const tasks = [requestSearchByPost(searchPayload), requestSearchByGet(searchPayload)]
+      .map(task => task.catch(error => {
+        errors.push(error);
+        throw error;
+      }));
+
+    try {
+      return await Promise.any(tasks);
+    } catch (error) {
+      const allErrors = error && Array.isArray(error.errors) ? error.errors : errors;
+      if (allErrors.some(errorItem => isTimeoutError(errorItem) || isConnectionError(errorItem))) {
+        throw new Error(`音乐搜索服务暂时不可用，请检查 ${NETEASE_API_BASE} 是否可访问`);
+      }
+      const first = allErrors.find(Boolean) || error;
+      throw new Error(first && first.message ? first.message : '音乐搜索服务暂时不可用');
+    }
   }
 
   function sanitizeFilename(name) {
@@ -380,47 +458,8 @@ function registerPublicMusicRoutes(app) {
         type: 1
       };
 
-      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/search`, {
-        ...searchPayload
-      }, {
-        timeout: 15000,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' }
-      }));
-
-      const payload = resp && resp.data;
-      if (!payload || typeof payload !== 'object') {
-        throw new Error('上游返回异常：请检查音乐 API 地址/端口是否正确');
-      }
-      if (!payload || payload.success === false) {
-        throw new Error((payload && payload.message) ? payload.message : '搜索失败');
-      }
-
-      let extracted = extractSearchSongsAndTotal(payload);
-
-      if ((!extracted.total || extracted.total <= 0) && (!extracted.rawSongs || extracted.rawSongs.length === 0)) {
-        const qs = new URLSearchParams({
-          keywords,
-          keyword: keywords,
-          limit: String(limit),
-          offset: String(offset),
-          page: String(page),
-          pageNo: String(page),
-          pageSize: String(limit),
-          type: '1'
-        });
-
-        const resp2 = await withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/search?${qs.toString()}`, {
-          timeout: 15000,
-          httpsAgent: insecureHttpsAgent,
-          headers: { 'Content-Type': 'application/json' }
-        }));
-
-        const payload2 = resp2 && resp2.data;
-        if (payload2 && typeof payload2 === 'object' && payload2.success !== false) {
-          extracted = extractSearchSongsAndTotal(payload2);
-        }
-      }
+      const payload = await searchMusicApi(searchPayload);
+      const extracted = extractSearchSongsAndTotal(payload);
 
       const rawSongs = extracted && Array.isArray(extracted.rawSongs) ? extracted.rawSongs : [];
       let total = (extracted && typeof extracted.total === 'number') ? extracted.total : null;
