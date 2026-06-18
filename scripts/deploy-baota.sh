@@ -88,7 +88,7 @@ rsync -az --delete \
   --exclude "data.json" \
   --exclude "data.json.bak.*" \
   --exclude "public/music/" \
-  --exclude "public/images/users/" \
+  --exclude "public/images/" \
   --exclude "public/uploads/" \
   --exclude "uploads/" \
   --exclude "storage/" \
@@ -135,8 +135,15 @@ cd "${MUSIC_API_PATH}"
 touch "${MUSIC_API_COOKIE_FILE}"
 chmod 600 "${MUSIC_API_COOKIE_FILE}"
 
-if [ ! -d ".venv" ]; then
-  python3 -m venv .venv
+if [ ! -x ".venv/bin/python" ]; then
+  rm -rf .venv
+  if ! python3 -m venv .venv; then
+    echo "python3 venv 不可用，安装 python3.10-venv 后重试。"
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3.10-venv python3-venv
+    rm -rf .venv
+    python3 -m venv .venv
+  fi
 fi
 
 "${MUSIC_API_PATH}/.venv/bin/python" -m pip install --upgrade pip
