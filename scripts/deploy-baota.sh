@@ -135,7 +135,7 @@ cd "${MUSIC_API_PATH}"
 touch "${MUSIC_API_COOKIE_FILE}"
 chmod 600 "${MUSIC_API_COOKIE_FILE}"
 
-if [ ! -x ".venv/bin/python" ]; then
+if [ ! -x ".venv/bin/python" ] || [ ! -x ".venv/bin/pip" ]; then
   rm -rf .venv
   if ! python3 -m venv .venv; then
     echo "python3 venv 不可用，安装 python3.10-venv 后重试。"
