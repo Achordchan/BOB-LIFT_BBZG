@@ -406,7 +406,7 @@ def search_music_api():
             limit = 100
         
         cookies = api_service._get_cookies()
-        result = search_music(keyword, cookies, limit)
+        result = search_music(keyword, cookies, limit, offset)
         
         # search_music返回的是歌曲列表，需要包装成前端期望的格式
         if result:

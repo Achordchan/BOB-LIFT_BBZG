@@ -267,13 +267,14 @@ class NeteaseAPI:
         except json.JSONDecodeError as e:
             raise APIException(f"解析歌词响应失败: {e}")
     
-    def search_music(self, keywords: str, cookies: Dict[str, str], limit: int = 10) -> List[Dict[str, Any]]:
+    def search_music(self, keywords: str, cookies: Dict[str, str], limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
         """搜索音乐
         
         Args:
             keywords: 搜索关键词
             cookies: 用户cookies
             limit: 返回数量限制
+            offset: 搜索结果偏移量
             
         Returns:
             歌曲信息列表
@@ -282,7 +283,7 @@ class NeteaseAPI:
             APIException: API调用失败时抛出
         """
         try:
-            data = {'s': keywords, 'type': 1, 'limit': limit}
+            data = {'s': keywords, 'type': 1, 'limit': limit, 'offset': offset}
             headers = {
                 'User-Agent': APIConstants.USER_AGENT,
                 'Referer': APIConstants.REFERER
@@ -631,10 +632,10 @@ def lyric_v1(song_id: int, cookies: Dict[str, str]) -> Dict[str, Any]:
     return api.get_lyric(song_id, cookies)
 
 
-def search_music(keywords: str, cookies: Dict[str, str], limit: int = 10) -> List[Dict[str, Any]]:
+def search_music(keywords: str, cookies: Dict[str, str], limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
     """搜索音乐（向后兼容）"""
     api = NeteaseAPI()
-    return api.search_music(keywords, cookies, limit)
+    return api.search_music(keywords, cookies, limit, offset)
 
 
 def playlist_detail(playlist_id: int, cookies: Dict[str, str]) -> Dict[str, Any]:
