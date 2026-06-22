@@ -84,16 +84,17 @@
     }, 2200);
   }
 
-  async function ensureStreamPlayable(url) {
-    const resp = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
-    if (resp.ok) return;
-    if (resp.status === 401) {
-      throw new Error('登录已过期，请重新登录');
+  let pendingStreamErrorHandler = null;
+  function bindStreamErrorToast() {
+    if (!audioEl) return;
+    if (pendingStreamErrorHandler) {
+      try { audioEl.removeEventListener('error', pendingStreamErrorHandler); } catch (e) {}
     }
-    if (resp.status === 429) {
-      throw new Error('请求过于频繁，请稍后再试');
-    }
-    throw new Error('当前歌曲暂不可试听，可能是版权或会员限制');
+    pendingStreamErrorHandler = function () {
+      showToast('当前歌曲暂不可试听，可能是版权或会员限制', 'error');
+      pendingStreamErrorHandler = null;
+    };
+    audioEl.addEventListener('error', pendingStreamErrorHandler, { once: true });
   }
 
   if (accountBtn) {
@@ -572,7 +573,7 @@
       auditionBtn.textContent = '试听';
 
       auditionBtn.addEventListener('click', function () {
-        ensureLogin().then(async ok => {
+        ensureLogin().then(ok => {
           if (!ok) return;
 
           const id = (item && item.id != null) ? String(item.id) : '';
@@ -587,8 +588,7 @@
 
           const url = `/api/public/music/stream?id=${encodeURIComponent(id)}`;
           try {
-            await ensureStreamPlayable(url);
-
+            bindStreamErrorToast();
             if (audioSourceEl) audioSourceEl.setAttribute('src', url);
             if (audioEl) {
               try { audioEl.load(); } catch (e) {}
