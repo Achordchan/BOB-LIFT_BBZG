@@ -534,10 +534,6 @@ function registerPublicMusicRoutes(app) {
       }
 
       const range = req.headers.range ? String(req.headers.range) : '';
-      if (range) {
-        console.log(`[egg-music] Range request: ${range}`);
-      }
-
       const cached = getCachedFileById(id);
       if (cached) {
         serveFileRange(res, cached, range);

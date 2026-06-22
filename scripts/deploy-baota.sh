@@ -10,6 +10,7 @@ DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-bbzg.baymaxgroup.com}"
 DEPLOY_PORT="${DEPLOY_PORT:-3000}"
 DEPLOY_HEALTH_PATH="${DEPLOY_HEALTH_PATH:-/health-check}"
 MUSIC_API_PATH="${MUSIC_API_PATH:-/www/wwwroot/netease_music_api}"
+MUSIC_API_PROJECT="${MUSIC_API_PROJECT:-bbzg_netease_api}"
 MUSIC_API_PORT="${MUSIC_API_PORT:-5000}"
 MUSIC_API_COOKIE_FILE="${MUSIC_API_COOKIE_FILE:-${MUSIC_API_PATH}/cookie.txt}"
 SSH_OPTS="${SSH_OPTS:-}"
@@ -123,6 +124,7 @@ ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   DEPLOY_PORT="${DEPLOY_PORT}" \
   DEPLOY_HEALTH_PATH="${DEPLOY_HEALTH_PATH}" \
   MUSIC_API_PATH="${MUSIC_API_PATH}" \
+  MUSIC_API_PROJECT="${MUSIC_API_PROJECT}" \
   MUSIC_API_PORT="${MUSIC_API_PORT}" \
   MUSIC_API_COOKIE_FILE="${MUSIC_API_COOKIE_FILE}" \
   NODE_BIN="${NODE_BIN}" \
@@ -135,44 +137,99 @@ cd "${MUSIC_API_PATH}"
 touch "${MUSIC_API_COOKIE_FILE}"
 chmod 600 "${MUSIC_API_COOKIE_FILE}"
 
-if [ ! -x ".venv/bin/python" ] || [ ! -x ".venv/bin/pip" ]; then
-  rm -rf .venv
-  if ! python3 -m venv .venv; then
-    echo "python3 venv 不可用，安装 python3.10-venv 后重试。"
+systemctl disable --now bbzg-netease-api.service >/dev/null 2>&1 || true
+systemctl daemon-reload || true
+
+MUSIC_API_PYENV="/www/server/pyporject_evn/${MUSIC_API_PROJECT}"
+MUSIC_API_PYTHON="${MUSIC_API_PYENV}/bin/python"
+MUSIC_API_PIP="${MUSIC_API_PYENV}/bin/pip"
+
+if [ ! -x "${MUSIC_API_PYTHON}" ] || [ ! -x "${MUSIC_API_PIP}" ]; then
+  rm -rf "${MUSIC_API_PYENV}"
+  if ! python3.10 -m venv "${MUSIC_API_PYENV}"; then
+    echo "python3.10 venv 不可用，安装 python3.10-venv 后重试。"
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y python3.10-venv python3-venv
-    rm -rf .venv
-    python3 -m venv .venv
+    rm -rf "${MUSIC_API_PYENV}"
+    python3.10 -m venv "${MUSIC_API_PYENV}"
   fi
 fi
 
-"${MUSIC_API_PATH}/.venv/bin/python" -m pip install --upgrade pip
-"${MUSIC_API_PATH}/.venv/bin/pip" install -r requirements.txt
+"${MUSIC_API_PYTHON}" -m pip install --upgrade pip
+"${MUSIC_API_PIP}" install -r requirements.txt
 
-cat > /etc/systemd/system/bbzg-netease-api.service <<SERVICE
-[Unit]
-Description=BBZG Netease Music API
-After=network-online.target
-Wants=network-online.target
+"${PANEL_PY}" - <<'PY'
+import json
+import os
+import subprocess
+import sys
+import time
 
-[Service]
-Type=simple
-WorkingDirectory=${MUSIC_API_PATH}
-Environment=NETEASE_API_HOST=127.0.0.1
-Environment=NETEASE_API_PORT=${MUSIC_API_PORT}
-Environment=NETEASE_COOKIE_FILE=${MUSIC_API_COOKIE_FILE}
-ExecStart=${MUSIC_API_PATH}/.venv/bin/python ${MUSIC_API_PATH}/main.py
-Restart=always
-RestartSec=3
-User=root
+sys.path.insert(0, "/www/server/panel/class")
+sys.path.insert(0, "/www/server/panel")
 
-[Install]
-WantedBy=multi-user.target
-SERVICE
+import public
+from mod.project.python.pyenv_tool import EnvironmentManager
+from projectModel.pythonModel import main
 
-systemctl daemon-reload
-systemctl enable --now bbzg-netease-api.service
-systemctl restart bbzg-netease-api.service
+project_name = os.environ["MUSIC_API_PROJECT"]
+project_path = os.environ["MUSIC_API_PATH"]
+project_port = os.environ["MUSIC_API_PORT"]
+cookie_file = os.environ["MUSIC_API_COOKIE_FILE"]
+python_bin = f"/www/server/pyporject_evn/{project_name}/bin/python"
+
+em = EnvironmentManager()
+if not any(env.bin_path == "/usr/bin/python3.10" for env in em.all_env):
+    em.add_python_env("system", "/usr/bin/python3")
+em = EnvironmentManager()
+if not any(env.bin_path == python_bin for env in em.all_env):
+    em.add_python_env("venv", python_bin)
+
+model = main()
+exists = public.M("sites").where(
+    "project_type=? AND name=?",
+    ("Python", project_name),
+).find()
+
+if not exists:
+    create_args = public.to_dict_obj({
+        "pjname": project_name,
+        "port": project_port,
+        "stype": "command",
+        "path": project_path,
+        "user": "root",
+        "python_bin": python_bin,
+        "requirement_path": f"{project_path}/requirements.txt",
+        "project_cmd": "python main.py",
+        "framework": "python",
+        "auto_run": "true",
+        "env_list": [
+            {"k": "NETEASE_API_HOST", "v": "127.0.0.1"},
+            {"k": "NETEASE_API_PORT", "v": project_port},
+            {"k": "NETEASE_COOKIE_FILE", "v": cookie_file},
+        ],
+    })
+    result = model.CreateProject(create_args)
+else:
+    result = model.RestartProject(public.to_dict_obj({"name": project_name}))
+
+print(json.dumps(result, ensure_ascii=False, default=str))
+
+if not isinstance(result, dict) or not result.get("status"):
+    raise SystemExit(1)
+
+for _ in range(30):
+    check = subprocess.run(
+        ["curl", "-fsS", f"http://127.0.0.1:{project_port}/health"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if check.returncode == 0:
+        break
+    time.sleep(1)
+else:
+    raise SystemExit("音乐 API 健康检查失败")
+PY
 
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:${MUSIC_API_PORT}/health" >/dev/null; then
@@ -245,7 +302,25 @@ if [ -f "${pid_file}" ]; then
   echo "当前 cwd：$(readlink /proc/${pid}/cwd 2>/dev/null || true)"
 fi
 
-systemctl --no-pager --full status bbzg-netease-api.service | sed -n '1,20p'
+"${PANEL_PY}" - <<'PY'
+import json
+import os
+import sys
+sys.path.insert(0, "/www/server/panel/class")
+import public
+from projectModel.pythonModel import main
+
+project = os.environ["MUSIC_API_PROJECT"]
+data = main().GetProjectList(public.to_dict_obj({"p": 1, "limit": 5, "search": project}))
+for row in data.get("data", []):
+    if row.get("name") == project:
+        print(json.dumps({
+            "name": row.get("name"),
+            "run": row.get("run"),
+            "listen": row.get("listen"),
+            "pids": row.get("pids"),
+        }, ensure_ascii=False))
+PY
 echo "健康检查通过：音乐 API、本机端口与公网域名均可访问。"
 REMOTE
 

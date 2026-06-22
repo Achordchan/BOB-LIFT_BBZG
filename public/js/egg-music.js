@@ -84,6 +84,18 @@
     }, 2200);
   }
 
+  async function ensureStreamPlayable(url) {
+    const resp = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
+    if (resp.ok) return;
+    if (resp.status === 401) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    if (resp.status === 429) {
+      throw new Error('请求过于频繁，请稍后再试');
+    }
+    throw new Error('当前歌曲暂不可试听，可能是版权或会员限制');
+  }
+
   if (accountBtn) {
     accountBtn.addEventListener('click', function () {
       ensureLogin().then(ok => {
@@ -560,7 +572,7 @@
       auditionBtn.textContent = '试听';
 
       auditionBtn.addEventListener('click', function () {
-        ensureLogin().then(ok => {
+        ensureLogin().then(async ok => {
           if (!ok) return;
 
           const id = (item && item.id != null) ? String(item.id) : '';
@@ -575,6 +587,8 @@
 
           const url = `/api/public/music/stream?id=${encodeURIComponent(id)}`;
           try {
+            await ensureStreamPlayable(url);
+
             if (audioSourceEl) audioSourceEl.setAttribute('src', url);
             if (audioEl) {
               try { audioEl.load(); } catch (e) {}
@@ -602,8 +616,12 @@
               playBtn.click();
             } else if (audioEl) {
               const p = audioEl.play();
-              if (p && typeof p.catch === 'function') p.catch(() => {});
+              if (p && typeof p.catch === 'function') {
+                p.catch(() => showToast('播放器启动失败，请再试一次', 'error'));
+              }
             }
+          } catch (err) {
+            showToast(err && err.message ? err.message : '试听失败', 'error');
           } finally {
             auditionBtn.disabled = false;
             auditionBtn.textContent = old;
