@@ -1,7 +1,14 @@
 const path = require('path');
+const express = require('express');
 
 function registerAuthRoutes(app, deps) {
   const { getData, saveData, baseDir, requireLogin } = deps;
+  const adminAppDir = path.join(baseDir, 'public', 'admin-app');
+
+  app.use('/admin-app', requireLogin, express.static(adminAppDir, {
+    maxAge: '1y',
+    immutable: true
+  }));
 
   // 登录页面
   app.get('/login', (req, res) => {
@@ -86,9 +93,9 @@ function registerAuthRoutes(app, deps) {
     res.redirect('/login');
   });
 
-  // 提供管理页面，需要登录
-  app.get('/admin', requireLogin, (req, res) => {
-    res.sendFile(path.join(baseDir, 'public', 'admin.html'));
+  // 提供新版 React 管理后台，需要登录。
+  app.get(['/admin', '/admin/*'], requireLogin, (req, res) => {
+    res.sendFile(path.join(adminAppDir, 'index.html'));
   });
 }
 

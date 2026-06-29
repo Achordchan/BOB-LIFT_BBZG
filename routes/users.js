@@ -77,6 +77,48 @@ function registerUserRoutes(app, deps) {
     });
   });
 
+  // API: 兼容旧后台的用户音乐配置保存，同时供迁移期回归使用。
+  app.post('/api/users/config', (req, res) => {
+    if (!req.session || !req.session.loggedIn) {
+      return res.status(401).json({ success: false, message: '未授权访问' });
+    }
+
+    const { userId, musicId } = req.body || {};
+    if (!userId) {
+      return res.status(400).json({ success: false, message: '用户ID不能为空' });
+    }
+
+    const data = getData();
+    const user = data.users.find(u => u.id === userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: '未找到用户' });
+    }
+
+    if (!musicId) {
+      delete user.musicId;
+      delete user.musicName;
+      user.updatedAt = new Date().toISOString();
+      saveData(data);
+      return res.json({ success: true, message: '用户音乐配置已清空', user: sanitizeUserForResponse(user) });
+    }
+
+    const music = data.music.find(m => m.id === musicId);
+    if (!music) {
+      return res.status(404).json({ success: false, message: '未找到指定的音乐' });
+    }
+
+    user.musicId = musicId;
+    user.musicName = music.name;
+    user.updatedAt = new Date().toISOString();
+    saveData(data);
+
+    res.json({
+      success: true,
+      message: '用户音乐配置已保存',
+      user: sanitizeUserForResponse(user)
+    });
+  });
+
   // API: 更新用户信息（包括音乐配置）
   app.put('/api/users/update/:id', (req, res) => {
     const userId = req.params.id;
@@ -164,7 +206,7 @@ function registerUserRoutes(app, deps) {
 
   // API: 添加用户
   app.post('/api/users/add', (req, res) => {
-    const { name, position } = req.body;
+    const { name, position, musicId, loginUsername, loginPassword } = req.body;
 
     if (!name || !position) {
       return res.status(400).json({
@@ -193,6 +235,27 @@ function registerUserRoutes(app, deps) {
       sortOrder: maxSortOrder + 1,
       createdAt: new Date().toISOString()
     };
+
+    if (musicId) {
+      const music = data.music.find(m => m.id === musicId);
+      if (!music) {
+        return res.status(404).json({ success: false, message: '未找到指定的音乐' });
+      }
+      newUser.musicId = musicId;
+      newUser.musicName = music.name;
+    }
+
+    const nextUsername = String(loginUsername || '').trim();
+    if (nextUsername) {
+      const exists = data.users.some(u => u && String(u.loginUsername || '').trim() === nextUsername);
+      if (exists) {
+        return res.status(400).json({ success: false, message: '登录账号已被占用' });
+      }
+      newUser.loginUsername = nextUsername;
+      if (loginPassword) {
+        newUser.loginPassword = String(loginPassword);
+      }
+    }
 
     data.users.push(newUser);
     saveData(data);

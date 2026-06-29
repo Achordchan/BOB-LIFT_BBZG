@@ -22,6 +22,9 @@ echo "部署到宝塔项目：${DEPLOY_PROJECT}"
 echo "目标目录：${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
 echo "音乐 API：${DEPLOY_USER}@${DEPLOY_HOST}:${MUSIC_API_PATH}"
 
+echo "本地构建新版后台..."
+npm run build:admin
+
 ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   DEPLOY_PATH="${DEPLOY_PATH}" \
   DEPLOY_PROJECT="${DEPLOY_PROJECT}" \

@@ -5,18 +5,32 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "deploy:baota": "bash scripts/deploy-baota.sh"
+    "deploy:baota": "bash scripts/deploy-baota.sh",
+    "dev:admin": "vite --config vite.admin.config.ts",
+    "build:admin": "tsc -p tsconfig.admin.json && vite build --config vite.admin.config.ts"
   },
   "dependencies": {
     "@alicloud/pop-core": "^1.8.0",
+    "@ant-design/icons": "^6.3.2",
+    "@ant-design/pro-components": "^2.8.10",
     "alibabacloud-nls": "^1.0.4",
+    "antd": "^5.29.3",
     "axios": "^1.9.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "express-session": "^1.18.1",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^4.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "sharp": "^0.34.1",
     "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.6"
   }
 }
