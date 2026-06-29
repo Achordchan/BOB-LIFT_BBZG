@@ -35,9 +35,11 @@ function registerUserRoutes(app, deps) {
       data.music = [];
     }
 
-    // 处理用户数据，添加音乐名称，并按sortOrder排序
+    const isAdmin = !!(req.session && req.session.loggedIn);
+
+    // 处理用户数据，添加音乐名称，并按sortOrder排序。公开访问不返回登录账号，后台访问保留登录账号。
     const users = data.users.map(user => {
-      const result = sanitizeUserForPublicList(user);
+      const result = isAdmin ? sanitizeUserForResponse(user) : sanitizeUserForPublicList(user);
       if (user.musicId) {
         const music = data.music.find(m => m.id === user.musicId);
         if (music) {

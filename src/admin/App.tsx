@@ -29,7 +29,7 @@ const { Header, Sider, Content } = Layout;
 type PageKey = 'dashboard' | 'users' | 'music' | 'playback' | 'celebration' | 'platforms' | 'settings' | 'apis' | 'system';
 
 const pages: Record<PageKey, { title: string; sub: string; component: JSX.Element }> = {
-  dashboard: { title: '工作台', sub: '成交、询盘、平台目标和关键播放配置总览', component: <DashboardPage /> },
+  dashboard: { title: '工作台', sub: '成交、询盘、音乐配置和系统状态', component: <DashboardPage /> },
   users: { title: '用户管理', sub: '维护团队成员、登录账号、照片和专属战歌', component: <UsersPage /> },
   music: { title: '音乐管理', sub: '管理成交音乐、音效库、歌词和网易云导入', component: <MusicPage /> },
   playback: { title: '播放配置', sub: '配置默认战歌、询盘音效、TTS、启动音频和个性化音频', component: <PlaybackPage /> },
