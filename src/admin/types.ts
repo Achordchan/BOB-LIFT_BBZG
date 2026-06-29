@@ -61,3 +61,22 @@ export interface DashboardData {
   latestInquiry?: any;
   latestDeal?: any;
 }
+
+export interface AdminAudioTrack {
+  id: string;
+  title: string;
+  subtitle?: string;
+  sources: string[];
+  sourceIndex?: number;
+}
+
+export type PlayAdminTrackInput = Omit<AdminAudioTrack, 'sourceIndex'>;
+
+export interface AdminOperationLog {
+  id: string;
+  action: string;
+  detail?: string;
+  ip?: string;
+  userAgent?: string;
+  createdAt?: string;
+}

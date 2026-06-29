@@ -3,12 +3,15 @@ import { App, Avatar, Button, Drawer, Form, Input, Modal, Popconfirm, Select, Sp
 import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl } from '../api';
 import { ImageCropUpload, type CroppedFile } from '../components/ImageCropUpload';
-import AudioPlayer from 'react-h5-audio-player';
-import 'react-h5-audio-player/lib/styles.css';
 import { SectionCard } from '../components/SectionCard';
-import type { MusicItem, UserItem } from '../types';
+import type { MusicItem, PlayAdminTrackInput, UserItem } from '../types';
 
-export default function UsersPage() {
+interface UsersPageProps {
+  playTrack: (track: PlayAdminTrackInput) => void;
+  activeTrackId?: string;
+}
+
+export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) {
   const { message } = App.useApp();
   const [users, setUsers] = useState<UserItem[]>([]);
   const [music, setMusic] = useState<MusicItem[]>([]);
@@ -16,7 +19,6 @@ export default function UsersPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [photoOpen, setPhotoOpen] = useState<UserItem | null>(null);
-  const [playingTrack, setPlayingTrack] = useState<{ song: MusicItem; user: UserItem; sources: string[]; index: number } | null>(null);
   const [halfPhoto, setHalfPhoto] = useState<CroppedFile | null>(null);
   const [fullPhoto, setFullPhoto] = useState<CroppedFile | null>(null);
   const [form] = Form.useForm();
@@ -97,34 +99,23 @@ export default function UsersPage() {
       message.warning('当前战歌没有可播放文件');
       return;
     }
-    const sources = getPreviewSources(song);
-    if (!sources.length) {
-      message.warning('当前战歌没有可播放文件');
-      return;
-    }
-    setPlayingTrack({ song, user, sources, index: 0 });
-  }
-
-  function handlePlayerError() {
-    setPlayingTrack(current => {
-      if (!current) return null;
-      const nextIndex = current.index + 1;
-      if (!current.sources[nextIndex]) {
-        message.error('播放失败');
-        return null;
-      }
-      return { ...current, index: nextIndex };
+    playTrack({
+      id: `music-${song.id}`,
+      title: song.name,
+      subtitle: user.name,
+      sources: getPreviewSources(song)
     });
   }
 
   function renderUserMusic(user: UserItem) {
     const song = getUserMusic(user);
     if (!user.musicName) return <Tag>未配置</Tag>;
-    const active = !!song?.id && playingTrack?.song.id === song.id;
+    const active = !!song?.id && activeTrackId === `music-${song.id}`;
+    const canPlay = !!song && getPreviewSources(song).length > 0;
     return <Button
       type="link"
-      className={active ? 'user-music-link user-music-link-active' : 'user-music-link'}
-      disabled={!song?.filename}
+      className={active ? 'admin-track-link admin-track-link-active' : 'admin-track-link'}
+      disabled={!canPlay}
       onClick={() => playUserMusic(user)}
     >{user.musicName}</Button>;
   }
@@ -169,18 +160,5 @@ export default function UsersPage() {
       </Form>
     </Modal>
   </SectionCard>
-    {playingTrack ? <div className="users-bottom-player">
-      <div className="users-bottom-player-meta">
-        <strong>{playingTrack.song.name}</strong>
-        <span>{playingTrack.user.name}</span>
-      </div>
-      <AudioPlayer
-        autoPlay
-        src={playingTrack.sources[playingTrack.index]}
-        onError={handlePlayerError}
-        showJumpControls={false}
-        layout="horizontal"
-      />
-    </div> : null}
   </>;
 }
