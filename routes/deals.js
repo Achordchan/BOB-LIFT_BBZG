@@ -95,12 +95,15 @@ function registerDealRoutes(app, deps) {
 
     // 如果用户没有配置音乐，但系统有配置默认战歌，则使用默认战歌
     if (!musicToPlay && data.defaultBattleSong) {
-      const defaultMusic = data.music.find(m => m.id === data.defaultBattleSong.musicId);
-      if (defaultMusic) {
+      const defaultMusic = data.defaultBattleSong.musicId
+        ? data.music.find(m => m.id === data.defaultBattleSong.musicId)
+        : null;
+      const defaultSong = defaultMusic || data.defaultBattleSong;
+      if (defaultSong && defaultSong.filename) {
         musicToPlay = {
-          musicId: defaultMusic.id,
-          musicName: defaultMusic.name,
-          musicFile: defaultMusic.filename,
+          musicId: defaultMusic ? defaultMusic.id : data.defaultBattleSong.id,
+          musicName: defaultSong.name || '默认战歌',
+          musicFile: defaultSong.filename,
           userName: person.trim(),
           userPosition: user ? (user.position ? user.position.trim() : '运营专员') : '运营专员'
         };

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, Button, Card, Form, Input, List, Popconfirm, Progress, Radio, Select, Space, Tabs, Upload } from 'antd';
+import { App, Button, Card, Form, Input, List, Popconfirm, Radio, Select, Space, Tabs, Typography, Upload } from 'antd';
 import { DeleteOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl } from '../api';
 import { SectionCard } from '../components/SectionCard';
+import { AdminAudioPlayer } from '../components/AdminAudioPlayer';
 import type { MusicItem } from '../types';
 
 export default function PlaybackPage() {
@@ -13,11 +14,13 @@ export default function PlaybackPage() {
   const [personalized, setPersonalized] = useState<any[]>([]);
   const [cleanup, setCleanup] = useState<any[]>([]);
   const [defaultForm] = Form.useForm();
+  const [defaultSelectForm] = Form.useForm();
   const [inquiryForm] = Form.useForm();
   const [startupForm] = Form.useForm();
   const [personForm] = Form.useForm();
   const [ttsForm] = Form.useForm();
   const soundOptions = useMemo(() => music.map(m => ({ label: `${m.isSound ? '音效' : '音乐'} · ${m.name}`, value: m.id })), [music]);
+  const battleSongOptions = useMemo(() => music.filter(m => !m.isSound).map(m => ({ label: m.name, value: m.id })), [music]);
   const norm = (e: any) => Array.isArray(e) ? e : e?.fileList;
 
   async function load() {
@@ -25,7 +28,10 @@ export default function PlaybackPage() {
       const [m, d, i, s, p, t] = await Promise.all([
         apiGet<{ music: MusicItem[] }>('/api/music'), apiGet('/api/defaultBattleSong'), apiGet('/api/inquiries/config'), apiGet('/api/startup-audio'), apiJson<{ items: any[] }>('/api/personalized/list', 'POST', {}), apiGet('/api/aliyun-tts-config')
       ]);
-      setMusic((m as any).music || []); setDefaultSong((d as any).defaultBattleSong || null); setStartup(s); setPersonalized((p as any).items || []);
+      const loadedMusic = (m as any).music || [];
+      const loadedDefault = (d as any).defaultBattleSong || null;
+      setMusic(loadedMusic); setDefaultSong(loadedDefault); setStartup(s); setPersonalized((p as any).items || []);
+      defaultSelectForm.setFieldsValue({ musicId: loadedDefault?.musicId });
       inquiryForm.setFieldsValue((i as any).inquiryConfig || {}); startupForm.setFieldsValue(s); ttsForm.setFieldsValue((t as any).config || {});
     } catch (e: any) { message.error(e.message || '配置加载失败'); }
   }
@@ -37,6 +43,11 @@ export default function PlaybackPage() {
     const fd = new FormData(); fd.append('battleSongFile', file);
     try { await apiForm('/api/defaultBattleSong/upload', fd); message.success('默认战歌已上传'); defaultForm.resetFields(); load(); }
     catch (e: any) { message.error(e.message || '上传失败'); }
+  }
+  async function selectDefault(values: any) {
+    if (!values.musicId) return message.warning('请选择音乐库中的战歌');
+    try { await apiJson('/api/defaultBattleSong/select', 'POST', { musicId: values.musicId }); message.success('默认战歌已保存'); load(); }
+    catch (e: any) { message.error(e.message || '保存失败'); }
   }
   async function saveInquiry(values: any) { try { await apiJson('/api/inquiries/config', 'POST', values); message.success('询盘音效已保存'); load(); } catch (e: any) { message.error(e.message || '保存失败'); } }
   async function saveStartup(values: any) { try { await apiJson('/api/startup-audio', 'POST', values); message.success('启动音频已保存'); load(); } catch (e: any) { message.error(e.message || '保存失败'); } }
@@ -89,17 +100,48 @@ export default function PlaybackPage() {
       load();
     } catch (e: any) { message.error(e.message || '生成失败'); }
   }
-  function previewAudio(audioPath: string) {
-    new Audio(audioPath).play().catch(() => message.error('预览失败'));
-  }
   async function saveTts(values: any) { try { await apiJson('/api/aliyun-tts-config', 'POST', values); message.success('TTS 配置已保存'); load(); } catch (e: any) { message.error(e.message || '保存失败'); } }
   async function scanCleanup() { try { const res = await apiJson<{ items: any[] }>('/api/audio-cleanup/scan', 'POST', {}); setCleanup((res as any).items || []); } catch (e: any) { message.error(e.message || '扫描失败'); } }
 
   return <Tabs items={[
-    { key: 'battle', label: '默认战歌', children: <SectionCard title="默认战歌" description="用户未配置专属音乐时使用"><Space direction="vertical" style={{ width: '100%' }}>{defaultSong ? <Card size="small"><Space direction="vertical"><b>{defaultSong.name || '默认战歌'}</b>{defaultSong.filename && <audio controls preload="none" src={audioUrl(defaultSong.filename)} />}<Popconfirm title="确认移除默认战歌？" onConfirm={async () => { await apiJson('/api/defaultBattleSong/delete', 'DELETE'); message.success('已移除'); load(); }}><Button danger>移除默认战歌</Button></Popconfirm></Space></Card> : <Card>尚未设置默认战歌</Card>}<Form form={defaultForm} layout="inline" onFinish={uploadDefault}><Form.Item name="file" valuePropName="fileList" getValueFromEvent={norm}><Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Button type="primary" htmlType="submit">上传</Button></Form></Space></SectionCard> },
+    {
+      key: 'battle',
+      label: '默认战歌',
+      children: (
+        <SectionCard title="默认战歌" description="用户未配置专属音乐时自动使用">
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Card size="small" className="playback-current-card">
+              {defaultSong ? (
+                <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                  <Typography.Text strong>{defaultSong.name || '默认战歌'}</Typography.Text>
+                  {defaultSong.filename ? <AdminAudioPlayer sources={[audioUrl(defaultSong.filename)]} onError={() => message.error('试听失败')} /> : null}
+                  <Popconfirm title="确认移除默认战歌？" onConfirm={async () => { await apiJson('/api/defaultBattleSong/delete', 'DELETE'); message.success('已移除'); load(); }}>
+                    <Button danger>移除默认战歌</Button>
+                  </Popconfirm>
+                </Space>
+              ) : (
+                <Typography.Text type="secondary">当前未设置默认战歌</Typography.Text>
+              )}
+            </Card>
+            <Form form={defaultSelectForm} className="playback-inline-form" layout="inline" onFinish={selectDefault}>
+              <Form.Item name="musicId" label="从音乐库选择" className="playback-default-select-item" rules={[{ required: true, message: '请选择音乐库中的战歌' }]}>
+                <Select showSearch optionFilterProp="label" placeholder="选择一首已有音乐" options={battleSongOptions} />
+              </Form.Item>
+              <Button type="primary" htmlType="submit">保存默认战歌</Button>
+            </Form>
+            <Form form={defaultForm} className="playback-inline-form" layout="inline" onFinish={uploadDefault}>
+              <Form.Item name="file" label="上传新文件" valuePropName="fileList" getValueFromEvent={norm}>
+                <Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload>
+              </Form.Item>
+              <Button htmlType="submit">上传并设为默认</Button>
+            </Form>
+          </Space>
+        </SectionCard>
+      )
+    },
     { key: 'inquiry', label: '询盘音效', children: <SectionCard title="询盘音效配置" description="新增或减少询盘时触发不同音效"><Form form={inquiryForm} layout="vertical" onFinish={saveInquiry}><Form.Item name="addInquiryMusicId" label="新增询盘音效"><Select allowClear options={soundOptions} /></Form.Item><Form.Item name="reduceInquiryMusicId" label="减少询盘音效"><Select allowClear options={soundOptions} /></Form.Item><Button type="primary" htmlType="submit">保存配置</Button></Form></SectionCard> },
     { key: 'tts', label: '语音播报', children: <SectionCard title="阿里云 TTS 配置" description="AccessKey Secret 已脱敏，保留 ****** 时不会覆盖原密钥"><Form form={ttsForm} layout="vertical" onFinish={saveTts}><div className="form-grid"><Form.Item name="url" label="服务地址"><Input /></Form.Item><Form.Item name="appKey" label="AppKey"><Input /></Form.Item><Form.Item name="accessKeyId" label="AccessKey ID"><Input /></Form.Item><Form.Item name="accessKeySecret" label="AccessKey Secret"><Input.Password /></Form.Item><Form.Item name="voice" label="音色"><Input /></Form.Item><Form.Item name="format" label="格式"><Select options={[{ value: 'mp3' }, { value: 'wav' }]} /></Form.Item><Form.Item name="sampleRate" label="采样率"><Input type="number" /></Form.Item><Form.Item name="volume" label="音量"><Input type="number" /></Form.Item><Form.Item name="speechRate" label="语速"><Input type="number" /></Form.Item><Form.Item name="pitchRate" label="音调"><Input type="number" /></Form.Item></div><Space><Button type="primary" htmlType="submit">保存 TTS 配置</Button><Button onClick={async () => { try { await apiJson('/api/test-aliyun-tts', 'POST', {}); message.success('Token 测试通过'); } catch (e: any) { message.error(e.message || '测试失败'); } }}>测试 Token</Button></Space></Form></SectionCard> },
-    { key: 'startup', label: '启动音频', children: <SectionCard title="启动音频" description="首页启动时播放的默认、TTS 或上传音频"><Form form={startupForm} layout="vertical" onFinish={saveStartup}><Form.Item name="mode" label="模式"><Radio.Group options={[{ label: '默认', value: 'default' }, { label: 'TTS', value: 'tts' }, { label: '文件', value: 'file' }]} /></Form.Item><Form.Item name="audioPath" label="音频路径"><Input /></Form.Item><Form.Item name="ttsText" label="TTS 文本"><Input.TextArea rows={3} /></Form.Item><Form.Item name="upload" label="上传启动音频" valuePropName="fileList" getValueFromEvent={norm}><Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Space><Button onClick={() => uploadStartup(startupForm.getFieldsValue())}>先上传文件</Button><Button type="primary" htmlType="submit">保存启动配置</Button></Space></Form>{startup?.audioPath && <audio controls src={startup.audioPath} />}</SectionCard> },
+    { key: 'startup', label: '启动音频', children: <SectionCard title="启动音频" description="首页启动时播放的默认、TTS 或上传音频"><Form form={startupForm} layout="vertical" onFinish={saveStartup}><Form.Item name="mode" label="模式"><Radio.Group options={[{ label: '默认', value: 'default' }, { label: 'TTS', value: 'tts' }, { label: '文件', value: 'file' }]} /></Form.Item><Form.Item name="audioPath" label="音频路径"><Input /></Form.Item><Form.Item name="ttsText" label="TTS 文本"><Input.TextArea rows={3} /></Form.Item><Form.Item name="upload" label="上传启动音频" valuePropName="fileList" getValueFromEvent={norm}><Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item><Space><Button onClick={() => uploadStartup(startupForm.getFieldsValue())}>先上传文件</Button><Button type="primary" htmlType="submit">保存启动配置</Button></Space></Form>{startup?.audioPath && <div className="playback-inline-player"><AdminAudioPlayer sources={[startup.audioPath]} onError={() => message.error('试听失败')} /></div>}</SectionCard> },
     {
       key: 'personalized',
       label: '个性化',
@@ -123,7 +165,7 @@ export default function PlaybackPage() {
               <Form.Item name="ttsText" rules={[{ required: true }]}><Input placeholder="TTS 文本" /></Form.Item>
               <Button htmlType="submit">TTS 生成新增</Button>
             </Form>
-            <List dataSource={personalized} locale={{ emptyText: '暂无个性化音频' }} renderItem={(item) => <List.Item actions={[<Button onClick={() => previewAudio(item.audioPath)}>预览</Button>, <Button icon={<PlayCircleOutlined />} onClick={() => firePersonalized(item.audioPath)}>发射</Button>]}><List.Item.Meta title={item.name} description={item.audioPath} /></List.Item>} />
+            <List dataSource={personalized} locale={{ emptyText: '暂无个性化音频' }} renderItem={(item) => <List.Item actions={[<AdminAudioPlayer compact sources={[item.audioPath]} onError={() => message.error('试听失败')} />, <Button icon={<PlayCircleOutlined />} onClick={() => firePersonalized(item.audioPath)}>发射</Button>]}><List.Item.Meta title={item.name} description={item.audioPath} /></List.Item>} />
           </Space>
         </SectionCard>
       )

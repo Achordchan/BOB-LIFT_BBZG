@@ -202,6 +202,24 @@ function registerMusicRoutes(app, deps) {
     return standard;
   }
 
+  function buildDefaultBattleSongPayload(data) {
+    if (!data || !data.defaultBattleSong) return null;
+    const current = data.defaultBattleSong;
+    if (current.musicId && Array.isArray(data.music)) {
+      const selected = data.music.find(m => m.id === current.musicId);
+      if (selected) {
+        return {
+          id: selected.id,
+          name: selected.name,
+          filename: selected.filename,
+          musicId: selected.id,
+          source: 'library'
+        };
+      }
+    }
+    return current;
+  }
+
   async function startImportDownload(job, payload) {
     updateImportJob(job, {
       status: 'running',
@@ -837,7 +855,7 @@ function registerMusicRoutes(app, deps) {
 
     res.json({
       success: true,
-      defaultBattleSong: data.defaultBattleSong || null
+      defaultBattleSong: buildDefaultBattleSongPayload(data)
     });
   });
 
@@ -845,26 +863,43 @@ function registerMusicRoutes(app, deps) {
   app.get('/api/defaultBattleSong/public', (req, res) => {
     const data = getData();
 
-    // 如果存在默认战歌，需要补充音乐详细信息
-    if (data.defaultBattleSong && data.defaultBattleSong.musicId) {
-      const defaultMusic = data.music.find(m => m.id === data.defaultBattleSong.musicId);
-      if (defaultMusic) {
-        res.json({
-          success: true,
-          defaultBattleSong: {
-            id: defaultMusic.id,
-            name: defaultMusic.name,
-            filename: defaultMusic.filename,
-            musicId: defaultMusic.id
-          }
-        });
-        return;
-      }
+    res.json({
+      success: true,
+      defaultBattleSong: buildDefaultBattleSongPayload(data)
+    });
+  });
+
+  // 从音乐库选择默认战歌
+  app.post('/api/defaultBattleSong/select', requireLogin, (req, res) => {
+    const musicId = req.body && req.body.musicId;
+    if (!musicId || typeof musicId !== 'string') {
+      return res.status(400).json({ success: false, message: '请选择音乐库中的战歌' });
     }
+
+    const data = getData();
+    if (!Array.isArray(data.music)) data.music = [];
+    const selected = data.music.find(m => m.id === musicId);
+    if (!selected) {
+      return res.status(404).json({ success: false, message: '音乐不存在' });
+    }
+    if (selected.isSound) {
+      return res.status(400).json({ success: false, message: '默认战歌请选择音乐，不要选择音效' });
+    }
+
+    data.defaultBattleSong = {
+      id: uuidv4(),
+      name: selected.name,
+      filename: selected.filename,
+      musicId: selected.id,
+      source: 'library',
+      selectedAt: new Date().toISOString()
+    };
+    saveData(data);
 
     res.json({
       success: true,
-      defaultBattleSong: data.defaultBattleSong || null
+      message: '默认战歌已保存',
+      defaultBattleSong: buildDefaultBattleSongPayload(data)
     });
   });
 
@@ -880,8 +915,8 @@ function registerMusicRoutes(app, deps) {
 
     const data = getData();
 
-    // 如果已存在默认战歌，删除旧文件
-    if (data.defaultBattleSong && data.defaultBattleSong.filename) {
+    // 如果已存在上传型默认战歌，删除旧文件；音乐库曲目不能删除原文件
+    if (data.defaultBattleSong && data.defaultBattleSong.filename && !data.defaultBattleSong.musicId) {
       const oldFilePath = path.join(baseDir, 'public', 'music', data.defaultBattleSong.filename);
       try {
         if (fs.existsSync(oldFilePath)) {
@@ -895,8 +930,9 @@ function registerMusicRoutes(app, deps) {
     // 创建新的默认战歌记录
     const defaultBattleSong = {
       id: uuidv4(),
-      name: '默认战歌',
+      name: path.parse(req.file.originalname || req.file.filename).name || '默认战歌',
       filename: req.file.filename,
+      source: 'upload',
       uploadTime: new Date().toISOString()
     };
 
@@ -924,7 +960,7 @@ function registerMusicRoutes(app, deps) {
     }
 
     // 删除文件
-    if (data.defaultBattleSong.filename) {
+    if (data.defaultBattleSong.filename && !data.defaultBattleSong.musicId) {
       const filePath = path.join(baseDir, 'public', 'music', data.defaultBattleSong.filename);
       try {
         if (fs.existsSync(filePath)) {

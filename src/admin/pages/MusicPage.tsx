@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { App, Button, Drawer, Form, Input, Modal, Popconfirm, Progress, Space, Table, Tabs, Tag, Upload } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl, dateTime } from '../api';
+import { AdminAudioPlayer } from '../components/AdminAudioPlayer';
 import { SectionCard } from '../components/SectionCard';
 import type { MusicItem } from '../types';
 
@@ -73,10 +74,16 @@ export default function MusicPage() {
     } catch (e: any) { message.error(e.message || '搜索失败'); }
   }
 
-  function previewSong(row: any) {
+  function getMusicSources(row: MusicItem) {
+    const sources = [];
+    if (row.filename) sources.push(audioUrl(row.filename));
+    if ((row as any).sourceId) sources.push(`/api/public/music/stream?id=${encodeURIComponent(String((row as any).sourceId))}`);
+    return sources;
+  }
+
+  function getSearchSources(row: any) {
     const id = row.id || row.neteaseId;
-    if (!id) { message.warning('缺少歌曲 ID'); return; }
-    new Audio(`/api/public/music/stream?id=${encodeURIComponent(String(id))}`).play().catch(() => message.error('试听失败'));
+    return id ? [`/api/public/music/stream?id=${encodeURIComponent(String(id))}`] : [];
   }
 
   async function importSong(row: any) {
@@ -126,7 +133,7 @@ export default function MusicPage() {
     { title: '名称', dataIndex: 'name' },
     { title: '描述', dataIndex: 'description', ellipsis: true },
     { title: '上传时间', render: (_: any, r: MusicItem) => dateTime(r.uploadDate || r.uploadedAt) },
-    { title: '试听', render: (_: any, r: MusicItem) => r.filename ? <audio className="audio-row" controls preload="none" src={audioUrl(r.filename)} /> : '—' },
+    { title: '试听', width: 260, render: (_: any, r: MusicItem) => <AdminAudioPlayer sources={getMusicSources(r)} compact onError={() => message.error('试听失败')} /> },
     { title: '歌词', render: (_: any, r: MusicItem) => r.lrcFilename ? <Tag color="green">已配置</Tag> : <Tag>无歌词</Tag> },
     { title: '操作', render: (_: any, r: MusicItem) => <Space><Button size="small" icon={<EditOutlined />} onClick={() => { setEditing(r); editForm.setFieldsValue(r); }}>编辑</Button><Popconfirm title="确认删除？" onConfirm={async () => { await apiJson(`/api/music/delete/${r.id}`, 'DELETE'); message.success('已删除'); load(); }}><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> }
   ];
@@ -159,7 +166,7 @@ export default function MusicPage() {
 
     <Modal title="网易云音乐导入" width={820} open={searchOpen} onCancel={() => setSearchOpen(false)} footer={null}>
       <Form form={searchForm} layout="inline" onFinish={(v) => search(v, 1)} style={{ marginBottom: 16 }}><Form.Item name="keyword" rules={[{ required: true, message: '请输入关键词' }]}><Input placeholder="歌曲或歌手" /></Form.Item><Button type="primary" htmlType="submit">搜索</Button></Form>
-      <Table rowKey={(r) => String(r.id)} dataSource={searchRows} pagination={false} columns={[{ title: '歌曲', dataIndex: 'name' }, { title: '歌手', render: (_, r) => r.artists?.map((a: any) => a.name).join(' / ') || r.artist || '—' }, { title: '操作', render: (_, r) => <Space><Button size="small" onClick={() => previewSong(r)}>试听</Button><Button size="small" type="primary" onClick={() => importSong(r)}>导入</Button></Space> }]} />
+      <Table rowKey={(r) => String(r.id)} dataSource={searchRows} pagination={false} columns={[{ title: '歌曲', dataIndex: 'name' }, { title: '歌手', render: (_, r) => r.artists?.map((a: any) => a.name).join(' / ') || r.artist || '—' }, { title: '试听', width: 240, render: (_, r) => <AdminAudioPlayer sources={getSearchSources(r)} compact onError={() => message.error('试听失败')} /> }, { title: '操作', render: (_, r) => <Button size="small" type="primary" onClick={() => importSong(r)}>导入</Button> }]} />
       <Space style={{ marginTop: 12 }}><Button disabled={searchPage <= 1} onClick={() => search({ keyword: searchKeyword }, searchPage - 1)}>上一页</Button><span>第 {searchPage} 页</span><Button disabled={!searchRows.length} onClick={() => search({ keyword: searchKeyword }, searchPage + 1)}>下一页</Button></Space>
     </Modal>
   </Space>;
