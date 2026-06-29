@@ -14,15 +14,16 @@ export function AdminAccountMenu() {
   const { message } = App.useApp();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
   const [profile, setProfile] = useState<AdminProfile>({ username: '管理员', role: '管理员', operationLogs: [] });
   const [form] = Form.useForm();
 
-  async function loadProfile() {
+  async function loadProfile(includeLogs = false) {
     setLoading(true);
     try {
-      const res = await apiGet<AdminProfile>('/api/admin/profile');
+      const res = await apiGet<AdminProfile>(`/api/admin/profile${includeLogs ? '?logs=1' : ''}`);
       const next = res as any;
-      setProfile({ username: next.username || '管理员', role: next.role || '管理员', operationLogs: next.operationLogs || [] });
+      setProfile(current => ({ username: next.username || '管理员', role: next.role || '管理员', operationLogs: includeLogs ? (next.operationLogs || []) : current.operationLogs }));
       form.setFieldsValue({ username: next.username || '' });
     } catch (e: any) {
       message.error(e.message || '账号信息加载失败');
@@ -31,21 +32,21 @@ export function AdminAccountMenu() {
     }
   }
 
-  useEffect(() => { loadProfile(); }, []);
+  useEffect(() => { loadProfile(false); }, []);
 
   async function saveAccount(values: any) {
     try {
       const res = await apiJson('/api/admin/account', 'POST', values);
       message.success((res as any).message || '账号信息已更新');
       form.resetFields(['currentPassword', 'newPassword']);
-      await loadProfile();
+      await loadProfile(activeTab === 'logs');
     } catch (e: any) {
       message.error(e.message || '保存失败');
     }
   }
 
   return <>
-    <Button className="admin-account-trigger" icon={<Avatar size={22} icon={<UserOutlined />} />} onClick={() => { setOpen(true); loadProfile(); }}>
+    <Button className="admin-account-trigger" icon={<Avatar size={22} icon={<UserOutlined />} />} onClick={() => { setOpen(true); loadProfile(activeTab === 'logs'); }}>
       {profile.username}
     </Button>
     <Drawer
@@ -62,7 +63,14 @@ export function AdminAccountMenu() {
           <Descriptions.Item label="权限角色"><Tag color="blue">{profile.role}</Tag></Descriptions.Item>
         </Descriptions>
         <Tabs
+          activeKey={activeTab}
+          onChange={(key) => { setActiveTab(key); if (key === 'logs') loadProfile(true); }}
           items={[
+            {
+              key: 'overview',
+              label: '账号概览',
+              children: <Typography.Paragraph type="secondary">账号密码、操作记录和退出登录都集中在这里管理。</Typography.Paragraph>
+            },
             {
               key: 'logs',
               label: '操作记录',

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { App, Avatar, Button, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl } from '../api';
@@ -19,10 +19,16 @@ export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [photoOpen, setPhotoOpen] = useState<UserItem | null>(null);
+  const [keyword, setKeyword] = useState('');
   const [halfPhoto, setHalfPhoto] = useState<CroppedFile | null>(null);
   const [fullPhoto, setFullPhoto] = useState<CroppedFile | null>(null);
   const [form] = Form.useForm();
   const [photoForm] = Form.useForm();
+  const filteredUsers = useMemo(() => {
+    const q = keyword.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(user => [user.name, user.position, user.musicName, user.loginUsername].some(value => String(value || '').toLowerCase().includes(q)));
+  }, [keyword, users]);
 
   async function load() {
     setLoading(true);
@@ -123,7 +129,8 @@ export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) 
 
   return <>
     <SectionCard title="用户管理" description="维护团队成员、登录账号、照片和专属成交战歌" extra={<Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>添加用户</Button>}>
-    <Table rowKey="id" loading={loading} dataSource={users} pagination={{ pageSize: 10 }} columns={[
+    <Input.Search className="admin-list-search" placeholder="搜索成员、职位、战歌或登录账号" allowClear onSearch={setKeyword} onChange={(e) => setKeyword(e.target.value)} />
+    <Table rowKey="id" loading={loading} dataSource={filteredUsers} pagination={{ pageSize: 10 }} columns={[
       { title: '成员', render: (_, r) => <Space><Avatar src={(r as any).photoUrl}>{r.name?.[0]}</Avatar><span>{r.name}</span></Space> },
       { title: '职位', dataIndex: 'position' },
       { title: '专属战歌', render: (_, r) => renderUserMusic(r) },

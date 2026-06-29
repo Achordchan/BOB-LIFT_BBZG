@@ -8,9 +8,12 @@ function JsonResult({ value }: { value: any }) { return <pre style={{ margin: 0,
 export default function ApiDebugPage() {
   const { message } = App.useApp();
   const [result, setResult] = useState<any>(null);
+  const [enabled, setEnabled] = useState(false);
   async function run(fn: () => Promise<any>) { try { const res = await fn(); setResult(res); message.success('请求成功'); } catch (e: any) { setResult({ success: false, message: e.message }); message.error(e.message || '请求失败'); } }
+  if (!enabled) return <SectionCard title="API 调试" description="调试操作默认收起，避免误写真实数据"><Alert type="warning" showIcon message="API 调试会写入真实数据" description="增加成交、增减询盘、设置金额等操作会直接影响 data.json 和首页展示。确认需要排查时再开启。" /><Button type="primary" style={{ marginTop: 16 }} onClick={() => setEnabled(true)}>开启调试模式</Button></SectionCard>;
+
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
-    <Alert type="warning" showIcon message="API 调试会写入真实数据" description="增加成交、增减询盘、设置金额等操作会直接影响 data.json 和首页展示，生产环境请先确认备份。" />
+    <Alert type="warning" showIcon message="API 调试已开启" description="当前页面会直接调用真实接口，完成排查后请离开本页。" />
     <div className="content-grid">
       <SectionCard title="调试面板" description="集中测试现有接口">
         <Tabs items={[

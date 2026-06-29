@@ -38,6 +38,16 @@ function registerEggRoutes(app, deps) {
       .trim();
   }
 
+  function splitJoinedMusicName(name) {
+    const text = String(name || '').trim();
+    const index = text.lastIndexOf('-');
+    if (index <= 0 || index >= text.length - 1) return { songName: text, artist: '' };
+    return {
+      songName: text.slice(0, index).trim(),
+      artist: text.slice(index + 1).trim()
+    };
+  }
+
   function guessExtByUrl(url) {
     try {
       const u = new URL(url);
@@ -170,9 +180,14 @@ function registerEggRoutes(app, deps) {
     if (!data.music) data.music = [];
 
     const musicId = uuidv4();
+    const nameParts = splitJoinedMusicName(nameStr);
+    const songName = sanitizeText(payload && payload.songName ? payload.songName : nameParts.songName).trim();
+    const artist = sanitizeText(payload && payload.artist ? payload.artist : nameParts.artist).trim();
     const musicRecord = {
       id: musicId,
       name: nameStr,
+      songName,
+      artist,
       description: sanitizeText(payload && payload.description ? payload.description : ''),
       filename,
       originalname: `${nameStr}${ext}`,
@@ -383,6 +398,8 @@ function registerEggRoutes(app, deps) {
       const musicRecord = await importNeteaseToLocal({
         neteaseId,
         name: joinedName,
+        songName: rawName,
+        artist: artists,
         description: 'egg-music',
         coverUrl
       });

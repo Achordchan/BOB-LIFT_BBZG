@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, Button, Card, Form, Input, List, Popconfirm, Radio, Select, Space, Table, Tabs, Tag, Typography, Upload } from 'antd';
-import { CloudUploadOutlined, DeleteOutlined, PlayCircleOutlined, SoundOutlined, UploadOutlined } from '@ant-design/icons';
+import { App, Button, Card, Form, Grid, Input, List, Popconfirm, Radio, Select, Space, Table, Tabs, Tag, Typography, Upload } from 'antd';
+import { CloudUploadOutlined, DeleteOutlined, PlayCircleOutlined, PlusOutlined, SoundOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
 import { AdminAudioPlayer } from '../components/AdminAudioPlayer';
@@ -13,12 +13,19 @@ export default function PlaybackPage() {
   const [startup, setStartup] = useState<any>({ mode: 'default', audioPath: '/music/Go.mp3' });
   const [personalized, setPersonalized] = useState<any[]>([]);
   const [cleanup, setCleanup] = useState<any[]>([]);
+  const [cleanupScanned, setCleanupScanned] = useState(false);
+  const [personalizedCreateOpen, setPersonalizedCreateOpen] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const [defaultForm] = Form.useForm();
   const [defaultSelectForm] = Form.useForm();
   const [inquiryForm] = Form.useForm();
   const [startupForm] = Form.useForm();
-  const [personForm] = Form.useForm();
+  const [uploadPersonForm] = Form.useForm();
+  const [ttsPersonForm] = Form.useForm();
+  const [pathPersonForm] = Form.useForm();
   const [ttsForm] = Form.useForm();
+  const [personalizedSubmitting, setPersonalizedSubmitting] = useState<'upload' | 'tts' | 'path' | null>(null);
   const startupMode = Form.useWatch('mode', startupForm) || startup?.mode || 'default';
   const startupAudioPath = Form.useWatch('audioPath', startupForm) || startup?.audioPath || '/music/Go.mp3';
   const soundOptions = useMemo(() => music.map(m => ({ label: `${m.isSound ? '音效' : '音乐'} · ${m.name}`, value: m.id })), [music]);
@@ -127,7 +134,7 @@ export default function PlaybackPage() {
     if (item.source === 'tts' || String(item.audioPath || '').includes('/music/tts/')) return { label: 'TTS 生成', color: 'purple' };
     return { label: '路径添加', color: 'default' };
   }
-  async function addPersonalized(values: any) { try { await apiJson('/api/personalized/add', 'POST', values); message.success('已添加'); personForm.resetFields(); load(); } catch (e: any) { message.error(e.message || '添加失败'); } }
+  async function addPersonalized(values: any) { try { setPersonalizedSubmitting('path'); await apiJson('/api/personalized/add', 'POST', values); message.success('已添加'); pathPersonForm.resetFields(); setPersonalizedCreateOpen(false); load(); } catch (e: any) { message.error(e.message || '添加失败'); } finally { setPersonalizedSubmitting(null); } }
   async function uploadPersonalized(values: any) {
     const file = values.personalizedFile?.[0]?.originFileObj;
     const name = String(values.uploadName || '').trim();
@@ -137,26 +144,32 @@ export default function PlaybackPage() {
     fd.append('name', name);
     fd.append('personalizedAudioFile', file);
     try {
+      setPersonalizedSubmitting('upload');
       await apiForm('/api/personalized/upload', fd);
       message.success('个性化音频已上传');
-      personForm.resetFields(['uploadName', 'personalizedFile']);
+      uploadPersonForm.resetFields();
+      setPersonalizedCreateOpen(false);
       load();
-    } catch (e: any) { message.error(e.message || '上传失败'); }
+    } catch (e: any) { message.error(e.message || '上传失败'); } finally { setPersonalizedSubmitting(null); }
   }
   async function addPersonalizedFromTts(values: any) {
     const name = String(values.ttsName || '').trim();
     const text = String(values.ttsText || '').trim();
     if (!name || !text) { message.warning('请输入名称和 TTS 文本'); return; }
     try {
+      setPersonalizedSubmitting('tts');
       const res = await apiJson('/api/text-to-speech', 'POST', { text });
-      await apiJson('/api/personalized/add', 'POST', { name, audioPath: (res as any).audioPath, source: 'tts', ttsText: text });
+      const audioPath = (res as any).audioPath;
+      if (!audioPath) throw new Error('TTS 接口未返回音频地址');
+      await apiJson('/api/personalized/add', 'POST', { name, audioPath, source: 'tts', ttsText: text });
       message.success('TTS 个性化音频已添加');
-      personForm.resetFields(['ttsName', 'ttsText']);
+      ttsPersonForm.resetFields();
+      setPersonalizedCreateOpen(false);
       load();
-    } catch (e: any) { message.error(e.message || '生成失败'); }
+    } catch (e: any) { message.error(e.message || '生成失败'); } finally { setPersonalizedSubmitting(null); }
   }
   async function saveTts(values: any) { try { await apiJson('/api/aliyun-tts-config', 'POST', values); message.success('TTS 配置已保存'); load(); } catch (e: any) { message.error(e.message || '保存失败'); } }
-  async function scanCleanup() { try { const res = await apiJson<{ items: any[] }>('/api/audio-cleanup/scan', 'POST', {}); setCleanup((res as any).items || []); } catch (e: any) { message.error(e.message || '扫描失败'); } }
+  async function scanCleanup() { try { const res = await apiJson<{ items: any[] }>('/api/audio-cleanup/scan', 'POST', {}); setCleanup((res as any).items || []); setCleanupScanned(true); } catch (e: any) { message.error(e.message || '扫描失败'); } }
 
   return <Tabs items={[
     {
@@ -250,7 +263,7 @@ export default function PlaybackPage() {
       children: (
         <SectionCard title="个性化音频" description="预设临时音频，需要时一键推送到首页播放">
           <Space direction="vertical" size={18} style={{ width: '100%' }}>
-            <Card size="small" className="personalized-create-card" title="新增音频">
+            {!personalizedCreateOpen ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setPersonalizedCreateOpen(true)}>新增音频</Button> : <Card size="small" className="personalized-create-card" title="新增音频" extra={<Button onClick={() => { setPersonalizedCreateOpen(false); uploadPersonForm.resetFields(); ttsPersonForm.resetFields(); pathPersonForm.resetFields(); }}>收起</Button>}>
               <Tabs
                 size="small"
                 items={[
@@ -258,12 +271,12 @@ export default function PlaybackPage() {
                     key: 'upload',
                     label: '上传文件',
                     children: (
-                      <Form form={personForm} layout="inline" className="personalized-inline-form" onFinish={uploadPersonalized}>
+                      <Form form={uploadPersonForm} layout="inline" className="personalized-inline-form" onFinish={uploadPersonalized} onFinishFailed={() => message.warning('请补全上传音频信息')}>
                         <Form.Item name="uploadName" label="名称" rules={[{ required: true, message: '请输入音频名称' }]}><Input placeholder="例如：Roaix 登顶" /></Form.Item>
-                        <Form.Item name="personalizedFile" label="音频文件" valuePropName="fileList" getValueFromEvent={norm} rules={[{ required: true, message: '请选择音频文件' }]}>
+                        <Form.Item name="personalizedFile" label="音频文件" valuePropName="fileList" getValueFromEvent={norm} rules={[{ required: true, message: '请选择音频文件' }]}> 
                           <Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择音频</Button></Upload>
                         </Form.Item>
-                        <Button type="primary" htmlType="submit">上传新增</Button>
+                        <Button type="primary" htmlType="submit" loading={personalizedSubmitting === 'upload'}>上传新增</Button>
                       </Form>
                     )
                   },
@@ -271,10 +284,10 @@ export default function PlaybackPage() {
                     key: 'tts',
                     label: 'TTS 生成',
                     children: (
-                      <Form form={personForm} layout="inline" className="personalized-inline-form" onFinish={addPersonalizedFromTts}>
+                      <Form form={ttsPersonForm} layout="inline" className="personalized-inline-form" onFinish={addPersonalizedFromTts} onFinishFailed={() => message.warning('请补全 TTS 生成信息')}>
                         <Form.Item name="ttsName" label="名称" rules={[{ required: true, message: '请输入音频名称' }]}><Input placeholder="例如：临时播报" /></Form.Item>
                         <Form.Item name="ttsText" label="播报文案" rules={[{ required: true, message: '请输入播报文案' }]}><Input placeholder="输入要播报的内容" /></Form.Item>
-                        <Button type="primary" htmlType="submit">生成新增</Button>
+                        <Button type="primary" htmlType="submit" loading={personalizedSubmitting === 'tts'}>生成新增</Button>
                       </Form>
                     )
                   },
@@ -282,17 +295,17 @@ export default function PlaybackPage() {
                     key: 'path',
                     label: '高级路径',
                     children: (
-                      <Form form={personForm} layout="inline" className="personalized-inline-form" onFinish={addPersonalized}>
+                      <Form form={pathPersonForm} layout="inline" className="personalized-inline-form" onFinish={addPersonalized} onFinishFailed={() => message.warning('请补全内部路径信息')}>
                         <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}><Input placeholder="音频名称" /></Form.Item>
                         <Form.Item name="audioPath" label="内部文件" rules={[{ required: true, message: '请输入内部文件地址' }]}><Input placeholder="/music/custom/xxx.mp3" /></Form.Item>
-                        <Button type="primary" htmlType="submit">添加</Button>
+                        <Button type="primary" htmlType="submit" loading={personalizedSubmitting === 'path'}>添加</Button>
                       </Form>
                     )
                   }
                 ]}
               />
-            </Card>
-            <Table
+            </Card>}
+            {!isMobile ? <Table
               rowKey="id"
               className="personalized-table"
               dataSource={personalized}
@@ -304,8 +317,7 @@ export default function PlaybackPage() {
                 { title: '试听', width: 250, render: (_: any, item: any) => <AdminAudioPlayer compact sources={[item.audioPath]} onError={() => message.error('试听失败')} /> },
                 { title: '操作', width: 190, render: (_: any, item: any) => <Space><Button size="small" icon={<PlayCircleOutlined />} onClick={() => firePersonalized(item.audioPath)}>发射</Button><Popconfirm title="确认删除该音频？" onConfirm={() => deletePersonalized(item.id)}><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> }
               ]}
-            />
-            <List
+            /> : <List
               className="personalized-mobile-list"
               dataSource={personalized}
               locale={{ emptyText: '暂无个性化音频' }}
@@ -324,11 +336,33 @@ export default function PlaybackPage() {
                   </Card>
                 </List.Item>;
               }}
-            />
+            />}
           </Space>
         </SectionCard>
       )
     },
-    { key: 'cleanup', label: '音频清理', children: <SectionCard title="音频清理" description="只允许清理未被引用的 TTS 和 custom 音频"><Button onClick={scanCleanup}>扫描可清理文件</Button><List style={{ marginTop: 16 }} dataSource={cleanup} locale={{ emptyText: '暂无可清理文件' }} renderItem={(item) => <List.Item actions={[<Popconfirm title="确认删除该音频？" onConfirm={async () => { const res = await apiJson('/api/audio-cleanup/delete', 'POST', { audioPath: item.audioPath }); setCleanup((res as any).items || []); message.success('已删除'); }}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>]}><List.Item.Meta title={item.audioPath} description={`${item.sizeKb || 0} KB`} /></List.Item>} /></SectionCard> }
+    {
+      key: 'cleanup',
+      label: '音频清理',
+      children: <SectionCard title="音频清理" description="只允许清理未被引用的 TTS 和 custom 音频">
+        <Button onClick={scanCleanup}>扫描可清理文件</Button>
+        {cleanupScanned ? <List
+          style={{ marginTop: 16 }}
+          dataSource={cleanup}
+          locale={{ emptyText: '暂无可清理文件' }}
+          renderItem={(item) => <List.Item actions={[
+            <Popconfirm title="确认删除该音频？" onConfirm={async () => { const res = await apiJson('/api/audio-cleanup/delete', 'POST', { audioPath: item.audioPath }); setCleanup((res as any).items || []); setCleanupScanned(true); message.success('已删除'); }}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+          ]}>
+            <List.Item.Meta
+              title={<Typography.Text strong>{item.audioPath}</Typography.Text>}
+              description={<Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Typography.Text type="secondary">{item.sizeKb || 0} KB</Typography.Text>
+                <AdminAudioPlayer compact sources={[item.audioPath]} onError={() => message.error('试听失败')} />
+              </Space>}
+            />
+          </List.Item>}
+        /> : null}
+      </SectionCard>
+    }
   ]} />;
 }

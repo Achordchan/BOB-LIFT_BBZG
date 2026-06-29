@@ -3,7 +3,7 @@ import { App, Button, Card, Form, Input, List, Popconfirm, Space, Tag, Typograph
 import { DeleteOutlined, PlusOutlined, SoundOutlined } from '@ant-design/icons';
 import { apiGet, apiJson, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
-import type { CelebrationMessage } from '../types';
+import type { CelebrationMessage, PlayAdminTrackInput } from '../types';
 
 const variableOptions = [
   { token: '{person}', label: '负责人', sample: '陈驰宇-Achord' },
@@ -26,9 +26,15 @@ function renderPreview(text: string) {
   return output;
 }
 
-export default function CelebrationPage() {
+interface CelebrationPageProps {
+  playTrack: (track: PlayAdminTrackInput) => void;
+}
+
+export default function CelebrationPage({ playTrack }: CelebrationPageProps) {
   const { message } = App.useApp();
   const [rows, setRows] = useState<CelebrationMessage[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
   const [form] = Form.useForm();
   const textAreaRef = useRef<any>(null);
   const messageValue = Form.useWatch('message', form) || '';
@@ -49,6 +55,7 @@ export default function CelebrationPage() {
       await apiJson('/api/celebration-messages/add', 'POST', { message: cleanMessage });
       message.success('庆祝语已添加');
       form.resetFields();
+      setCreateOpen(false);
       load();
     } catch (e: any) { message.error(e.message || '添加失败'); }
   }
@@ -67,50 +74,61 @@ export default function CelebrationPage() {
     });
   }
 
-  async function speakTemplate(text: string) {
+  async function speakTemplate(text: string, key = 'draft') {
     const spokenText = renderPreview(text);
     if (!spokenText) { message.warning('请输入庆祝语'); return; }
+    setSpeakingKey(key);
     try {
       const res = await apiJson('/api/text-to-speech', 'POST', { text: spokenText });
-      const audio = new Audio((res as any).audioPath);
-      await audio.play();
+      const audioPath = (res as any).audioPath;
+      if (!audioPath) throw new Error('TTS 接口未返回音频地址');
+      playTrack({
+        id: `celebration-${key}-${Date.now()}`,
+        title: '庆祝语试听',
+        subtitle: spokenText,
+        sources: [audioPath]
+      });
+      message.success('已发送到底部播放器');
     } catch (e: any) { message.error(e.message || '试听失败'); }
+    finally { setSpeakingKey(null); }
   }
 
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
-    <Card className="celebration-variable-card">
-      <Space direction="vertical" size={10} style={{ width: '100%' }}>
-        <Typography.Text strong>可插入变量</Typography.Text>
-        <Space wrap>
-          {variableOptions.map(item => <Button key={item.token} size="small" onClick={() => insertVariable(item.token)}>{item.token} · {item.label}</Button>)}
+    {createOpen ? <>
+      <Card className="celebration-variable-card" extra={<Button onClick={() => { setCreateOpen(false); form.resetFields(); }}>收起</Button>}>
+        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          <Typography.Text strong>可插入变量</Typography.Text>
+          <Space wrap>
+            {variableOptions.map(item => <Button key={item.token} size="small" onClick={() => insertVariable(item.token)}>{item.token} · {item.label}</Button>)}
+          </Space>
         </Space>
-      </Space>
-    </Card>
+      </Card>
 
-    <SectionCard title="新增庆祝语" description="点击变量即可插入，试听会自动替换为示例数据">
-      <Form form={form} layout="vertical" onFinish={add}>
-        <Form.Item name="message" label="庆祝语模板" rules={[{ required: true, message: '请输入庆祝语' }]}>
-          <Input.TextArea ref={textAreaRef} rows={5} placeholder="恭喜{person}在{platform}成交{amount}元！" />
-        </Form.Item>
-        <Card size="small" className="celebration-preview-card">
-          <Typography.Text type="secondary">试听内容</Typography.Text>
-          <Typography.Paragraph style={{ margin: '6px 0 0' }}>{previewText || '输入模板后这里会显示替换变量后的播报内容'}</Typography.Paragraph>
-        </Card>
-        <Space wrap style={{ marginTop: 14 }}>
-          <Button icon={<SoundOutlined />} onClick={() => speakTemplate(messageValue)}>试听</Button>
-          <Button type="primary" icon={<PlusOutlined />} htmlType="submit">添加庆祝语</Button>
-        </Space>
-      </Form>
-    </SectionCard>
+      <SectionCard title="新增庆祝语" description="点击变量即可插入，试听会自动替换为示例数据">
+        <Form form={form} layout="vertical" onFinish={add}>
+          <Form.Item name="message" label="庆祝语模板" rules={[{ required: true, message: '请输入庆祝语' }]}>
+            <Input.TextArea ref={textAreaRef} rows={5} placeholder="恭喜{person}在{platform}成交{amount}元！" />
+          </Form.Item>
+          {messageValue ? <Card size="small" className="celebration-preview-card">
+            <Typography.Text type="secondary">试听内容</Typography.Text>
+            <Typography.Paragraph style={{ margin: '6px 0 0' }}>{previewText}</Typography.Paragraph>
+          </Card> : null}
+          <Space wrap style={{ marginTop: 14 }}>
+            <Button icon={<SoundOutlined />} loading={speakingKey === 'draft'} onClick={() => speakTemplate(messageValue, 'draft')}>试听</Button>
+            <Button type="primary" icon={<PlusOutlined />} htmlType="submit">添加庆祝语</Button>
+          </Space>
+        </Form>
+      </SectionCard>
+    </> : null}
 
-    <SectionCard title="庆祝语列表" description="成交时随机抽取一条模板播报">
+    <SectionCard title="庆祝语列表" description="成交时随机抽取一条模板播报" extra={!createOpen ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新增庆祝语</Button> : null}>
       <List
         dataSource={rows}
         locale={{ emptyText: '暂无庆祝语' }}
         renderItem={(item) => {
           const spokenText = renderPreview(item.message);
           return <List.Item actions={[
-            <Button icon={<SoundOutlined />} onClick={() => speakTemplate(item.message)}>试听</Button>,
+            <Button icon={<SoundOutlined />} loading={speakingKey === item.id} onClick={() => speakTemplate(item.message, item.id)}>试听</Button>,
             <Popconfirm title="确认删除？" onConfirm={async () => { await apiJson(`/api/celebration-messages/${item.id}`, 'DELETE'); message.success('已删除'); load(); }}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
           ]}>
             <List.Item.Meta

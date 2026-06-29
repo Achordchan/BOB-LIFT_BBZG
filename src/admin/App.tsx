@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Layout, Menu, Button, Typography, Space, Input, Tag, App as AntApp } from 'antd';
+import { Layout, Menu, Button, Typography, Space, Input, App as AntApp } from 'antd';
 import {
   ApiOutlined,
   AudioOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
   HomeOutlined,
-  LogoutOutlined,
+  LinkOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SettingOutlined,
@@ -24,6 +24,7 @@ import HomeSettingsPage from './pages/HomeSettingsPage';
 import ApiDebugPage from './pages/ApiDebugPage';
 import SystemPage from './pages/SystemPage';
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
+import { AdminAccountMenu } from './components/AdminAccountMenu';
 import type { AdminAudioTrack, PlayAdminTrackInput } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -39,12 +40,13 @@ const pages: Record<PageKey, { title: string; sub: string }> = {
   platforms: { title: '平台目标', sub: '维护平台销售目标、当前进度和首页展示方式' },
   settings: { title: '首页设置', sub: '只管理首页文案配置，不改首页页面代码' },
   apis: { title: 'API 调试', sub: '集中测试成交、询盘、TTS 和系统诊断接口' },
-  system: { title: '系统设置', sub: '管理员密码、登录状态和后台运行说明' }
+  system: { title: '系统设置', sub: '系统维护' }
 };
 
 export default function App() {
   const { message } = AntApp.useApp();
   const [collapsed, setCollapsed] = useState(false);
+  const [debugEnabled] = useState(() => new URLSearchParams(window.location.search).get('debug') === '1' || window.localStorage.getItem('bbzg-admin-debug') === '1');
   const [page, setPage] = useState<PageKey>('dashboard');
   const [playerTrack, setPlayerTrack] = useState<AdminAudioTrack | null>(null);
   const current = pages[page];
@@ -56,19 +58,20 @@ export default function App() {
     { key: 'celebration', icon: <TrophyOutlined />, label: '庆祝语' },
     { key: 'platforms', icon: <AudioOutlined />, label: '平台目标' },
     { key: 'settings', icon: <HomeOutlined />, label: '首页设置' },
-    { key: 'apis', icon: <ApiOutlined />, label: 'API 调试' },
+    ...(debugEnabled ? [{ key: 'apis', icon: <ApiOutlined />, label: 'API 调试' }] : []),
     { key: 'system', icon: <SettingOutlined />, label: '系统设置' }
-  ], []);
+  ], [debugEnabled]);
 
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get('page') as PageKey | null;
-    if (raw && pages[raw]) setPage(raw);
+    if (raw && pages[raw] && (raw !== 'apis' || debugEnabled)) setPage(raw);
+    if (raw === 'apis' && !debugEnabled) switchPage('dashboard');
     const media = window.matchMedia('(max-width: 720px)');
     const sync = () => setCollapsed(media.matches);
     sync();
     media.addEventListener('change', sync);
     return () => media.removeEventListener('change', sync);
-  }, []);
+  }, [debugEnabled]);
 
   function switchPage(key: PageKey) {
     setPage(key);
@@ -102,7 +105,7 @@ export default function App() {
       case 'users': return <UsersPage {...playerProps} />;
       case 'music': return <MusicPage {...playerProps} />;
       case 'playback': return <PlaybackPage />;
-      case 'celebration': return <CelebrationPage />;
+      case 'celebration': return <CelebrationPage {...playerProps} />;
       case 'platforms': return <PlatformPage />;
       case 'settings': return <HomeSettingsPage />;
       case 'apis': return <ApiDebugPage />;
@@ -131,11 +134,11 @@ export default function App() {
           </Space>
           <Space className="header-right">
             <Input.Search className="global-search" placeholder="搜索后台功能" allowClear onSearch={(v) => {
-              const hit = Object.entries(pages).find(([, item]) => item.title.includes(v) || item.sub.includes(v));
+              const hit = Object.entries(pages).filter(([key]) => key !== 'apis' || debugEnabled).find(([, item]) => item.title.includes(v) || item.sub.includes(v));
               if (hit) switchPage(hit[0] as PageKey);
             }} />
-            <Tag color="blue">管理员</Tag>
-            <Button icon={<LogoutOutlined />} href="/logout">退出</Button>
+            <Button icon={<LinkOutlined />} href="/" target="_blank">访问主页</Button>
+            <AdminAccountMenu />
           </Space>
         </Header>
         <Content className={playerTrack ? 'admin-content admin-content-with-player' : 'admin-content'}>{renderPage()}</Content>

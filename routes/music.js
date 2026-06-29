@@ -71,6 +71,20 @@ function registerMusicRoutes(app, deps) {
     return dir;
   }
 
+  function cleanText(value) {
+    return String(value || '').trim();
+  }
+
+  function splitJoinedMusicName(name) {
+    const text = cleanText(name);
+    const index = text.lastIndexOf('-');
+    if (index <= 0 || index >= text.length - 1) return { songName: text, artist: '' };
+    return {
+      songName: text.slice(0, index).trim(),
+      artist: text.slice(index + 1).trim()
+    };
+  }
+
   function createImportJob(jobId, meta) {
     const job = {
       id: jobId,
@@ -303,9 +317,14 @@ function registerMusicRoutes(app, deps) {
     if (!data.music) data.music = [];
 
     const musicId = uuidv4();
+    const nameParts = splitJoinedMusicName(payload.name);
+    const songName = cleanText(payload.songName) || nameParts.songName;
+    const artist = cleanText(payload.artist) || nameParts.artist || cleanText(payload.description);
     const musicRecord = {
       id: musicId,
       name: payload.name,
+      songName,
+      artist,
       description: payload.description || '',
       filename,
       originalname: `${payload.name || 'music'}${ext}`,
@@ -373,8 +392,11 @@ function registerMusicRoutes(app, deps) {
       });
     }
 
-    const name = req.body.name;
-    const description = req.body.description || '';
+    const name = cleanText(req.body.name);
+    const nameParts = splitJoinedMusicName(name);
+    const songName = cleanText(req.body.songName) || nameParts.songName;
+    const artist = cleanText(req.body.artist) || nameParts.artist;
+    const description = cleanText(req.body.description);
     const isSound = req.body.isSound === 'true';
 
     if (!name) {
@@ -395,6 +417,8 @@ function registerMusicRoutes(app, deps) {
     const musicRecord = {
       id: musicId,
       name: name,
+      songName,
+      artist,
       description: description,
       filename: musicFile.filename,
       originalname: musicFile.originalname,
@@ -446,6 +470,8 @@ function registerMusicRoutes(app, deps) {
     try {
       const neteaseId = req.body && (req.body.neteaseId || req.body.id);
       const name = req.body && req.body.name;
+      const songName = req.body && req.body.songName;
+      const artist = req.body && req.body.artist;
       const description = req.body && req.body.description;
       const lrcContent = req.body && req.body.lrcContent;
 
@@ -477,6 +503,8 @@ function registerMusicRoutes(app, deps) {
       startImportDownload(job, {
         neteaseId: idStr,
         name: nameStr,
+        songName,
+        artist,
         description: description || '',
         lrcContent: lrcContent || ''
       }).catch(err => {
@@ -775,6 +803,9 @@ function registerMusicRoutes(app, deps) {
   ]), (req, res) => {
     try {
       const { musicId, name, description, lrcContent } = req.body;
+      const nameParts = splitJoinedMusicName(name);
+      const songName = cleanText(req.body.songName) || nameParts.songName;
+      const artist = cleanText(req.body.artist) || nameParts.artist;
 
       if (!musicId || !name) {
         return res.status(400).json({
@@ -795,6 +826,8 @@ function registerMusicRoutes(app, deps) {
 
       // 更新基本信息
       data.music[musicIndex].name = name;
+      data.music[musicIndex].songName = songName;
+      data.music[musicIndex].artist = artist;
       data.music[musicIndex].description = description || '';
 
       // 处理LRC文件上传

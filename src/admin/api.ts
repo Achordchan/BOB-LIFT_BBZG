@@ -29,6 +29,33 @@ export async function apiGet<T>(url: string) {
   return parseResponse<T>(await fetch(url, { credentials: 'same-origin' }));
 }
 
+
+export async function apiText(url: string) {
+  const response = await fetch(url, { credentials: 'same-origin' });
+  const type = response.headers.get('content-type') || '';
+  const text = await response.text();
+
+  if (response.status === 401 || (response.redirected && response.url.includes('/login')) || (text.includes('<title') && text.includes('登录'))) {
+    message.error('登录已过期，请重新登录');
+    window.location.href = '/login';
+    throw new Error('未授权访问');
+  }
+
+  if (!response.ok) {
+    if (type.includes('application/json')) {
+      try {
+        const payload = JSON.parse(text);
+        throw new Error(payload.message || `请求失败(${response.status})`);
+      } catch (error: any) {
+        throw new Error(error.message || `请求失败(${response.status})`);
+      }
+    }
+    throw new Error(`请求失败(${response.status})`);
+  }
+
+  return text;
+}
+
 export async function apiJson<T>(url: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown) {
   return parseResponse<T>(await fetch(url, {
     method,

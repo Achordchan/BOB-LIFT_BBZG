@@ -65,11 +65,12 @@ function registerAuthRoutes(app, deps) {
   app.get('/api/admin/profile', requireLogin, (req, res) => {
     const data = getData();
     const admin = ensureAdmin(data);
+    const includeLogs = String(req.query.logs || '') === '1';
     res.json({
       success: true,
       username: admin.username,
       role: '管理员',
-      operationLogs: Array.isArray(data.adminOperationLogs) ? data.adminOperationLogs.slice(0, 30) : []
+      operationLogs: includeLogs && Array.isArray(data.adminOperationLogs) ? data.adminOperationLogs.slice(0, 30) : []
     });
   });
 

@@ -18,6 +18,9 @@ export interface UserItem {
 export interface MusicItem {
   id: string;
   name: string;
+  songName?: string;
+  artist?: string;
+  artists?: string;
   description?: string;
   filename?: string;
   originalname?: string;

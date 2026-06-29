@@ -83,6 +83,7 @@ export function ImageCropUpload(props: CropUploadProps) {
   const [source, setSource] = useState<CropSource | null>(null);
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => () => {
     if (source?.url) URL.revokeObjectURL(source.url);
@@ -116,7 +117,7 @@ export function ImageCropUpload(props: CropUploadProps) {
 
   return <div className="image-crop-upload">
     <Space align="center" size={12} wrap>
-      {previewUrl ? <img className="image-crop-thumb" src={previewUrl} alt={props.value ? '新裁剪预览' : '当前照片'} /> : null}
+      {previewUrl ? <button type="button" className="image-crop-thumb-button" onClick={() => setPreviewOpen(true)} aria-label="查看大图"><img className="image-crop-thumb" src={previewUrl} alt={props.value ? '新裁剪预览' : '当前照片'} /></button> : null}
       <Upload
         accept="image/*"
         showUploadList={false}
@@ -129,6 +130,9 @@ export function ImageCropUpload(props: CropUploadProps) {
       </Upload>
       {props.value ? <Typography.Text type="secondary">已选择新裁剪</Typography.Text> : props.currentUrl ? <Typography.Text type="secondary">{props.currentLabel || '当前照片'}</Typography.Text> : null}
     </Space>
+    <Modal title={props.currentLabel || '照片预览'} open={previewOpen} footer={null} onCancel={() => setPreviewOpen(false)} width={760} destroyOnClose>
+      {previewUrl ? <img className="image-crop-large-preview" src={previewUrl} alt={props.currentLabel || '照片预览'} /> : null}
+    </Modal>
     <Modal title={props.cropTitle} open={!!source} width={720} onCancel={cancelCrop} onOk={confirmCrop} okText="使用裁剪结果" cancelText="取消" destroyOnClose>
       {source ? <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Typography.Text type="secondary">拖拽或缩放选区，确认后生成后台使用照片。</Typography.Text>
