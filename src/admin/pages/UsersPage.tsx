@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { App, Avatar, Button, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined, SoundOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl } from '../api';
 import { ImageCropUpload, type CroppedFile } from '../components/ImageCropUpload';
+import AudioPlayer from 'react-h5-audio-player';
+import 'react-h5-audio-player/lib/styles.css';
 import { SectionCard } from '../components/SectionCard';
 import type { MusicItem, UserItem } from '../types';
 
@@ -14,8 +16,7 @@ export default function UsersPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [photoOpen, setPhotoOpen] = useState<UserItem | null>(null);
-  const [previewingMusicId, setPreviewingMusicId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingTrack, setPlayingTrack] = useState<{ song: MusicItem; user: UserItem; sources: string[]; index: number } | null>(null);
   const [halfPhoto, setHalfPhoto] = useState<CroppedFile | null>(null);
   const [fullPhoto, setFullPhoto] = useState<CroppedFile | null>(null);
   const [form] = Form.useForm();
@@ -30,10 +31,7 @@ export default function UsersPage() {
     } catch (e: any) { message.error(e.message || '用户加载失败'); }
     finally { setLoading(false); }
   }
-  useEffect(() => {
-    load();
-    return () => { audioRef.current?.pause(); };
-  }, []);
+  useEffect(() => { load(); }, []);
 
   function startAdd() { setEditing(null); form.resetFields(); setOpen(true); }
   function startEdit(user: UserItem) { setEditing(user); form.setFieldsValue({ ...user, loginPassword: '' }); setOpen(true); }
@@ -93,61 +91,47 @@ export default function UsersPage() {
     return Array.from(new Set(sources));
   }
 
-  function playPreviewSources(song: MusicItem, sources: string[], index = 0) {
-    const source = sources[index];
-    if (!source) {
-      setPreviewingMusicId(null);
-      message.error('试听失败');
-      return;
-    }
-
-    const audio = new Audio(source);
-    audioRef.current = audio;
-    setPreviewingMusicId(song.id);
-    audio.onended = () => setPreviewingMusicId(null);
-    audio.onerror = () => playPreviewSources(song, sources, index + 1);
-    audio.play().catch(() => playPreviewSources(song, sources, index + 1));
-  }
-
-  function previewMusic(user: UserItem) {
+  function playUserMusic(user: UserItem) {
     const song = getUserMusic(user);
     if (!song) {
-      message.warning('当前战歌没有可试听文件');
+      message.warning('当前战歌没有可播放文件');
       return;
     }
-
-    if (previewingMusicId === song.id) {
-      audioRef.current?.pause();
-      setPreviewingMusicId(null);
-      return;
-    }
-
     const sources = getPreviewSources(song);
     if (!sources.length) {
-      message.warning('当前战歌没有可试听文件');
+      message.warning('当前战歌没有可播放文件');
       return;
     }
+    setPlayingTrack({ song, user, sources, index: 0 });
+  }
 
-    audioRef.current?.pause();
-    playPreviewSources(song, sources);
+  function handlePlayerError() {
+    setPlayingTrack(current => {
+      if (!current) return null;
+      const nextIndex = current.index + 1;
+      if (!current.sources[nextIndex]) {
+        message.error('播放失败');
+        return null;
+      }
+      return { ...current, index: nextIndex };
+    });
   }
 
   function renderUserMusic(user: UserItem) {
     const song = getUserMusic(user);
     if (!user.musicName) return <Tag>未配置</Tag>;
-    return <Space size={6} wrap>
-      <Tag color="blue">{user.musicName}</Tag>
-      <Button
-        size="small"
-        icon={song?.id && previewingMusicId === song.id ? <PauseCircleOutlined /> : <SoundOutlined />}
-        disabled={!song?.filename}
-        onClick={() => previewMusic(user)}
-      >{song?.id && previewingMusicId === song.id ? '停止' : '试听'}</Button>
-    </Space>;
+    const active = !!song?.id && playingTrack?.song.id === song.id;
+    return <Button
+      type="link"
+      className={active ? 'user-music-link user-music-link-active' : 'user-music-link'}
+      disabled={!song?.filename}
+      onClick={() => playUserMusic(user)}
+    >{user.musicName}</Button>;
   }
 
 
-  return <SectionCard title="用户管理" description="维护团队成员、登录账号、照片和专属成交战歌" extra={<Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>添加用户</Button>}>
+  return <>
+    <SectionCard title="用户管理" description="维护团队成员、登录账号、照片和专属成交战歌" extra={<Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>添加用户</Button>}>
     <Table rowKey="id" loading={loading} dataSource={users} pagination={{ pageSize: 10 }} columns={[
       { title: '成员', render: (_, r) => <Space><Avatar src={(r as any).photoUrl}>{r.name?.[0]}</Avatar><span>{r.name}</span></Space> },
       { title: '职位', dataIndex: 'position' },
@@ -174,14 +158,29 @@ export default function UsersPage() {
 
     <Modal title={`上传照片：${photoOpen?.name || ''}`} open={!!photoOpen} onCancel={closePhotoModal} footer={null} destroyOnClose>
       <Form form={photoForm} layout="vertical" onFinish={uploadPhoto}>
+        <div className="user-photo-current-note">已有照片会显示在下方；只需要替换某一张时，另一张可以保持不变。</div>
         <Form.Item label="半身照">
-          <ImageCropUpload buttonText="选择半身照" cropTitle="裁剪半身照" fileName="cropped-user-photo.jpg" aspect={1} outputWidth={900} outputHeight={900} value={halfPhoto} onChange={setHalfPhoto} />
+          <ImageCropUpload buttonText="选择半身照" replaceButtonText="替换半身照" currentUrl={(photoOpen as any)?.photoUrl} currentLabel="当前半身照" cropTitle="裁剪半身照" fileName="cropped-user-photo.jpg" aspect={1} outputWidth={900} outputHeight={900} value={halfPhoto} onChange={setHalfPhoto} />
         </Form.Item>
         <Form.Item label="全身照">
-          <ImageCropUpload buttonText="选择全身照" cropTitle="裁剪全身照" fileName="cropped-user-full-photo.jpg" aspect={2 / 3} outputWidth={800} outputHeight={1200} value={fullPhoto} onChange={setFullPhoto} />
+          <ImageCropUpload buttonText="选择全身照" replaceButtonText="替换全身照" currentUrl={(photoOpen as any)?.fullPhotoUrl} currentLabel="当前全身照" cropTitle="裁剪全身照" fileName="cropped-user-full-photo.jpg" aspect={2 / 3} outputWidth={800} outputHeight={1200} value={fullPhoto} onChange={setFullPhoto} />
         </Form.Item>
         <Space><Button type="primary" htmlType="submit">上传</Button><Button onClick={closePhotoModal}>取消</Button></Space>
       </Form>
     </Modal>
-  </SectionCard>;
+  </SectionCard>
+    {playingTrack ? <div className="users-bottom-player">
+      <div className="users-bottom-player-meta">
+        <strong>{playingTrack.song.name}</strong>
+        <span>{playingTrack.user.name}</span>
+      </div>
+      <AudioPlayer
+        autoPlay
+        src={playingTrack.sources[playingTrack.index]}
+        onError={handlePlayerError}
+        showJumpControls={false}
+        layout="horizontal"
+      />
+    </div> : null}
+  </>;
 }

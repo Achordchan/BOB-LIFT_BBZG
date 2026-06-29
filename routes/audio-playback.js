@@ -185,6 +185,27 @@ function registerAudioPlaybackRoutes(app, deps) {
     }
   });
 
+  // API: 个性化音频 - 删除记录（需要登录）
+  app.delete('/api/personalized/delete/:id', requireLogin, (req, res) => {
+    try {
+      const id = req.params.id;
+      const data = getData();
+      if (!Array.isArray(data.personalizedAudio)) data.personalizedAudio = [];
+
+      const before = data.personalizedAudio.length;
+      data.personalizedAudio = data.personalizedAudio.filter(item => item && item.id !== id);
+      if (data.personalizedAudio.length === before) {
+        return res.status(404).json({ success: false, message: '音频不存在' });
+      }
+
+      saveData(data);
+      return res.json({ success: true, message: '已删除' });
+    } catch (error) {
+      console.error('删除个性化音频失败:', error);
+      return res.status(500).json({ success: false, message: '删除个性化音频失败' });
+    }
+  });
+
   // API: 个性化音频 - 发射（需要登录）
   app.post('/api/personalized/fire', requireLogin, (req, res) => {
     try {
