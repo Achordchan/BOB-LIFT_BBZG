@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, Card, Drawer, Form, Input, Modal, Popconfirm, Progress, Space, Table, Tabs, Tag, Typography, Upload } from 'antd';
+import { App, Button, Card, Drawer, Form, Input, Modal, Popconfirm, Progress, Space, Spin, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, apiText, audioUrl, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
@@ -21,6 +21,12 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
   const [saveLoading, setSaveLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchRows, setSearchRows] = useState<any[]>([]);
+  const [lyricsOpen, setLyricsOpen] = useState<{
+    open: boolean;
+    title: string;
+    content: string;
+    loading: boolean;
+  } | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasRun, setSearchHasRun] = useState(false);
@@ -86,6 +92,66 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
       message.error(e.message || '歌词加载失败');
     } finally {
       setEditLoading(false);
+    }
+  }
+
+  async function openLyricsPreview(row: MusicItem) {
+    setLyricsOpen({
+      open: true,
+      title: row.isSound ? row.name : getMusicTitle(row),
+      content: '加载中...',
+      loading: true
+    });
+    try {
+      const content = await apiText(`/api/music/${row.id}/lrc`);
+      setLyricsOpen({
+        open: true,
+        title: row.isSound ? row.name : getMusicTitle(row),
+        content: (content && content.trim()) || '暂无歌词',
+        loading: false
+      });
+    } catch (e: any) {
+      setLyricsOpen({
+        open: true,
+        title: row.isSound ? row.name : getMusicTitle(row),
+        content: e && e.message ? e.message : '加载歌词失败',
+        loading: false
+      });
+    }
+  }
+
+  async function openSearchLyricsPreview(row: any) {
+    const id = getSearchId(row);
+    if (!/^\d+$/.test(id)) {
+      message.error('缺少/无效歌曲ID');
+      return;
+    }
+
+    setLyricsOpen({
+      open: true,
+      title: getSearchTitle(row),
+      content: '加载中...',
+      loading: true
+    });
+
+    try {
+      const data = await apiGet<{ success: boolean; lyric?: string; tLyric?: string; message?: string }>(`/api/public/music/lyric?id=${encodeURIComponent(id)}`);
+      const content = data && data.success
+        ? (data.lyric || data.tLyric || '暂无歌词')
+        : (data && data.message) ? data.message : '暂无歌词';
+      setLyricsOpen({
+        open: true,
+        title: getSearchTitle(row),
+        content,
+        loading: false
+      });
+    } catch (e: any) {
+      setLyricsOpen({
+        open: true,
+        title: getSearchTitle(row),
+        content: e && e.message ? e.message : '加载歌词失败',
+        loading: false
+      });
     }
   }
 
@@ -282,10 +348,11 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
 
   const actionColumn = {
     title: '操作',
-    width: 150,
+    width: 240,
     fixed: 'right' as const,
     render: (_: any, r: MusicItem) => <Space>
       <Button size="small" icon={<EditOutlined />} onClick={() => startEdit(r)}>编辑</Button>
+      <Button size="small" disabled={!r.lrcFilename} onClick={() => openLyricsPreview(r)}>查看歌词</Button>
       <Popconfirm title="确认删除？" onConfirm={async () => { await apiJson(`/api/music/delete/${r.id}`, 'DELETE'); message.success('已删除'); load(); }}>
         <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
       </Popconfirm>
@@ -363,7 +430,17 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
     <Modal title="网易云音乐导入" width={820} open={searchOpen} onCancel={() => setSearchOpen(false)} footer={null}>
       <Form form={searchForm} layout="inline" onFinish={(v) => search(v, 1)} className="music-search-form"><Form.Item name="keyword" rules={[{ required: true, message: '请输入关键词' }]}><Input placeholder="歌曲或歌手" /></Form.Item><Button type="primary" htmlType="submit" loading={searchLoading}>搜索</Button></Form>
       {searchHasRun ? <>
-        <Table loading={searchLoading} rowKey={(r) => getSearchId(r) || `${getSearchTitle(r)}-${getSearchArtist(r)}`} dataSource={searchRows} pagination={false} columns={[{ title: '歌曲', render: (_: any, r: any) => renderSearchName(r) }, { title: '歌手', render: (_: any, r: any) => getSearchArtist(r) }, { title: '操作', render: (_: any, r: any) => <Button size="small" type="primary" onClick={() => importSong(r)}>导入</Button> }]} />
+        <Table
+          loading={searchLoading}
+          rowKey={(r) => getSearchId(r) || `${getSearchTitle(r)}-${getSearchArtist(r)}`}
+          dataSource={searchRows}
+          pagination={false}
+          columns={[{ title: '歌曲', render: (_: any, r: any) => renderSearchName(r) }, { title: '歌手', render: (_: any, r: any) => getSearchArtist(r) }, { title: '操作', render: (_: any, r: any) => <Space>
+            <Button size="small" onClick={() => playSearchTrack(r)}>试听</Button>
+            <Button size="small" onClick={() => openSearchLyricsPreview(r)}>查看歌词</Button>
+            <Button size="small" type="primary" onClick={() => importSong(r)}>导入</Button>
+          </Space> }]}
+        />
         {searchRows.length || searchPage > 1 ? <Space style={{ marginTop: 12 }}><Button disabled={searchPage <= 1} onClick={() => search({ keyword: searchKeyword }, searchPage - 1)}>上一页</Button><span>第 {searchPage} 页</span><Button disabled={!searchRows.length} onClick={() => search({ keyword: searchKeyword }, searchPage + 1)}>下一页</Button></Space> : null}
         <div className="music-open-source-credit">
           <Typography.Text strong>开源致谢</Typography.Text>
@@ -371,6 +448,31 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
           <a href="https://github.com/Suxiaoqinx/Netease_url" target="_blank" rel="noopener noreferrer">原仓库地址</a>
         </div>
       </> : null}
+    </Modal>
+    <Modal
+      title={lyricsOpen?.title || '歌词'}
+      width={760}
+      open={!!lyricsOpen?.open}
+      onCancel={() => setLyricsOpen(null)}
+      footer={null}
+      destroyOnClose
+    >
+      <Spin spinning={!!lyricsOpen?.loading}>
+        <pre style={{
+          margin: 0,
+          padding: 12,
+          maxHeight: '55vh',
+          overflow: 'auto',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          lineHeight: 1.6,
+          fontSize: 12,
+          background: 'rgba(0, 0, 0, 0.06)',
+          borderRadius: 8
+        }}>
+          {lyricsOpen?.content || '暂无歌词'}
+        </pre>
+      </Spin>
     </Modal>
   </Space>;
 }

@@ -21,6 +21,11 @@
   const eggBroadcastCloseBtn = document.getElementById('eggBroadcastCloseBtn');
   const eggBroadcastCancelBtn = document.getElementById('eggBroadcastCancelBtn');
   const eggBroadcastList = document.getElementById('eggBroadcastList');
+  const eggLyricsModal = document.getElementById('eggLyricsModal');
+  const eggLyricsTitle = document.getElementById('eggLyricsTitle');
+  const eggLyricsCloseBtn = document.getElementById('eggLyricsCloseBtn');
+  const eggLyricsCancelBtn = document.getElementById('eggLyricsCancelBtn');
+  const eggLyricsBody = document.getElementById('eggLyricsBody');
 
   const eggLoginModal = document.getElementById('eggLoginModal');
   const eggLoginCloseBtn = document.getElementById('eggLoginCloseBtn');
@@ -97,6 +102,89 @@
     audioEl.addEventListener('error', pendingStreamErrorHandler, { once: true });
   }
 
+  function closeLyricsModal() {
+    if (!eggLyricsModal) return;
+    closeModal(eggLyricsModal);
+  }
+
+  function setLyricsText(text) {
+    if (!eggLyricsBody) return;
+    eggLyricsBody.textContent = String(text || '');
+  }
+
+  function setLyricsTitle(text) {
+    if (!eggLyricsTitle) return;
+    eggLyricsTitle.textContent = String(text || '歌词');
+  }
+
+  function openLyricsModal() {
+    if (!eggLyricsModal) return;
+    openModal(eggLyricsModal);
+  }
+
+  function showNeteaseLyrics(song) {
+    const id = song && song.id != null ? String(song.id) : '';
+    const name = safeText(song && song.name ? song.name : '未知歌曲');
+    if (!id) {
+      showToast('缺少歌曲ID', 'error');
+      return;
+    }
+
+    setLyricsTitle(`歌词 · ${name}`);
+    setLyricsText('加载中...');
+    openLyricsModal();
+
+    fetch(`/api/public/music/lyric?id=${encodeURIComponent(id)}`)
+      .then(r => {
+        if (!r || !r.ok) {
+          return r.json().catch(() => null).then(data => {
+            throw new Error((data && data.message) ? data.message : `获取歌词失败（${r ? r.status : '网络错误'}）`);
+          });
+        }
+        return r.json();
+      })
+      .then(data => {
+        const text = data && data.success ? (data.lyric || data.tLyric || '') : '';
+        setLyricsText(text || '暂无歌词');
+      })
+      .catch(err => {
+        console.error('获取歌词失败', err);
+        setLyricsText('暂无歌词');
+        showToast(err && err.message ? err.message : '获取歌词失败', 'error');
+      });
+  }
+
+  function showLocalLyrics(record) {
+    const id = record && record.id ? String(record.id) : '';
+    const name = safeText(record && record.name ? record.name : '未知歌曲');
+    if (!id) {
+      showToast('缺少歌曲ID', 'error');
+      return;
+    }
+
+    setLyricsTitle(`歌词 · ${name}`);
+    setLyricsText('加载中...');
+    openLyricsModal();
+
+    fetch(`/api/music/${encodeURIComponent(id)}/lrc`)
+      .then(r => {
+        if (!r || !r.ok) {
+          return r.json().catch(() => null).then(data => {
+            throw new Error((data && data.message) ? data.message : `获取歌词失败（${r ? r.status : '网络错误'}）`);
+          });
+        }
+        return r.text();
+      })
+      .then(text => {
+        setLyricsText(text || '暂无歌词');
+      })
+      .catch(err => {
+        console.error('获取歌词失败', err);
+        setLyricsText('暂无歌词');
+        showToast(err && err.message ? err.message : '获取歌词失败', 'error');
+      });
+  }
+
   if (accountBtn) {
     accountBtn.addEventListener('click', function () {
       ensureLogin().then(ok => {
@@ -125,6 +213,14 @@
   if (eggBroadcastModal) {
     eggBroadcastModal.addEventListener('click', function (e) {
       if (e && e.target === eggBroadcastModal) closeBroadcastModal();
+    });
+  }
+
+  if (eggLyricsCloseBtn) eggLyricsCloseBtn.addEventListener('click', closeLyricsModal);
+  if (eggLyricsCancelBtn) eggLyricsCancelBtn.addEventListener('click', closeLyricsModal);
+  if (eggLyricsModal) {
+    eggLyricsModal.addEventListener('click', function (e) {
+      if (e && e.target === eggLyricsModal) closeLyricsModal();
     });
   }
 
@@ -300,8 +396,20 @@
         });
       });
 
+      const lyricBtn = document.createElement('button');
+      lyricBtn.type = 'button';
+      lyricBtn.className = 'btn btnSmall';
+      lyricBtn.textContent = '歌词';
+      lyricBtn.addEventListener('click', function () {
+        ensureLogin().then(ok => {
+          if (!ok) return;
+          showLocalLyrics(m);
+        });
+      });
+
       actions.appendChild(auditionBtn);
       actions.appendChild(setBtn);
+      actions.appendChild(lyricBtn);
 
       row.appendChild(title);
       row.appendChild(actions);
@@ -629,6 +737,17 @@
         });
       });
 
+      const lyricBtn = document.createElement('button');
+      lyricBtn.type = 'button';
+      lyricBtn.className = 'btn btnSmall';
+      lyricBtn.textContent = '歌词';
+      lyricBtn.addEventListener('click', function () {
+        ensureLogin().then(ok => {
+          if (!ok) return;
+          showNeteaseLyrics(item);
+        });
+      });
+
       const downloadLink = document.createElement('a');
       downloadLink.className = 'btn btnSmall btnGood btnLink';
       downloadLink.textContent = '下载';
@@ -693,6 +812,7 @@
       });
 
       actions.appendChild(auditionBtn);
+      actions.appendChild(lyricBtn);
       actions.appendChild(downloadLink);
       actions.appendChild(setBtn);
 

@@ -214,6 +214,69 @@ function registerPublicMusicRoutes(app) {
     return standard;
   }
 
+  function extractLyricPayload(payload) {
+    if (payload == null) return { lyric: '', tLyric: '' };
+    const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
+
+    const getLyric = (obj) => {
+      if (!obj) return '';
+      if (typeof obj === 'string') return String(obj).trim();
+      if (typeof obj !== 'object') return '';
+      return typeof obj.lyric === 'string' ? String(obj.lyric).trim() : '';
+    };
+
+    return {
+      lyric: getLyric(data.lrc),
+      tLyric: getLyric(data.tlyric)
+    };
+  }
+
+  function normalizeLyricPayload(payload) {
+    const result = extractLyricPayload(payload);
+    if (result.lyric) return result;
+    if (result.tLyric) return { lyric: '', tLyric: result.tLyric };
+    return { lyric: '', tLyric: '' };
+  }
+
+  async function requestNeteaseSongApi(neteaseId, requestType) {
+    const reqData = { id: String(neteaseId), type: requestType };
+
+    const attempts = [
+      () => withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, reqData, {
+        timeout: searchTimeout(),
+        httpsAgent: insecureHttpsAgent,
+        headers: { 'Content-Type': 'application/json' }
+      })),
+      () => withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/song`, {
+        timeout: searchTimeout(),
+        httpsAgent: insecureHttpsAgent,
+        headers: { 'Content-Type': 'application/json' },
+        params: reqData
+      }))
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      try {
+        const resp = await attempt();
+        return resp && resp.data ? resp.data : null;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) throw lastError;
+    throw new Error('音乐 API 请求失败');
+  }
+
+  async function fetchNeteaseLyric(neteaseId) {
+    const payload = await requestNeteaseSongApi(neteaseId, 'lyric');
+    if (payload && payload.success === false) {
+      throw new Error((payload && payload.message) ? payload.message : '获取歌词失败');
+    }
+    return normalizeLyricPayload(payload);
+  }
+
   function pickHeader(headers, key) {
     if (!headers) return '';
     const v = headers[key.toLowerCase()];
@@ -511,6 +574,31 @@ function registerPublicMusicRoutes(app) {
       });
     } catch (err) {
       res.status(500).json({ success: false, message: err && err.message ? err.message : '搜索失败' });
+    }
+  });
+
+  app.get('/api/public/music/lyric', async (req, res) => {
+    try {
+      const id = String(req.query.id || '').trim();
+      if (!/^\d+$/.test(id)) {
+        res.status(400).json({ success: false, message: '缺少/无效歌曲ID' });
+        return;
+      }
+
+      const lyrics = await fetchNeteaseLyric(id);
+      if (!lyrics || (!lyrics.lyric && !lyrics.tLyric)) {
+        res.status(404).json({ success: false, message: '未找到歌词' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        id,
+        lyric: lyrics.lyric,
+        tLyric: lyrics.tLyric
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err && err.message ? err.message : '获取歌词失败' });
     }
   });
 

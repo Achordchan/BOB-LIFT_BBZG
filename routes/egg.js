@@ -9,6 +9,13 @@ function registerEggRoutes(app, deps) {
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
   const NETEASE_API_BASE = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
+  const NETEASE_API_TIMEOUT_MS = Number.parseInt(process.env.BBZG_MUSIC_API_TIMEOUT_MS || '12000', 10);
+
+  function safeUnlink(targetPath) {
+    try {
+      if (targetPath && fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+    } catch (e) {}
+  }
 
   async function withInsecureTls(fn) {
     const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
@@ -129,6 +136,62 @@ function registerEggRoutes(app, deps) {
     return standard;
   }
 
+  function extractLyricPayload(payload) {
+    if (payload == null) return { lyric: '', tLyric: '' };
+    const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
+
+    const getLyric = (obj) => {
+      if (!obj) return '';
+      if (typeof obj === 'string') return String(obj).trim();
+      if (typeof obj !== 'object') return '';
+      return typeof obj.lyric === 'string' ? String(obj.lyric).trim() : '';
+    };
+
+    return {
+      lyric: getLyric(data.lrc),
+      tLyric: getLyric(data.tlyric)
+    };
+  }
+
+  async function requestNeteaseSongApi(neteaseId, requestType) {
+    const reqData = { id: String(neteaseId), type: requestType };
+    const attempts = [
+      () => withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, reqData, {
+        timeout: NETEASE_API_TIMEOUT_MS,
+        httpsAgent: insecureHttpsAgent,
+        headers: { 'Content-Type': 'application/json' }
+      })),
+      () => withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/song`, {
+        timeout: NETEASE_API_TIMEOUT_MS,
+        httpsAgent: insecureHttpsAgent,
+        headers: { 'Content-Type': 'application/json' },
+        params: reqData
+      }))
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      try {
+        const resp = await attempt();
+        return resp && resp.data ? resp.data : null;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) throw lastError;
+    throw new Error('音乐 API 请求失败');
+  }
+
+  async function fetchNeteaseLyric(neteaseId) {
+    const payload = await requestNeteaseSongApi(neteaseId, 'lyric');
+    if (payload && payload.success === false) {
+      throw new Error((payload && payload.message) ? payload.message : '获取歌词失败');
+    }
+    const result = extractLyricPayload(payload);
+    return result.lyric || result.tLyric ? result : { lyric: '', tLyric: '' };
+  }
+
   async function importNeteaseToLocal(payload) {
     const idStr = String(payload && payload.neteaseId ? payload.neteaseId : '').trim();
     const nameStr = String(payload && payload.name ? payload.name : '').trim();
@@ -142,10 +205,31 @@ function registerEggRoutes(app, deps) {
       if (found && found.filename) {
         const fp = path.join(baseDir, 'public', 'music', String(found.filename));
         if (fs.existsSync(fp)) {
+          if (!found.lrcFilename) {
+            try {
+              const lyric = await fetchNeteaseLyric(idStr);
+              const lyricText = lyric.lyric || lyric.tLyric || '';
+              if (lyricText) {
+                const cachedLyricName = `${path.parse(found.filename).name}.lrc`;
+                const cachedLyricPath = path.join(baseDir, 'public', 'music', cachedLyricName);
+                fs.writeFileSync(cachedLyricPath, lyricText, 'utf8');
+                found.lrcFilename = cachedLyricName;
+                if (Array.isArray(existingData.music)) {
+                  saveData(existingData);
+                }
+              }
+            } catch (e) {}
+          }
           return found;
         }
       }
     }
+
+    let lyricText = '';
+    try {
+      const lyric = await fetchNeteaseLyric(idStr);
+      lyricText = lyric.lyric || lyric.tLyric || '';
+    } catch (e) {}
 
     const playableUrl = await resolveNeteasePlayableUrl(idStr);
     if (!playableUrl) throw new Error('获取播放链接失败');
@@ -168,12 +252,17 @@ function registerEggRoutes(app, deps) {
     const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
     const filePath = path.join(musicDir, filename);
 
+    const cleanupPaths = [];
     await new Promise((resolve, reject) => {
       const writer = fs.createWriteStream(filePath);
+      cleanupPaths.push(filePath);
       response.data.on('error', reject);
       writer.on('error', reject);
       writer.on('finish', resolve);
       response.data.pipe(writer);
+    }).catch(error => {
+      cleanupPaths.forEach(p => safeUnlink(p));
+      throw error;
     });
 
     const data = getData();
@@ -197,6 +286,17 @@ function registerEggRoutes(app, deps) {
       sourceId: idStr,
       coverUrl: sanitizeText(payload && payload.coverUrl ? payload.coverUrl : '')
     };
+
+    if (lyricText) {
+      const lrcFilename = `${path.parse(filename).name}.lrc`;
+      const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFilename);
+      try {
+        fs.writeFileSync(lrcFilePath, lyricText, 'utf8');
+        musicRecord.lrcFilename = lrcFilename;
+      } catch (e) {
+        console.error('保存歌词文件失败:', e);
+      }
+    }
 
     data.music.push(musicRecord);
     saveData(data);
@@ -291,7 +391,8 @@ function registerEggRoutes(app, deps) {
         id: m.id,
         name: m.name,
         filename: m.filename || '',
-        coverUrl: m.coverUrl || ''
+        coverUrl: m.coverUrl || '',
+        lrcFilename: m.lrcFilename || ''
       }));
 
     res.json({ success: true, music });

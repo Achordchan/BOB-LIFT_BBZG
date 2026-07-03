@@ -16,6 +16,7 @@ function registerMusicRoutes(app, deps) {
   const importJobs = new Map();
 
   const NETEASE_API_BASE = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
+  const NETEASE_API_TIMEOUT_MS = Number.parseInt(process.env.BBZG_MUSIC_API_TIMEOUT_MS || '12000', 10);
 
   const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -106,6 +107,69 @@ function registerMusicRoutes(app, deps) {
     };
     importJobs.set(jobId, job);
     return job;
+  }
+
+  function safeUnlink(targetPath) {
+    try {
+      if (targetPath && fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+    } catch (e) {}
+  }
+
+  function extractLyricPayload(payload) {
+    if (payload == null) return { lyric: '', tLyric: '' };
+    const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
+
+    const getLyric = (obj) => {
+      if (!obj) return '';
+      if (typeof obj === 'string') return String(obj).trim();
+      if (typeof obj !== 'object') return '';
+      return typeof obj.lyric === 'string' ? String(obj.lyric).trim() : '';
+    };
+
+    return {
+      lyric: getLyric(data.lrc),
+      tLyric: getLyric(data.tlyric)
+    };
+  }
+
+  async function requestNeteaseSongApi(neteaseId, requestType) {
+    const reqData = { id: String(neteaseId), type: requestType };
+    const attempts = [
+      () => withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, reqData, {
+        timeout: NETEASE_API_TIMEOUT_MS,
+        httpsAgent: insecureHttpsAgent,
+        headers: { 'Content-Type': 'application/json' }
+      })),
+      () => withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/song`, {
+        timeout: NETEASE_API_TIMEOUT_MS,
+        httpsAgent: insecureHttpsAgent,
+        headers: { 'Content-Type': 'application/json' },
+        params: reqData
+      }))
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      try {
+        const resp = await attempt();
+        return resp && resp.data ? resp.data : null;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) throw lastError;
+    throw new Error('音乐 API 请求失败');
+  }
+
+  async function fetchNeteaseLyric(neteaseId) {
+    const payload = await requestNeteaseSongApi(neteaseId, 'lyric');
+    if (payload && payload.success === false) {
+      const msg = payload && payload.message ? payload.message : '获取歌词失败';
+      throw new Error(msg);
+    }
+    const result = extractLyricPayload(payload);
+    return result.lyric || result.tLyric ? result : { lyric: '', tLyric: '' };
   }
 
   function toImportJobPayload(job) {
@@ -276,6 +340,21 @@ function registerMusicRoutes(app, deps) {
     const totalBytes = totalBytesHeader ? Number(totalBytesHeader) : null;
     job.totalBytes = Number.isFinite(totalBytes) ? totalBytes : null;
 
+    let lrcFilename = '';
+    let lrcText = String(payload.lrcContent || '').trim();
+    if (!lrcText) {
+      updateImportJob(job, {
+        phase: 'resolving',
+        message: '获取歌词信息...'
+      }, { eventType: 'progress', force: true });
+      try {
+        const lyric = await fetchNeteaseLyric(payload.neteaseId);
+        lrcText = lyric.lyric || lyric.tLyric || '';
+      } catch (err) {
+        console.log(`导入歌曲未同步到歌词: id=${payload.neteaseId}, ${err && err.message ? err.message : '未知错误'}`);
+      }
+    }
+
     await new Promise((resolve, reject) => {
       const writer = fs.createWriteStream(filePath);
 
@@ -334,11 +413,13 @@ function registerMusicRoutes(app, deps) {
       sourceId: String(payload.neteaseId)
     };
 
-    if (payload.lrcContent) {
+    if (lrcText) {
+      lrcFilename = `${path.parse(filename).name}.lrc`;
+      const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFilename);
+
       try {
-        const lrcFilename = `${path.parse(filename).name}.lrc`;
-        const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFilename);
-        fs.writeFileSync(lrcFilePath, String(payload.lrcContent), 'utf8');
+        fs.writeFileSync(lrcFilePath, String(lrcText), 'utf8');
+        job.lrcFilename = lrcFilename;
         musicRecord.lrcFilename = lrcFilename;
       } catch (e) {
         console.error('保存歌词文件失败:', e);
@@ -518,8 +599,12 @@ function registerMusicRoutes(app, deps) {
         cleanupImportJobLater(job.id);
         if (job.filename) {
           try {
-            const fp = path.join(baseDir, 'public', 'music', job.filename);
-            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+            safeUnlink(path.join(baseDir, 'public', 'music', job.filename));
+          } catch (e) {}
+        }
+        if (job.lrcFilename) {
+          try {
+            safeUnlink(path.join(baseDir, 'public', 'music', job.lrcFilename));
           } catch (e) {}
         }
       });
