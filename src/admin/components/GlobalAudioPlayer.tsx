@@ -103,7 +103,7 @@ export function GlobalAudioPlayer({ track, onError, onClose, onListen, currentTi
           <div className="admin-lyrics-screen-label">正在播放</div>
           <h2>{activeLyrics.title || track.title}</h2>
         </div>
-        <button className="admin-lyrics-screen-close" type="button" onClick={() => setLyricsScreenOpen(false)}>关闭</button>
+        <button className="admin-lyrics-screen-close" type="button" aria-label="关闭歌词" onClick={() => setLyricsScreenOpen(false)} />
       </div>
       <div className="admin-lyrics-screen-body">
         {lines.length ? lines.map((line, index) => <div

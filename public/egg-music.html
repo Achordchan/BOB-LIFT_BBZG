@@ -498,10 +498,11 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      background: rgba(255,255,255,0.04);
-      border: 0;
-      border-radius: 999px;
-      padding: 0 18px;
+      background: transparent !important;
+      border: 0 !important;
+      border-radius: 0;
+      box-shadow: none;
+      padding: 0;
       cursor:pointer;
     }
 
@@ -518,12 +519,19 @@
     .playerLyricsList{
       min-width:0;
       width:100%;
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     }
 
     .playerLyricsLine{
-      display:block;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:100%;
       font-size: 13px;
-      line-height: 1;
+      line-height: normal;
       color: rgba(255,255,255,0.94);
       max-width: 100%;
       white-space: nowrap;
@@ -538,9 +546,13 @@
     }
 
     .playerLyricsNoData{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:100%;
       color: rgba(255,255,255,0.68);
       font-size: 12px;
-      line-height: 1;
+      line-height: normal;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
@@ -632,19 +644,33 @@
     }
 
     .playerLyricsScreenClose{
+      position:relative;
+      width:36px;
+      height:36px;
       appearance:none;
       border:0;
       border-radius:999px;
       background:rgba(255,255,255,.08);
-      color:rgba(255,255,255,.86);
-      padding:8px 14px;
       cursor:pointer;
-      font-weight:800;
     }
+
+    .playerLyricsScreenClose::before,
+    .playerLyricsScreenClose::after{
+      content:'';
+      position:absolute;
+      left:10px;
+      right:10px;
+      top:17px;
+      height:2px;
+      border-radius:999px;
+      background:rgba(255,255,255,.9);
+    }
+
+    .playerLyricsScreenClose::before{ transform:rotate(45deg); }
+    .playerLyricsScreenClose::after{ transform:rotate(-45deg); }
 
     .playerLyricsScreenClose:hover{
       background:rgba(255,255,255,.14);
-      color:#fff;
     }
 
     .now{
@@ -957,7 +983,7 @@
         <div class="playerLyricsScreenLabel">正在播放</div>
         <h2 class="playerLyricsScreenTitle" id="eggPlayerLyricsScreenTitle">歌词</h2>
       </div>
-      <button class="playerLyricsScreenClose" id="eggPlayerLyricsScreenClose" type="button">关闭</button>
+      <button class="playerLyricsScreenClose" id="eggPlayerLyricsScreenClose" type="button" aria-label="关闭歌词"></button>
     </div>
     <div class="playerLyricsScreenBody" id="eggPlayerLyricsScreenBody"></div>
   </div>
