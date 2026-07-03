@@ -28,9 +28,10 @@ function renderPreview(text: string) {
 
 interface CelebrationPageProps {
   playTrack: (track: PlayAdminTrackInput) => void;
+  activeTrackId?: string;
 }
 
-export default function CelebrationPage({ playTrack }: CelebrationPageProps) {
+export default function CelebrationPage({ playTrack, activeTrackId }: CelebrationPageProps) {
   const { message } = App.useApp();
   const [rows, setRows] = useState<CelebrationMessage[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -82,15 +83,19 @@ export default function CelebrationPage({ playTrack }: CelebrationPageProps) {
       const res = await apiJson('/api/text-to-speech', 'POST', { text: spokenText });
       const audioPath = (res as any).audioPath;
       if (!audioPath) throw new Error('TTS 接口未返回音频地址');
+      const trackId = key === 'draft' ? 'celebration-draft' : `celebration-${key}`;
       playTrack({
-        id: `celebration-${key}-${Date.now()}`,
+        id: trackId,
         title: '庆祝语试听',
         subtitle: spokenText,
         sources: [audioPath]
       });
-      message.success('已发送到底部播放器');
     } catch (e: any) { message.error(e.message || '试听失败'); }
     finally { setSpeakingKey(null); }
+  }
+  function isTrackActive(key: string) {
+    const trackId = key === 'draft' ? 'celebration-draft' : `celebration-${key}`;
+    return activeTrackId === trackId;
   }
 
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -114,7 +119,14 @@ export default function CelebrationPage({ playTrack }: CelebrationPageProps) {
             <Typography.Paragraph style={{ margin: '6px 0 0' }}>{previewText}</Typography.Paragraph>
           </Card> : null}
           <Space wrap style={{ marginTop: 14 }}>
-            <Button icon={<SoundOutlined />} loading={speakingKey === 'draft'} onClick={() => speakTemplate(messageValue, 'draft')}>试听</Button>
+            <Button
+              icon={<SoundOutlined />}
+              loading={speakingKey === 'draft'}
+              type={isTrackActive('draft') ? 'primary' : 'default'}
+              onClick={() => speakTemplate(messageValue, 'draft')}
+            >
+              {isTrackActive('draft') ? '正在播放' : '试听'}
+            </Button>
             <Button type="primary" icon={<PlusOutlined />} htmlType="submit">添加庆祝语</Button>
           </Space>
         </Form>
@@ -128,7 +140,14 @@ export default function CelebrationPage({ playTrack }: CelebrationPageProps) {
         renderItem={(item) => {
           const spokenText = renderPreview(item.message);
           return <List.Item actions={[
-            <Button icon={<SoundOutlined />} loading={speakingKey === item.id} onClick={() => speakTemplate(item.message, item.id)}>试听</Button>,
+            <Button
+              icon={<SoundOutlined />}
+              loading={speakingKey === item.id}
+              type={isTrackActive(item.id) ? 'primary' : 'default'}
+              onClick={() => speakTemplate(item.message, item.id)}
+            >
+              {isTrackActive(item.id) ? '正在播放' : '试听'}
+            </Button>,
             <Popconfirm title="确认删除？" onConfirm={async () => { await apiJson(`/api/celebration-messages/${item.id}`, 'DELETE'); message.success('已删除'); load(); }}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
           ]}>
             <List.Item.Meta

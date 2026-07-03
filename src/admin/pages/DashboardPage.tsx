@@ -104,13 +104,18 @@ export default function DashboardPage() {
   ], [configuredUsers, defaultSong, songs, sounds, ttsReady, users.length]);
 
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
-    <div className="toolbar"><span /> <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新数据</Button></div>
-    <div className="metric-grid">
-      <Card className="dashboard-kpi-card"><Statistic title="成交金额" value={money(dashboard.dealAmount)} /></Card>
-      <Card className="dashboard-kpi-card"><Statistic title="询盘数量" value={dashboard.inquiryCount} suffix="条" /></Card>
-      <Card className="dashboard-kpi-card"><Statistic title="成员战歌配置" value={configuredUsers} suffix={`/ ${users.length}`} /></Card>
-      <Card className="dashboard-kpi-card"><Statistic title="音乐资产" value={music.length} suffix="个" /></Card>
-    </div>
+    <SectionCard
+      title="工作台"
+      description="核心运营数据与常用运维入口"
+      extra={<Button icon={<ReloadOutlined />} onClick={load} loading={loading}>刷新数据</Button>}
+    >
+      <div className="metric-grid">
+        <Card className="dashboard-kpi-card"><Statistic title="成交金额" value={money(dashboard.dealAmount)} /></Card>
+        <Card className="dashboard-kpi-card"><Statistic title="询盘数量" value={dashboard.inquiryCount} suffix="条" /></Card>
+        <Card className="dashboard-kpi-card"><Statistic title="成员战歌配置" value={configuredUsers} suffix={`/ ${users.length}`} /></Card>
+        <Card className="dashboard-kpi-card"><Statistic title="音乐资产" value={music.length} suffix="个" /></Card>
+      </div>
+    </SectionCard>
     <div className="content-grid">
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <SectionCard title="成交记录" description="最近成交数据">

@@ -18,7 +18,6 @@ body { margin: 0; background: #f4f7fb; }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); gap: 16px; align-items: start; }
 .admin-section-card { border: 1px solid #e6ebf2; box-shadow: 0 10px 30px rgba(15, 23, 42, .04); }
 .section-desc { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; }
-.toolbar { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .audio-row { width: 220px; max-width: 100%; }
 .danger-text { color: #dc2626; }
