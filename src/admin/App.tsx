@@ -29,6 +29,18 @@ import type { AdminAudioTrack, PlayAdminTrackInput } from './types';
 
 const { Header, Sider, Content } = Layout;
 
+interface LyricLine {
+  time: number;
+  text: string;
+}
+
+interface AdminLyricsPanelState {
+  title: string;
+  rawContent: string;
+  lines: LyricLine[];
+  trackId: string;
+}
+
 type PageKey = 'dashboard' | 'users' | 'music' | 'playback' | 'celebration' | 'platforms' | 'settings' | 'apis' | 'system';
 
 const pages: Record<PageKey, { title: string; sub: string }> = {
@@ -50,6 +62,7 @@ export default function App() {
   const [page, setPage] = useState<PageKey>('dashboard');
   const [playerTrack, setPlayerTrack] = useState<AdminAudioTrack | null>(null);
   const [adminAudioCurrentTime, setAdminAudioCurrentTime] = useState(0);
+  const [lyricsPanel, setLyricsPanel] = useState<AdminLyricsPanelState | null>(null);
   const current = pages[page];
   const menuItems = useMemo(() => [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
@@ -83,6 +96,7 @@ export default function App() {
 
   function playTrack(input: PlayAdminTrackInput) {
     setAdminAudioCurrentTime(0);
+    setLyricsPanel(null);
     const sources = Array.from(new Set(input.sources.filter(Boolean)));
     if (!sources.length) {
       message.warning('当前音频没有可播放文件');
@@ -102,10 +116,19 @@ export default function App() {
   }
 
   function renderPage() {
-    const playerProps = { playTrack, activeTrackId: playerTrack?.id, adminAudioCurrentTime };
+    const playerProps = { playTrack, activeTrackId: playerTrack?.id };
     switch (page) {
       case 'users': return <UsersPage {...playerProps} />;
-      case 'music': return <MusicPage {...playerProps} />;
+      case 'music': return <MusicPage
+        {...playerProps}
+        onLyricsPanelChange={(value) => {
+          if (!value) {
+            setLyricsPanel(null);
+            return;
+          }
+          setLyricsPanel(value);
+        }}
+      />;
       case 'playback': return <PlaybackPage {...playerProps} />;
       case 'celebration': return <CelebrationPage {...playerProps} />;
       case 'platforms': return <PlatformPage />;
@@ -148,8 +171,14 @@ export default function App() {
       {playerTrack ? <GlobalAudioPlayer
         track={playerTrack}
         onError={handlePlayerError}
-        onClose={() => { setPlayerTrack(null); setAdminAudioCurrentTime(0); }}
+        onClose={() => {
+          setPlayerTrack(null);
+          setAdminAudioCurrentTime(0);
+          setLyricsPanel(null);
+        }}
         onListen={(time) => setAdminAudioCurrentTime(time)}
+        currentTime={adminAudioCurrentTime}
+        lyricsPanel={lyricsPanel}
       /> : null}
     </Layout>
   );

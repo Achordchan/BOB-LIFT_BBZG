@@ -8,7 +8,12 @@ import type { MusicItem, PlayAdminTrackInput } from '../types';
 interface MusicPageProps {
   playTrack: (track: PlayAdminTrackInput) => void;
   activeTrackId?: string;
-  adminAudioCurrentTime?: number;
+  onLyricsPanelChange?: (value: {
+    title: string;
+    rawContent: string;
+    lines: LyricLine[];
+    trackId: string;
+  } | null) => void;
 }
 
 interface LyricLine {
@@ -25,7 +30,11 @@ interface LyricsOpenState {
   loading: boolean;
 }
 
-export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentTime = 0 }: MusicPageProps) {
+export default function MusicPage({
+  playTrack,
+  activeTrackId,
+  onLyricsPanelChange
+}: MusicPageProps) {
   const { message } = App.useApp();
   const [items, setItems] = useState<MusicItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,6 +68,9 @@ export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentT
     finally { setLoading(false); }
   }
   useEffect(() => { load(); return () => importSourceRef.current?.close(); }, []);
+  useEffect(() => () => {
+    emitLyricsPanel(null);
+  }, []);
 
   async function submitUpload(values: any) {
     const fd = new FormData();
@@ -134,16 +146,14 @@ export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentT
     return result.sort((a, b) => a.time - b.time);
   }
 
-  function findCurrentLyricLine(lines: LyricLine[], currentTime: number): number {
-    if (!lines.length || !Number.isFinite(currentTime)) return -1;
-    let index = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (currentTime >= lines[i].time) {
-        index = i;
-        break;
-      }
-    }
-    return index;
+  function emitLyricsPanel(value: {
+    title: string;
+    rawContent: string;
+    lines: LyricLine[];
+    trackId: string;
+  } | null) {
+    if (!onLyricsPanelChange) return;
+    onLyricsPanelChange(value);
   }
 
   async function fillLyricsBySearch({
@@ -217,30 +227,51 @@ export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentT
   }
 
   async function openLyricsPreview(row: MusicItem) {
+    const title = row.isSound ? row.name : getMusicTitle(row);
     setLyricsOpen({
       open: true,
-      title: row.isSound ? row.name : getMusicTitle(row),
+      title,
       rawContent: '加载中...',
       lines: [],
       trackId: `music-${row.id}`,
       loading: true
     });
+    emitLyricsPanel({
+      title,
+      rawContent: '加载中...',
+      lines: [],
+      trackId: `music-${row.id}`
+    });
     try {
       const content = await apiText(`/api/music/${row.id}/lrc`);
       const lines = parseLrc(content);
+      const normalized = (content && content.trim()) || '暂无歌词';
+      emitLyricsPanel({
+        title,
+        rawContent: normalized,
+        lines,
+        trackId: `music-${row.id}`
+      });
       setLyricsOpen({
         open: true,
-        title: row.isSound ? row.name : getMusicTitle(row),
-        rawContent: (content && content.trim()) || '暂无歌词',
+        title,
+        rawContent: normalized,
         lines,
         trackId: `music-${row.id}`,
         loading: false
       });
     } catch (e: any) {
+      const errorText = e && e.message ? e.message : '加载歌词失败';
+      emitLyricsPanel({
+        title,
+        rawContent: errorText,
+        lines: [],
+        trackId: `music-${row.id}`
+      });
       setLyricsOpen({
         open: true,
-        title: row.isSound ? row.name : getMusicTitle(row),
-        rawContent: e && e.message ? e.message : '加载歌词失败',
+        title,
+        rawContent: errorText,
         lines: [],
         trackId: `music-${row.id}`,
         loading: false
@@ -255,13 +286,20 @@ export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentT
       return;
     }
 
+    const title = getSearchTitle(row);
     setLyricsOpen({
       open: true,
-      title: getSearchTitle(row),
+      title,
       rawContent: '加载中...',
       lines: [],
       trackId: `netease-${id}`,
       loading: true
+    });
+    emitLyricsPanel({
+      title,
+      rawContent: '加载中...',
+      lines: [],
+      trackId: `netease-${id}`
     });
 
     try {
@@ -270,19 +308,32 @@ export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentT
         ? (data.lyric || data.tLyric || '暂无歌词')
         : (data && data.message) ? data.message : '暂无歌词';
       const lines = parseLrc(content);
+      emitLyricsPanel({
+        title,
+        rawContent: content,
+        lines,
+        trackId: `netease-${id}`
+      });
       setLyricsOpen({
         open: true,
-        title: getSearchTitle(row),
+        title,
         rawContent: content,
         lines,
         trackId: `netease-${id}`,
         loading: false
       });
     } catch (e: any) {
+      const errorText = e && e.message ? e.message : '加载歌词失败';
+      emitLyricsPanel({
+        title,
+        rawContent: errorText,
+        lines: [],
+        trackId: `netease-${id}`
+      });
       setLyricsOpen({
         open: true,
-        title: getSearchTitle(row),
-        rawContent: e && e.message ? e.message : '加载歌词失败',
+        title,
+        rawContent: errorText,
         lines: [],
         trackId: `netease-${id}`,
         loading: false
@@ -428,31 +479,7 @@ export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentT
 
   function renderLyricsContent() {
     if (!lyricsOpen) return null;
-    const lines = lyricsOpen.lines || [];
-    if (!lines.length) {
-      return <pre className="admin-lyrics-plain">{lyricsOpen.rawContent || '暂无歌词'}</pre>;
-    }
-
-    const isCurrentTrack = lyricsOpen.trackId && lyricsOpen.trackId === activeTrackId;
-    const syncIndex = isCurrentTrack
-      ? findCurrentLyricLine(lines, Number.isFinite(adminAudioCurrentTime as number) ? (adminAudioCurrentTime || 0) : 0)
-      : -1;
-    const currentIndex = syncIndex >= 0 ? syncIndex : 0;
-
-    const visible = [];
-    if (currentIndex > 0) visible.push(currentIndex - 1);
-    visible.push(currentIndex);
-    if (currentIndex < lines.length - 1) visible.push(currentIndex + 1);
-
-    return <div className="admin-lyrics-scroll">
-      {visible.map((index) => {
-        const line = lines[index];
-        const state = index === currentIndex ? 'current' : 'normal';
-        return <div key={`${line.time}-${line.text}-${index}`} className={`admin-lyrics-line ${state}`}>
-          {line.text}
-        </div>;
-      })}
-    </div>;
+    return <pre className="admin-lyrics-plain">{lyricsOpen.rawContent || '暂无歌词'}</pre>;
   }
 
   function openSearchModal() {

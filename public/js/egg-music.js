@@ -26,6 +26,8 @@
   const eggLyricsCloseBtn = document.getElementById('eggLyricsCloseBtn');
   const eggLyricsCancelBtn = document.getElementById('eggLyricsCancelBtn');
   const eggLyricsBody = document.getElementById('eggLyricsBody');
+  const eggPlayerLyrics = document.getElementById('eggPlayerLyrics');
+  const eggPlayerLyricsList = document.getElementById('eggPlayerLyricsList');
   let eggLyricsLines = [];
   let eggLyricsPlainText = '加载中...';
   let eggLyricsSyncLine = -1;
@@ -150,23 +152,42 @@
   }
 
   function renderEggLyricsByTime(currentTime) {
-    if (!eggLyricsBody) return;
-    if (!eggLyricsLines.length) {
-      setLyricsText(eggLyricsPlainText || '暂无歌词');
+    const isValidTime = Number.isFinite(currentTime) ? currentTime : 0;
+    if (!eggLyricsBody || !eggPlayerLyrics || !eggPlayerLyricsList) {
       return;
     }
 
-    const idx = findCurrentLineIndex(eggLyricsLines, currentTime);
+    if (!eggLyricsLines.length) {
+      eggLyricsSyncLine = -1;
+      setLyricsText(eggLyricsPlainText || '暂无歌词');
+      eggPlayerLyrics.style.display = 'block';
+      eggPlayerLyricsList.innerHTML = '';
+      const noData = document.createElement('div');
+      noData.className = 'playerLyricsNoData';
+      const rawText = String(eggLyricsPlainText || '').trim();
+      noData.textContent = rawText || '暂无歌词';
+      eggPlayerLyricsList.appendChild(noData);
+      return;
+    }
+
+    const idx = findCurrentLineIndex(eggLyricsLines, isValidTime);
     if (idx === eggLyricsSyncLine) return;
     eggLyricsSyncLine = idx;
 
     eggLyricsBody.innerHTML = '';
+    eggPlayerLyricsList.innerHTML = '';
+    eggPlayerLyrics.style.display = 'block';
 
     const createLine = (line, cls) => {
       const div = document.createElement('div');
       div.className = `eggLyricsLine ${cls}`;
       div.textContent = line.text || '—';
       eggLyricsBody.appendChild(div);
+
+      const mini = document.createElement('div');
+      mini.className = `playerLyricsLine ${cls}`;
+      mini.textContent = line.text || '—';
+      eggPlayerLyricsList.appendChild(mini);
     };
 
     if (idx > 0) createLine(eggLyricsLines[idx - 1], 'prev');
@@ -183,8 +204,6 @@
 
   if (audioEl) {
     const syncEggLyrics = function () {
-      const isVisible = eggLyricsModal && eggLyricsModal.style.display === 'flex';
-      if (!isVisible) return;
       renderEggLyricsByTime(audioEl.currentTime);
     };
     if (!audioEl.__bbzgLyricsBound) {
@@ -192,9 +211,7 @@
       audioEl.addEventListener('timeupdate', syncEggLyrics);
       audioEl.addEventListener('loadedmetadata', syncEggLyrics);
       audioEl.addEventListener('ended', () => {
-        if (eggLyricsModal && eggLyricsModal.style.display === 'flex') {
-          renderEggLyricsByTime(0);
-        }
+        renderEggLyricsByTime(0);
       });
     }
   }
@@ -236,7 +253,7 @@
       })
       .catch(err => {
         console.error('获取歌词失败', err);
-        setLyricsText('暂无歌词');
+        setLyricsPayload(err && err.message ? err.message : '暂无歌词');
         showToast(err && err.message ? err.message : '获取歌词失败', 'error');
       });
   }
@@ -267,7 +284,7 @@
       })
       .catch(err => {
         console.error('获取歌词失败', err);
-        setLyricsText('暂无歌词');
+        setLyricsPayload(err && err.message ? err.message : '暂无歌词');
         showToast(err && err.message ? err.message : '获取歌词失败', 'error');
       });
   }
