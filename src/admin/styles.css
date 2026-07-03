@@ -168,6 +168,46 @@ body { margin: 0; background: #f4f7fb; }
   .music-search-form { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .music-search-form .ant-form-item, .music-search-form .ant-input, .music-search-form .ant-btn { width: 100%; }
 }
+.admin-lyrics-preview {
+  min-height: 140px;
+  max-height: 55vh;
+}
+.admin-lyrics-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.admin-lyrics-line {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  line-height: 1.5;
+  font-size: 13px;
+  color: rgba(15, 23, 42, 0.68);
+  background: rgba(15, 23, 42, 0.06);
+  white-space: pre-wrap;
+  text-align: center;
+}
+.admin-lyrics-line.current {
+  color: #0f172a;
+  background: rgba(21, 94, 239, 0.12);
+  font-weight: 700;
+}
+.admin-lyrics-plain {
+  margin: 0;
+  padding: 12px;
+  max-height: 55vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+}
 
 .admin-list-search { max-width: 420px; margin-bottom: 16px; }
 .music-asset-entry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

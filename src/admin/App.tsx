@@ -49,6 +49,7 @@ export default function App() {
   const [debugEnabled] = useState(() => new URLSearchParams(window.location.search).get('debug') === '1' || window.localStorage.getItem('bbzg-admin-debug') === '1');
   const [page, setPage] = useState<PageKey>('dashboard');
   const [playerTrack, setPlayerTrack] = useState<AdminAudioTrack | null>(null);
+  const [adminAudioCurrentTime, setAdminAudioCurrentTime] = useState(0);
   const current = pages[page];
   const menuItems = useMemo(() => [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
@@ -81,6 +82,7 @@ export default function App() {
   }
 
   function playTrack(input: PlayAdminTrackInput) {
+    setAdminAudioCurrentTime(0);
     const sources = Array.from(new Set(input.sources.filter(Boolean)));
     if (!sources.length) {
       message.warning('当前音频没有可播放文件');
@@ -100,7 +102,7 @@ export default function App() {
   }
 
   function renderPage() {
-    const playerProps = { playTrack, activeTrackId: playerTrack?.id };
+    const playerProps = { playTrack, activeTrackId: playerTrack?.id, adminAudioCurrentTime };
     switch (page) {
       case 'users': return <UsersPage {...playerProps} />;
       case 'music': return <MusicPage {...playerProps} />;
@@ -143,7 +145,12 @@ export default function App() {
         </Header>
         <Content className={playerTrack ? 'admin-content admin-content-with-player' : 'admin-content'}>{renderPage()}</Content>
       </Layout>
-      {playerTrack ? <GlobalAudioPlayer track={playerTrack} onError={handlePlayerError} onClose={() => setPlayerTrack(null)} /> : null}
+      {playerTrack ? <GlobalAudioPlayer
+        track={playerTrack}
+        onError={handlePlayerError}
+        onClose={() => { setPlayerTrack(null); setAdminAudioCurrentTime(0); }}
+        onListen={(time) => setAdminAudioCurrentTime(time)}
+      /> : null}
     </Layout>
   );
 }

@@ -8,9 +8,24 @@ import type { MusicItem, PlayAdminTrackInput } from '../types';
 interface MusicPageProps {
   playTrack: (track: PlayAdminTrackInput) => void;
   activeTrackId?: string;
+  adminAudioCurrentTime?: number;
 }
 
-export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) {
+interface LyricLine {
+  time: number;
+  text: string;
+}
+
+interface LyricsOpenState {
+  open: boolean;
+  title: string;
+  rawContent: string;
+  lines: LyricLine[];
+  trackId: string;
+  loading: boolean;
+}
+
+export default function MusicPage({ playTrack, activeTrackId, adminAudioCurrentTime = 0 }: MusicPageProps) {
   const { message } = App.useApp();
   const [items, setItems] = useState<MusicItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,16 +36,12 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
   const [saveLoading, setSaveLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchRows, setSearchRows] = useState<any[]>([]);
-  const [lyricsOpen, setLyricsOpen] = useState<{
-    open: boolean;
-    title: string;
-    content: string;
-    loading: boolean;
-  } | null>(null);
+  const [lyricsOpen, setLyricsOpen] = useState<LyricsOpenState | null>(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasRun, setSearchHasRun] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLyricsLoading, setSearchLyricsLoading] = useState(false);
   const [importing, setImporting] = useState<any>(null);
   const [assetView, setAssetView] = useState<'songs' | 'sounds' | null>(null);
   const importSourceRef = useRef<EventSource | null>(null);
@@ -95,26 +106,143 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
     }
   }
 
+  function parseLrc(content: string): LyricLine[] {
+    const lines = String(content || '').split(/\r?\n/);
+    const result: LyricLine[] = [];
+    const timeRegex = /\[(\d{1,}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const text = raw ? raw.replace(timeRegex, '').trim() : '';
+      if (!text) continue;
+
+      const matches = raw.matchAll(timeRegex);
+      for (const match of matches) {
+        const minute = parseInt(match[1], 10);
+        const second = parseInt(match[2], 10);
+        const msRaw = match[3] || '';
+        const ms = msRaw ? parseInt(msRaw.padEnd(3, '0').slice(0, 3), 10) : 0;
+        if (Number.isFinite(minute) && Number.isFinite(second)) {
+          result.push({
+            time: minute * 60 + second + (msRaw ? ms / 1000 : 0),
+            text
+          });
+        }
+      }
+    }
+
+    return result.sort((a, b) => a.time - b.time);
+  }
+
+  function findCurrentLyricLine(lines: LyricLine[], currentTime: number): number {
+    if (!lines.length || !Number.isFinite(currentTime)) return -1;
+    let index = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (currentTime >= lines[i].time) {
+        index = i;
+        break;
+      }
+    }
+    return index;
+  }
+
+  async function fillLyricsBySearch({
+    songName,
+    artist,
+    formInstance
+  }: {
+    songName: string;
+    artist: string;
+    formInstance: any;
+  }) {
+    if (searchLyricsLoading) return;
+    const keyword = [songName, artist].filter(Boolean).join(' ').trim();
+    if (!keyword) {
+      message.warning('请先填写歌曲名（编辑页会自动带入歌名）');
+      return;
+    }
+
+    setSearchLyricsLoading(true);
+    try {
+      const searchRes = await apiGet<any>(`/api/public/music/search?keywords=${encodeURIComponent(keyword)}&limit=10&page=1`);
+      const rows = (searchRes as any).songs || (searchRes as any).data?.songs || (searchRes as any).result?.songs || [];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        message.info('未找到匹配歌词');
+        return;
+      }
+
+      const hit = rows[0];
+      const id = getSearchId(hit);
+      if (!id) {
+        message.info('搜索结果缺少歌曲ID');
+        return;
+      }
+
+      const lyricRes = await apiGet<{ success: boolean; lyric?: string; tLyric?: string; message?: string }>(`/api/public/music/lyric?id=${encodeURIComponent(id)}`);
+      const content = lyricRes && lyricRes.success ? (lyricRes.lyric || lyricRes.tLyric || '') : '';
+      if (!content) {
+        message.info('该歌曲暂无歌词内容');
+        return;
+      }
+
+      formInstance.setFieldsValue({ lrcContent: content });
+      message.success('歌词已补齐');
+    } catch (e: any) {
+      message.error(e && e.message ? e.message : '歌词搜索失败');
+    } finally {
+      setSearchLyricsLoading(false);
+    }
+  }
+
+  async function searchLyricsForUpload() {
+    if (!open) return;
+    const songName = String(form.getFieldValue('songName') || '').trim();
+    const artist = String(form.getFieldValue('artist') || '').trim();
+    const fallback = String(form.getFieldValue('name') || '').trim();
+    const finalSongName = songName || fallback || '';
+    await fillLyricsBySearch({ songName: finalSongName, artist, formInstance: form });
+  }
+
+  function getEditFormValues() {
+    const values = editForm.getFieldsValue(true);
+    const songName = String((values && values.songName) || getMusicTitle(editing || {} as MusicItem)).trim();
+    const artist = String((values && values.artist) || getMusicArtist(editing || {} as MusicItem)).trim();
+    return { songName, artist };
+  }
+
+  async function searchLyricsForEdit() {
+    if (!editing) return;
+    const { songName, artist } = getEditFormValues();
+    await fillLyricsBySearch({ songName, artist, formInstance: editForm });
+  }
+
   async function openLyricsPreview(row: MusicItem) {
     setLyricsOpen({
       open: true,
       title: row.isSound ? row.name : getMusicTitle(row),
-      content: '加载中...',
+      rawContent: '加载中...',
+      lines: [],
+      trackId: `music-${row.id}`,
       loading: true
     });
     try {
       const content = await apiText(`/api/music/${row.id}/lrc`);
+      const lines = parseLrc(content);
       setLyricsOpen({
         open: true,
         title: row.isSound ? row.name : getMusicTitle(row),
-        content: (content && content.trim()) || '暂无歌词',
+        rawContent: (content && content.trim()) || '暂无歌词',
+        lines,
+        trackId: `music-${row.id}`,
         loading: false
       });
     } catch (e: any) {
       setLyricsOpen({
         open: true,
         title: row.isSound ? row.name : getMusicTitle(row),
-        content: e && e.message ? e.message : '加载歌词失败',
+        rawContent: e && e.message ? e.message : '加载歌词失败',
+        lines: [],
+        trackId: `music-${row.id}`,
         loading: false
       });
     }
@@ -130,7 +258,9 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
     setLyricsOpen({
       open: true,
       title: getSearchTitle(row),
-      content: '加载中...',
+      rawContent: '加载中...',
+      lines: [],
+      trackId: `netease-${id}`,
       loading: true
     });
 
@@ -139,17 +269,22 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
       const content = data && data.success
         ? (data.lyric || data.tLyric || '暂无歌词')
         : (data && data.message) ? data.message : '暂无歌词';
+      const lines = parseLrc(content);
       setLyricsOpen({
         open: true,
         title: getSearchTitle(row),
-        content,
+        rawContent: content,
+        lines,
+        trackId: `netease-${id}`,
         loading: false
       });
     } catch (e: any) {
       setLyricsOpen({
         open: true,
         title: getSearchTitle(row),
-        content: e && e.message ? e.message : '加载歌词失败',
+        rawContent: e && e.message ? e.message : '加载歌词失败',
+        lines: [],
+        trackId: `netease-${id}`,
         loading: false
       });
     }
@@ -291,6 +426,35 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
     >{title}</Button>;
   }
 
+  function renderLyricsContent() {
+    if (!lyricsOpen) return null;
+    const lines = lyricsOpen.lines || [];
+    if (!lines.length) {
+      return <pre className="admin-lyrics-plain">{lyricsOpen.rawContent || '暂无歌词'}</pre>;
+    }
+
+    const isCurrentTrack = lyricsOpen.trackId && lyricsOpen.trackId === activeTrackId;
+    const syncIndex = isCurrentTrack
+      ? findCurrentLyricLine(lines, Number.isFinite(adminAudioCurrentTime as number) ? (adminAudioCurrentTime || 0) : 0)
+      : -1;
+    const currentIndex = syncIndex >= 0 ? syncIndex : 0;
+
+    const visible = [];
+    if (currentIndex > 0) visible.push(currentIndex - 1);
+    visible.push(currentIndex);
+    if (currentIndex < lines.length - 1) visible.push(currentIndex + 1);
+
+    return <div className="admin-lyrics-scroll">
+      {visible.map((index) => {
+        const line = lines[index];
+        const state = index === currentIndex ? 'current' : 'normal';
+        return <div key={`${line.time}-${line.text}-${index}`} className={`admin-lyrics-line ${state}`}>
+          {line.text}
+        </div>;
+      })}
+    </div>;
+  }
+
   function openSearchModal() {
     setSearchOpen(true);
     setSearchRows([]);
@@ -407,6 +571,10 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
         </>}
         <Form.Item name="file" label="音频文件" valuePropName="fileList" getValueFromEvent={norm} rules={[{ required: true, message: '请选择音频文件' }]}><Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item>
         {open === 'music' && <><Form.Item name="lrcFile" label="LRC 歌词文件" valuePropName="fileList" getValueFromEvent={norm}><Upload beforeUpload={() => false} maxCount={1} accept=".lrc,text/plain"><Button>选择歌词文件</Button></Upload></Form.Item><Form.Item name="lrcContent" label="歌词内容"><Input.TextArea rows={6} /></Form.Item></>}
+        {open === 'music' && <Form.Item>
+          <Button size="small" loading={searchLyricsLoading} onClick={searchLyricsForUpload}>搜索网易歌词</Button>
+          <span style={{ marginLeft: 10, color: '#7b8794', fontSize: 12 }}>用于自动补齐未上传的歌词文件</span>
+        </Form.Item>}
         <Button type="primary" htmlType="submit" loading={uploadLoading}>提交</Button>
       </Form>
     </Drawer>
@@ -421,7 +589,17 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
           <Form.Item name="artist" label="歌手名" rules={[{ required: true, message: '请输入歌手名' }]}><Input /></Form.Item>
           <Form.Item name="description" label="来源/备注"><Input /></Form.Item>
           <Form.Item name="lrcFile" label="替换 LRC 文件" valuePropName="fileList" getValueFromEvent={norm}><Upload beforeUpload={() => false} maxCount={1} accept=".lrc,text/plain"><Button>选择歌词文件</Button></Upload></Form.Item>
-          <Form.Item name="lrcContent" label="歌词内容" extra={editing?.lrcFilename ? '已自动载入当前歌词，可直接修改后保存。' : '当前未配置歌词，可在这里粘贴 LRC 内容。'}><Input.TextArea rows={8} placeholder={editLoading ? '歌词加载中...' : '暂无歌词内容'} /></Form.Item>
+          <Form.Item
+            name="lrcContent"
+            label="歌词内容"
+            extra={editing?.lrcFilename ? '已自动载入当前歌词，可直接修改后保存。' : '当前未配置歌词，可在这里粘贴 LRC 内容。'}
+          >
+            <Input.TextArea rows={8} placeholder={editLoading ? '歌词加载中...' : '暂无歌词内容'} />
+          </Form.Item>
+          <Form.Item>
+            <Button size="small" loading={searchLyricsLoading} onClick={searchLyricsForEdit} disabled={!editing}>再次搜索歌词</Button>
+            <span style={{ marginLeft: 10, color: '#7b8794', fontSize: 12 }}>用于补齐未有歌词信息的歌曲</span>
+          </Form.Item>
         </>}
         <Button type="primary" htmlType="submit" loading={editLoading || saveLoading}>保存</Button>
       </Form>
@@ -458,20 +636,9 @@ export default function MusicPage({ playTrack, activeTrackId }: MusicPageProps) 
       destroyOnClose
     >
       <Spin spinning={!!lyricsOpen?.loading}>
-        <pre style={{
-          margin: 0,
-          padding: 12,
-          maxHeight: '55vh',
-          overflow: 'auto',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          lineHeight: 1.6,
-          fontSize: 12,
-          background: 'rgba(0, 0, 0, 0.06)',
-          borderRadius: 8
-        }}>
-          {lyricsOpen?.content || '暂无歌词'}
-        </pre>
+        <div className="admin-lyrics-preview">
+          {renderLyricsContent()}
+        </div>
       </Spin>
     </Modal>
   </Space>;

@@ -8,9 +8,10 @@ interface GlobalAudioPlayerProps {
   track: AdminAudioTrack;
   onError: () => void;
   onClose: () => void;
+  onListen: (currentTime: number) => void;
 }
 
-export function GlobalAudioPlayer({ track, onError, onClose }: GlobalAudioPlayerProps) {
+export function GlobalAudioPlayer({ track, onError, onClose, onListen }: GlobalAudioPlayerProps) {
   return <div className="admin-global-player">
     <div className="admin-global-player-meta">
       <strong>{track.title}</strong>
@@ -20,6 +21,11 @@ export function GlobalAudioPlayer({ track, onError, onClose }: GlobalAudioPlayer
       autoPlay
       src={track.sources[track.sourceIndex || 0]}
       onError={onError}
+      onListen={(e) => {
+        const node = e && e.target ? (e.target as HTMLAudioElement) : null;
+        const time = node && Number.isFinite(node.currentTime) ? node.currentTime : 0;
+        onListen(time);
+      }}
       showJumpControls={false}
       layout="horizontal"
     />
