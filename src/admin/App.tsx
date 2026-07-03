@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Layout, Menu, Button, Typography, Space, Input, App as AntApp } from 'antd';
 import {
   ApiOutlined,
@@ -24,6 +24,7 @@ import HomeSettingsPage from './pages/HomeSettingsPage';
 import ApiDebugPage from './pages/ApiDebugPage';
 import SystemPage from './pages/SystemPage';
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
+import { apiGet, apiText } from './api';
 import { AdminAccountMenu } from './components/AdminAccountMenu';
 import type { AdminAudioTrack, PlayAdminTrackInput } from './types';
 
@@ -39,6 +40,34 @@ interface AdminLyricsPanelState {
   rawContent: string;
   lines: LyricLine[];
   trackId: string;
+}
+
+
+function parseLrc(content: string): LyricLine[] {
+  const lines = String(content || '').split(/\r?\n/);
+  const result: LyricLine[] = [];
+  const timeRegex = /\[(\d{1,}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+  for (const raw of lines) {
+    const text = raw ? raw.replace(timeRegex, '').trim() : '';
+    if (!text) continue;
+
+    const matches = raw.matchAll(timeRegex);
+    for (const match of matches) {
+      const minute = parseInt(match[1], 10);
+      const second = parseInt(match[2], 10);
+      const msRaw = match[3] || '';
+      const ms = msRaw ? parseInt(msRaw.padEnd(3, '0').slice(0, 3), 10) : 0;
+      if (Number.isFinite(minute) && Number.isFinite(second)) {
+        result.push({
+          time: minute * 60 + second + (msRaw ? ms / 1000 : 0),
+          text
+        });
+      }
+    }
+  }
+
+  return result.sort((a, b) => a.time - b.time);
 }
 
 type PageKey = 'dashboard' | 'users' | 'music' | 'playback' | 'celebration' | 'platforms' | 'settings' | 'apis' | 'system';
@@ -63,6 +92,7 @@ export default function App() {
   const [playerTrack, setPlayerTrack] = useState<AdminAudioTrack | null>(null);
   const [adminAudioCurrentTime, setAdminAudioCurrentTime] = useState(0);
   const [lyricsPanel, setLyricsPanel] = useState<AdminLyricsPanelState | null>(null);
+  const lyricsRequestRef = useRef(0);
   const current = pages[page];
   const menuItems = useMemo(() => [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
@@ -86,6 +116,47 @@ export default function App() {
     media.addEventListener('change', sync);
     return () => media.removeEventListener('change', sync);
   }, [debugEnabled]);
+
+
+  useEffect(() => {
+    if (!playerTrack) return;
+    const requestId = lyricsRequestRef.current + 1;
+    lyricsRequestRef.current = requestId;
+    const trackId = playerTrack.id;
+    const title = playerTrack.title;
+
+    async function loadPlayerLyrics() {
+      try {
+        let content = '';
+        if (trackId.startsWith('music-')) {
+          const musicId = trackId.slice('music-'.length);
+          if (!musicId) return;
+          content = await apiText(`/api/music/${encodeURIComponent(musicId)}/lrc`);
+        } else if (trackId.startsWith('netease-')) {
+          const neteaseId = trackId.slice('netease-'.length);
+          if (!/^\d+$/.test(neteaseId)) return;
+          const data = await apiGet<{ success: boolean; lyric?: string; tLyric?: string; message?: string }>(`/api/public/music/lyric?id=${encodeURIComponent(neteaseId)}`);
+          content = data && data.success ? (data.lyric || data.tLyric || '') : '';
+        } else {
+          return;
+        }
+
+        if (lyricsRequestRef.current !== requestId) return;
+        const normalized = (content && content.trim()) || '暂无歌词';
+        setLyricsPanel({
+          title,
+          rawContent: normalized,
+          lines: parseLrc(normalized),
+          trackId
+        });
+      } catch {
+        if (lyricsRequestRef.current !== requestId) return;
+        setLyricsPanel({ title, rawContent: '暂无歌词', lines: [], trackId });
+      }
+    }
+
+    loadPlayerLyrics();
+  }, [playerTrack]);
 
   function switchPage(key: PageKey) {
     setPage(key);

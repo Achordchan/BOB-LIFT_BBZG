@@ -30,6 +30,8 @@ interface LyricsOpenState {
   loading: boolean;
 }
 
+type LyricsSearchTarget = 'upload' | 'edit';
+
 export default function MusicPage({
   playTrack,
   activeTrackId,
@@ -51,6 +53,11 @@ export default function MusicPage({
   const [searchHasRun, setSearchHasRun] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchLyricsLoading, setSearchLyricsLoading] = useState(false);
+  const [lyricsSearchOpen, setLyricsSearchOpen] = useState(false);
+  const [lyricsSearchRows, setLyricsSearchRows] = useState<any[]>([]);
+  const [lyricsSearchKeyword, setLyricsSearchKeyword] = useState('');
+  const [lyricsSearchTarget, setLyricsSearchTarget] = useState<LyricsSearchTarget>('upload');
+  const [applyLyricsId, setApplyLyricsId] = useState('');
   const [importing, setImporting] = useState<any>(null);
   const [assetView, setAssetView] = useState<'songs' | 'sounds' | null>(null);
   const importSourceRef = useRef<EventSource | null>(null);
@@ -156,14 +163,38 @@ export default function MusicPage({
     onLyricsPanelChange(value);
   }
 
+  async function runLyricsSearch(keywordValue: string, target: LyricsSearchTarget) {
+    const keyword = String(keywordValue || '').trim();
+    if (!keyword) {
+      message.warning('请输入歌曲名或歌手');
+      return;
+    }
+
+    setLyricsSearchTarget(target);
+    setLyricsSearchKeyword(keyword);
+    setLyricsSearchOpen(true);
+    setSearchLyricsLoading(true);
+    try {
+      const searchRes = await apiGet<any>(`/api/public/music/search?keywords=${encodeURIComponent(keyword)}&limit=20&page=1`);
+      const rows = (searchRes as any).songs || (searchRes as any).data?.songs || (searchRes as any).result?.songs || [];
+      const finalRows = Array.isArray(rows) ? rows : [];
+      setLyricsSearchRows(finalRows);
+      if (!finalRows.length) message.info('未找到匹配歌词');
+    } catch (e: any) {
+      message.error(e && e.message ? e.message : '歌词搜索失败');
+    } finally {
+      setSearchLyricsLoading(false);
+    }
+  }
+
   async function fillLyricsBySearch({
     songName,
     artist,
-    formInstance
+    target
   }: {
     songName: string;
     artist: string;
-    formInstance: any;
+    target: LyricsSearchTarget;
   }) {
     if (searchLyricsLoading) return;
     const keyword = [songName, artist].filter(Boolean).join(' ').trim();
@@ -172,22 +203,18 @@ export default function MusicPage({
       return;
     }
 
-    setSearchLyricsLoading(true);
+    await runLyricsSearch(keyword, target);
+  }
+
+  async function applyLyricsFromSearch(row: any) {
+    const id = getSearchId(row);
+    if (!/^\d+$/.test(id)) {
+      message.error('缺少/无效歌曲ID');
+      return;
+    }
+
+    setApplyLyricsId(id);
     try {
-      const searchRes = await apiGet<any>(`/api/public/music/search?keywords=${encodeURIComponent(keyword)}&limit=10&page=1`);
-      const rows = (searchRes as any).songs || (searchRes as any).data?.songs || (searchRes as any).result?.songs || [];
-      if (!Array.isArray(rows) || rows.length === 0) {
-        message.info('未找到匹配歌词');
-        return;
-      }
-
-      const hit = rows[0];
-      const id = getSearchId(hit);
-      if (!id) {
-        message.info('搜索结果缺少歌曲ID');
-        return;
-      }
-
       const lyricRes = await apiGet<{ success: boolean; lyric?: string; tLyric?: string; message?: string }>(`/api/public/music/lyric?id=${encodeURIComponent(id)}`);
       const content = lyricRes && lyricRes.success ? (lyricRes.lyric || lyricRes.tLyric || '') : '';
       if (!content) {
@@ -195,12 +222,14 @@ export default function MusicPage({
         return;
       }
 
-      formInstance.setFieldsValue({ lrcContent: content });
-      message.success('歌词已补齐');
+      const targetForm = lyricsSearchTarget === 'edit' ? editForm : form;
+      targetForm.setFieldsValue({ lrcContent: content });
+      setLyricsSearchOpen(false);
+      message.success(`已使用《${getSearchTitle(row)}》的歌词`);
     } catch (e: any) {
-      message.error(e && e.message ? e.message : '歌词搜索失败');
+      message.error(e && e.message ? e.message : '歌词获取失败');
     } finally {
-      setSearchLyricsLoading(false);
+      setApplyLyricsId('');
     }
   }
 
@@ -210,7 +239,7 @@ export default function MusicPage({
     const artist = String(form.getFieldValue('artist') || '').trim();
     const fallback = String(form.getFieldValue('name') || '').trim();
     const finalSongName = songName || fallback || '';
-    await fillLyricsBySearch({ songName: finalSongName, artist, formInstance: form });
+    await fillLyricsBySearch({ songName: finalSongName, artist, target: 'upload' });
   }
 
   function getEditFormValues() {
@@ -223,7 +252,7 @@ export default function MusicPage({
   async function searchLyricsForEdit() {
     if (!editing) return;
     const { songName, artist } = getEditFormValues();
-    await fillLyricsBySearch({ songName, artist, formInstance: editForm });
+    await fillLyricsBySearch({ songName, artist, target: 'edit' });
   }
 
   async function openLyricsPreview(row: MusicItem) {
@@ -404,6 +433,10 @@ export default function MusicPage({
 
   function getSearchArtist(row: any, fallback = '—') {
     return safeText(row?.artists || row?.artist || row?.ar || row?.artist_string, fallback);
+  }
+
+  function getSearchAlbum(row: any, fallback = '—') {
+    return safeText(row?.album || row?.al, fallback);
   }
 
   function splitJoinedName(name?: string) {
@@ -631,6 +664,36 @@ export default function MusicPage({
         <Button type="primary" htmlType="submit" loading={editLoading || saveLoading}>保存</Button>
       </Form>
     </Drawer>
+
+    <Modal title="选择歌词来源" width={860} open={lyricsSearchOpen} onCancel={() => setLyricsSearchOpen(false)} footer={null} destroyOnClose>
+      <Space direction="vertical" size={12} className="music-lyrics-picker">
+        <Input.Search
+          value={lyricsSearchKeyword}
+          placeholder="输入歌曲名或歌手重新搜索"
+          enterButton="搜索"
+          loading={searchLyricsLoading}
+          onChange={(e) => setLyricsSearchKeyword(e.target.value)}
+          onSearch={(value) => runLyricsSearch(value, lyricsSearchTarget)}
+        />
+        <Typography.Text type="secondary">当前只负责把你选择的结果歌词写入“歌词内容”，不会自动改歌曲名和歌手。</Typography.Text>
+        <Table
+          rowKey={(r) => getSearchId(r) || `${getSearchTitle(r)}-${getSearchArtist(r)}-${getSearchAlbum(r)}`}
+          loading={searchLyricsLoading}
+          dataSource={lyricsSearchRows}
+          pagination={false}
+          scroll={{ x: 760, y: 360 }}
+          columns={[
+            { title: '歌曲', render: (_: any, r: any) => getSearchTitle(r) },
+            { title: '歌手', width: 180, render: (_: any, r: any) => getSearchArtist(r) },
+            { title: '专辑', width: 180, render: (_: any, r: any) => getSearchAlbum(r) },
+            { title: '操作', width: 190, fixed: 'right' as const, render: (_: any, r: any) => <Space>
+              <Button size="small" onClick={() => openSearchLyricsPreview(r)}>查看歌词</Button>
+              <Button size="small" type="primary" loading={applyLyricsId === getSearchId(r)} onClick={() => applyLyricsFromSearch(r)}>使用</Button>
+            </Space> }
+          ]}
+        />
+      </Space>
+    </Modal>
 
     <Modal title="网易云音乐导入" width={820} open={searchOpen} onCancel={() => setSearchOpen(false)} footer={null}>
       <Form form={searchForm} layout="inline" onFinish={(v) => search(v, 1)} className="music-search-form"><Form.Item name="keyword" rules={[{ required: true, message: '请输入关键词' }]}><Input placeholder="歌曲或歌手" /></Form.Item><Button type="primary" htmlType="submit" loading={searchLoading}>搜索</Button></Form>

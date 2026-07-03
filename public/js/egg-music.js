@@ -28,9 +28,15 @@
   const eggLyricsBody = document.getElementById('eggLyricsBody');
   const eggPlayerLyrics = document.getElementById('eggPlayerLyrics');
   const eggPlayerLyricsList = document.getElementById('eggPlayerLyricsList');
+  const eggPlayerLyricsScreen = document.getElementById('eggPlayerLyricsScreen');
+  const eggPlayerLyricsScreenTitle = document.getElementById('eggPlayerLyricsScreenTitle');
+  const eggPlayerLyricsScreenBody = document.getElementById('eggPlayerLyricsScreenBody');
+  const eggPlayerLyricsScreenClose = document.getElementById('eggPlayerLyricsScreenClose');
   let eggLyricsLines = [];
-  let eggLyricsPlainText = '加载中...';
+  let eggLyricsPlainText = '';
   let eggLyricsSyncLine = -1;
+  let eggCurrentLyricKey = '';
+  let eggCurrentLyricTitle = '歌词';
 
   const eggLoginModal = document.getElementById('eggLoginModal');
   const eggLoginCloseBtn = document.getElementById('eggLoginCloseBtn');
@@ -153,13 +159,12 @@
 
   function renderEggLyricsByTime(currentTime) {
     const isValidTime = Number.isFinite(currentTime) ? currentTime : 0;
-    if (!eggLyricsBody || !eggPlayerLyrics || !eggPlayerLyricsList) {
+    if (!eggPlayerLyrics || !eggPlayerLyricsList) {
       return;
     }
 
     if (!eggLyricsLines.length) {
       eggLyricsSyncLine = -1;
-      setLyricsText(eggLyricsPlainText || '暂无歌词');
       eggPlayerLyrics.style.display = 'block';
       eggPlayerLyricsList.innerHTML = '';
       const noData = document.createElement('div');
@@ -167,6 +172,7 @@
       const rawText = String(eggLyricsPlainText || '').trim();
       noData.textContent = rawText || '暂无歌词';
       eggPlayerLyricsList.appendChild(noData);
+      renderPlayerLyricsScreen(-1);
       return;
     }
 
@@ -174,32 +180,90 @@
     if (idx === eggLyricsSyncLine) return;
     eggLyricsSyncLine = idx;
 
-    eggLyricsBody.innerHTML = '';
     eggPlayerLyricsList.innerHTML = '';
     eggPlayerLyrics.style.display = 'block';
 
-    const createLine = (line, cls) => {
-      const div = document.createElement('div');
-      div.className = `eggLyricsLine ${cls}`;
-      div.textContent = line.text || '—';
-      eggLyricsBody.appendChild(div);
-
-      const mini = document.createElement('div');
-      mini.className = `playerLyricsLine ${cls}`;
-      mini.textContent = line.text || '—';
-      eggPlayerLyricsList.appendChild(mini);
-    };
-
-    if (idx > 0) createLine(eggLyricsLines[idx - 1], 'prev');
-    createLine(eggLyricsLines[idx], 'current');
-    if (idx + 1 < eggLyricsLines.length) createLine(eggLyricsLines[idx + 1], 'next');
+    const mini = document.createElement('div');
+    mini.className = 'playerLyricsLine current';
+    mini.textContent = eggLyricsLines[idx].text || '—';
+    eggPlayerLyricsList.appendChild(mini);
+    renderPlayerLyricsScreen(idx);
   }
 
-  function setLyricsPayload(text) {
+  function renderPlayerLyricsScreen(currentIndex) {
+    if (!eggPlayerLyricsScreenBody) return;
+    const isOpen = eggPlayerLyricsScreen && eggPlayerLyricsScreen.style.display === 'flex';
+    if (!isOpen) return;
+
+    eggPlayerLyricsScreenBody.innerHTML = '';
+    if (eggPlayerLyricsScreenTitle) eggPlayerLyricsScreenTitle.textContent = eggCurrentLyricTitle || '歌词';
+
+    if (!eggLyricsLines.length) {
+      const pre = document.createElement('pre');
+      pre.className = 'playerLyricsScreenPlain';
+      pre.textContent = String(eggLyricsPlainText || '').trim() || '暂无歌词';
+      eggPlayerLyricsScreenBody.appendChild(pre);
+      return;
+    }
+
+    let currentNode = null;
+    eggLyricsLines.forEach((line, index) => {
+      const div = document.createElement('div');
+      div.className = index === currentIndex ? 'playerLyricsScreenLine current' : 'playerLyricsScreenLine';
+      div.textContent = line.text || '—';
+      eggPlayerLyricsScreenBody.appendChild(div);
+      if (index === currentIndex) currentNode = div;
+    });
+
+    if (currentNode) {
+      window.requestAnimationFrame(() => {
+        try { currentNode.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+      });
+    }
+  }
+
+  function openPlayerLyricsScreen() {
+    if (!eggPlayerLyricsScreen) return;
+    eggPlayerLyricsScreen.style.display = 'flex';
+    eggPlayerLyricsScreen.setAttribute('aria-hidden', 'false');
+    renderPlayerLyricsScreen(eggLyricsLines.length ? findCurrentLineIndex(eggLyricsLines, audioEl ? audioEl.currentTime : 0) : -1);
+  }
+
+  function closePlayerLyricsScreen() {
+    if (!eggPlayerLyricsScreen) return;
+    eggPlayerLyricsScreen.style.display = 'none';
+    eggPlayerLyricsScreen.setAttribute('aria-hidden', 'true');
+  }
+
+  function setPlayerLyricsPayload(text, title) {
+    eggCurrentLyricTitle = title || eggCurrentLyricTitle || '歌词';
     eggLyricsPlainText = String(text || '');
     eggLyricsLines = parseLrcText(eggLyricsPlainText);
     eggLyricsSyncLine = -1;
     renderEggLyricsByTime(audioEl ? audioEl.currentTime : 0);
+  }
+
+  function loadPlayerLyrics(key, title, url, parser) {
+    eggCurrentLyricKey = key;
+    setPlayerLyricsPayload('歌词加载中...', title);
+    fetch(url)
+      .then(r => {
+        if (!r || !r.ok) {
+          return r.json().catch(() => null).then(data => {
+            throw new Error((data && data.message) ? data.message : `获取歌词失败（${r ? r.status : '网络错误'}）`);
+          });
+        }
+        return parser(r);
+      })
+      .then(text => {
+        if (eggCurrentLyricKey !== key) return;
+        setPlayerLyricsPayload(text || '暂无歌词', title);
+      })
+      .catch(err => {
+        if (eggCurrentLyricKey !== key) return;
+        console.error('获取播放器歌词失败', err);
+        setPlayerLyricsPayload('暂无歌词', title);
+      });
   }
 
   if (audioEl) {
@@ -249,11 +313,11 @@
       })
       .then(data => {
         const text = data && data.success ? (data.lyric || data.tLyric || '') : '';
-        setLyricsPayload(text || '暂无歌词');
+        setLyricsText(text || '暂无歌词');
       })
       .catch(err => {
         console.error('获取歌词失败', err);
-        setLyricsPayload(err && err.message ? err.message : '暂无歌词');
+        setLyricsText(err && err.message ? err.message : '暂无歌词');
         showToast(err && err.message ? err.message : '获取歌词失败', 'error');
       });
   }
@@ -280,14 +344,17 @@
         return r.text();
       })
       .then(text => {
-        setLyricsPayload(text || '暂无歌词');
+        setLyricsText(text || '暂无歌词');
       })
       .catch(err => {
         console.error('获取歌词失败', err);
-        setLyricsPayload(err && err.message ? err.message : '暂无歌词');
+        setLyricsText(err && err.message ? err.message : '暂无歌词');
         showToast(err && err.message ? err.message : '获取歌词失败', 'error');
       });
   }
+
+  if (eggPlayerLyrics) eggPlayerLyrics.addEventListener('click', openPlayerLyricsScreen);
+  if (eggPlayerLyricsScreenClose) eggPlayerLyricsScreenClose.addEventListener('click', closePlayerLyricsScreen);
 
   if (accountBtn) {
     accountBtn.addEventListener('click', function () {
@@ -407,6 +474,17 @@
         if (player) player.style.display = 'block';
         if (nowTitle) nowTitle.textContent = safeText(music && music.name ? music.name : '未命名');
         if (nowSub) nowSub.textContent = '音乐库';
+        if (music && music.id) {
+          loadPlayerLyrics(
+            `local:${music.id}`,
+            safeText(music && music.name ? music.name : '歌词'),
+            `/api/music/${encodeURIComponent(String(music.id))}/lrc`,
+            r => r.text()
+          );
+        } else {
+          eggCurrentLyricKey = `local:${filename}`;
+          setPlayerLyricsPayload('暂无歌词', safeText(music && music.name ? music.name : '歌词'));
+        }
         if (nowCover) {
           const coverUrl = music && music.coverUrl ? String(music.coverUrl) : '';
           if (coverUrl) {
@@ -808,6 +886,12 @@
             if (player) player.style.display = 'block';
             if (nowTitle) nowTitle.textContent = safeText(item.name || '未知歌曲');
             if (nowSub) nowSub.textContent = desc.textContent || '';
+            loadPlayerLyrics(
+              `netease:${id}`,
+              safeText(item.name || '歌词'),
+              `/api/public/music/lyric?id=${encodeURIComponent(id)}`,
+              r => r.json().then(data => data && data.success ? (data.lyric || data.tLyric || '') : '')
+            );
 
             if (nowCover) {
               const coverUrl = getCoverUrl(item);
