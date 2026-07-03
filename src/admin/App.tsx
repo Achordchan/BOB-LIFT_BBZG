@@ -104,7 +104,7 @@ export default function App() {
     switch (page) {
       case 'users': return <UsersPage {...playerProps} />;
       case 'music': return <MusicPage {...playerProps} />;
-      case 'playback': return <PlaybackPage />;
+      case 'playback': return <PlaybackPage {...playerProps} />;
       case 'celebration': return <CelebrationPage {...playerProps} />;
       case 'platforms': return <PlatformPage />;
       case 'settings': return <HomeSettingsPage />;

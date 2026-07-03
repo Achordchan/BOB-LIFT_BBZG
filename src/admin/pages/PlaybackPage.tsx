@@ -3,10 +3,14 @@ import { App, Button, Card, Form, Grid, Input, List, Popconfirm, Radio, Select, 
 import { CloudUploadOutlined, DeleteOutlined, PlayCircleOutlined, PlusOutlined, SoundOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, audioUrl, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
-import { AdminAudioPlayer } from '../components/AdminAudioPlayer';
-import type { MusicItem } from '../types';
+import type { MusicItem, PlayAdminTrackInput } from '../types';
 
-export default function PlaybackPage() {
+interface PlaybackPageProps {
+  playTrack: (track: PlayAdminTrackInput) => void;
+  activeTrackId?: string;
+}
+
+export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageProps) {
   const { message } = App.useApp();
   const [music, setMusic] = useState<MusicItem[]>([]);
   const [defaultSong, setDefaultSong] = useState<any>(null);
@@ -134,6 +138,27 @@ export default function PlaybackPage() {
     if (item.source === 'tts' || String(item.audioPath || '').includes('/music/tts/')) return { label: 'TTS 生成', color: 'purple' };
     return { label: '路径添加', color: 'default' };
   }
+  function isTrackActive(trackId: string) { return activeTrackId === trackId; }
+  function playTrackWithId(trackId: string, title: string, subtitle: string, sourcePath?: string) {
+    if (!sourcePath) return;
+    playTrack({ id: trackId, title, subtitle, sources: [sourcePath] });
+  }
+  function playDefaultSong() {
+    if (!defaultSong?.filename) return;
+    playTrackWithId(`default-song-${defaultSong.id || defaultSong.filename}`, defaultSong.name || '默认战歌', '默认战歌', audioUrl(defaultSong.filename));
+  }
+  function playStartupAudio() {
+    if (!startupAudioPath) return;
+    playTrackWithId(`startup-audio-${startupAudioPath}`, '启动音频', startupAudioMeta.type, startupAudioPath);
+  }
+  function playPersonalized(item: any) {
+    if (!item?.audioPath) return;
+    playTrackWithId(`personalized-${item.id || item.audioPath}`, '个性化音频', item.name || '未命名音频', item.audioPath);
+  }
+  function playCleanupItem(item: any) {
+    if (!item?.audioPath) return;
+    playTrackWithId(`cleanup-${item.id || item.audioPath}`, '音频清理预览', item.audioPath || '', item.audioPath);
+  }
   async function addPersonalized(values: any) { try { setPersonalizedSubmitting('path'); await apiJson('/api/personalized/add', 'POST', values); message.success('已添加'); pathPersonForm.resetFields(); setPersonalizedCreateOpen(false); load(); } catch (e: any) { message.error(e.message || '添加失败'); } finally { setPersonalizedSubmitting(null); } }
   async function uploadPersonalized(values: any) {
     const file = values.personalizedFile?.[0]?.originFileObj;
@@ -182,7 +207,14 @@ export default function PlaybackPage() {
               {defaultSong ? (
                 <Space direction="vertical" size={10} style={{ width: '100%' }}>
                   <Typography.Text strong>{defaultSong.name || '默认战歌'}</Typography.Text>
-                  {defaultSong.filename ? <AdminAudioPlayer sources={[audioUrl(defaultSong.filename)]} onError={() => message.error('试听失败')} /> : null}
+                <Button
+                  type={isTrackActive(`default-song-${defaultSong.id || defaultSong.filename}`) ? 'primary' : 'default'}
+                  icon={<PlayCircleOutlined />}
+                  disabled={!defaultSong.filename}
+                  onClick={playDefaultSong}
+                >
+                  {isTrackActive(`default-song-${defaultSong.id || defaultSong.filename}`) ? '正在播放' : (defaultSong.filename ? '试听' : '暂无音频')}
+                </Button>
                   <Popconfirm title="确认移除默认战歌？" onConfirm={async () => { await apiJson('/api/defaultBattleSong/delete', 'DELETE'); message.success('已移除'); load(); }}>
                     <Button danger>移除默认战歌</Button>
                   </Popconfirm>
@@ -223,7 +255,9 @@ export default function PlaybackPage() {
                   <Typography.Title level={4} style={{ margin: '4px 0 0' }}>{startupAudioMeta.title}</Typography.Title>
                 </div>
                 <Tag color={startupAudioMeta.color}>{startupAudioMeta.type}</Tag>
-                <AdminAudioPlayer sources={[startupAudioPath]} onError={() => message.error('试听失败')} />
+                <Button type={isTrackActive(`startup-audio-${startupAudioPath}`) ? 'primary' : 'default'} icon={<PlayCircleOutlined />} onClick={playStartupAudio}>
+                  {isTrackActive(`startup-audio-${startupAudioPath}`) ? '正在播放' : '试听'}
+                </Button>
               </Space>
             </Card>
             <Form form={startupForm} layout="vertical" onFinish={saveStartup} className="startup-config-form">
@@ -314,7 +348,17 @@ export default function PlaybackPage() {
               columns={[
                 { title: '音频名称', dataIndex: 'name', render: (name: string, item: any) => <Space direction="vertical" size={2}><Typography.Text strong>{name}</Typography.Text><Typography.Text type="secondary" className="personalized-meta">{dateTime(item.createdAt)}</Typography.Text></Space> },
                 { title: '来源', width: 120, render: (_: any, item: any) => { const src = personalizedSource(item); return <Tag color={src.color}>{src.label}</Tag>; } },
-                { title: '试听', width: 250, render: (_: any, item: any) => <AdminAudioPlayer compact sources={[item.audioPath]} onError={() => message.error('试听失败')} /> },
+                { title: '试听', width: 250, render: (_: any, item: any) => (
+                  <Button
+                    size="small"
+                    type={isTrackActive(`personalized-${item.id || item.audioPath}`) ? 'primary' : 'default'}
+                    icon={<PlayCircleOutlined />}
+                    disabled={!item.audioPath}
+                    onClick={() => playPersonalized(item)}
+                  >
+                    {isTrackActive(`personalized-${item.id || item.audioPath}`) ? '正在播放' : (item.audioPath ? '试听' : '无音频')}
+                  </Button>
+                ) },
                 { title: '操作', width: 190, render: (_: any, item: any) => <Space><Button size="small" icon={<PlayCircleOutlined />} onClick={() => firePersonalized(item.audioPath)}>发射</Button><Popconfirm title="确认删除该音频？" onConfirm={() => deletePersonalized(item.id)}><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> }
               ]}
             /> : <List
@@ -330,7 +374,14 @@ export default function PlaybackPage() {
                         <Space direction="vertical" size={2}><Typography.Text strong>{item.name}</Typography.Text><Typography.Text type="secondary" className="personalized-meta">{dateTime(item.createdAt)}</Typography.Text></Space>
                         <Tag color={src.color}>{src.label}</Tag>
                       </Space>
-                      <AdminAudioPlayer sources={[item.audioPath]} onError={() => message.error('试听失败')} />
+                      <Button
+                        type={isTrackActive(`personalized-${item.id || item.audioPath}`) ? 'primary' : 'default'}
+                        icon={<PlayCircleOutlined />}
+                        disabled={!item.audioPath}
+                        onClick={() => playPersonalized(item)}
+                      >
+                        {isTrackActive(`personalized-${item.id || item.audioPath}`) ? '正在播放' : (item.audioPath ? '试听' : '无音频')}
+                      </Button>
                       <Space><Button size="small" icon={<PlayCircleOutlined />} onClick={() => firePersonalized(item.audioPath)}>发射</Button><Popconfirm title="确认删除该音频？" onConfirm={() => deletePersonalized(item.id)}><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space>
                     </Space>
                   </Card>
@@ -357,7 +408,15 @@ export default function PlaybackPage() {
               title={<Typography.Text strong>{item.audioPath}</Typography.Text>}
               description={<Space direction="vertical" size={8} style={{ width: '100%' }}>
                 <Typography.Text type="secondary">{item.sizeKb || 0} KB</Typography.Text>
-                <AdminAudioPlayer compact sources={[item.audioPath]} onError={() => message.error('试听失败')} />
+                <Button
+                  size="small"
+                  type={isTrackActive(`cleanup-${item.id || item.audioPath}`) ? 'primary' : 'default'}
+                  icon={<PlayCircleOutlined />}
+                  disabled={!item.audioPath}
+                  onClick={() => playCleanupItem(item)}
+                >
+                  {isTrackActive(`cleanup-${item.id || item.audioPath}`) ? '正在播放' : (item.audioPath ? '试听' : '无音频')}
+                </Button>
               </Space>}
             />
           </List.Item>}
