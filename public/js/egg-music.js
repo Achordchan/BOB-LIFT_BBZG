@@ -211,6 +211,13 @@
       const div = document.createElement('div');
       div.className = index === currentIndex ? 'playerLyricsScreenLine current' : 'playerLyricsScreenLine';
       div.textContent = line.text || '—';
+      div.addEventListener('click', () => {
+        if (!audioEl || !Number.isFinite(line.time)) return;
+        audioEl.currentTime = line.time;
+        renderEggLyricsByTime(line.time);
+        const p = audioEl.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      });
       eggPlayerLyricsScreenBody.appendChild(div);
       if (index === currentIndex) currentNode = div;
     });

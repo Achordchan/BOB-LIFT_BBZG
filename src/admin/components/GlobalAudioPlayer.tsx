@@ -38,6 +38,7 @@ function findCurrentLyricLine(lines: LyricLine[], currentTime: number): number {
 
 export function GlobalAudioPlayer({ track, onError, onClose, onListen, currentTime, lyricsPanel }: GlobalAudioPlayerProps) {
   const [lyricsScreenOpen, setLyricsScreenOpen] = useState(false);
+  const playerRef = useRef<AudioPlayer | null>(null);
   const lineRefs = useRef<Array<HTMLDivElement | null>>([]);
   const activeLyrics = lyricsPanel && lyricsPanel.trackId === track.id ? lyricsPanel : null;
   const lines = useMemo(() => activeLyrics?.lines || [], [activeLyrics]);
@@ -56,6 +57,15 @@ export function GlobalAudioPlayer({ track, onError, onClose, onListen, currentTi
     lineRefs.current[currentIndex]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [lyricsScreenOpen, currentIndex]);
 
+  function seekToLyric(time: number) {
+    const audio = playerRef.current?.audio.current;
+    if (!audio || !Number.isFinite(time)) return;
+    audio.currentTime = time;
+    onListen(time);
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+  }
+
   return <>
     <div className="admin-global-player">
       <div className="admin-global-player-meta">
@@ -73,6 +83,7 @@ export function GlobalAudioPlayer({ track, onError, onClose, onListen, currentTi
         </span>
       </button>
       <AudioPlayer
+        ref={playerRef}
         autoPlay
         src={track.sources[track.sourceIndex || 0]}
         onError={onError}
@@ -92,12 +103,18 @@ export function GlobalAudioPlayer({ track, onError, onClose, onListen, currentTi
           <div className="admin-lyrics-screen-label">正在播放</div>
           <h2>{activeLyrics.title || track.title}</h2>
         </div>
-        <Button onClick={() => setLyricsScreenOpen(false)}>关闭</Button>
+        <button className="admin-lyrics-screen-close" type="button" onClick={() => setLyricsScreenOpen(false)}>关闭</button>
       </div>
       <div className="admin-lyrics-screen-body">
         {lines.length ? lines.map((line, index) => <div
           key={`${line.time}-${line.text}-${index}`}
           ref={(node) => { lineRefs.current[index] = node; }}
+          role="button"
+          tabIndex={0}
+          onClick={() => seekToLyric(line.time)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') seekToLyric(line.time);
+          }}
           className={index === currentIndex ? 'admin-lyrics-screen-line current' : 'admin-lyrics-screen-line'}
         >{line.text || '—'}</div>) : <pre className="admin-lyrics-screen-plain">{rawText || '暂无歌词'}</pre>}
       </div>

@@ -494,14 +494,14 @@
     .playerLyrics{
       min-width:0;
       width: min(320px, 30vw);
-      height: 42px;
+      height: 44px;
       display:flex;
       align-items:center;
       justify-content:center;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.04);
+      border: 0;
       border-radius: 999px;
-      padding: 0 14px;
+      padding: 0 18px;
       cursor:pointer;
     }
 
@@ -523,7 +523,7 @@
     .playerLyricsLine{
       display:block;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 1;
       color: rgba(255,255,255,0.94);
       max-width: 100%;
       white-space: nowrap;
@@ -540,7 +540,7 @@
     .playerLyricsNoData{
       color: rgba(255,255,255,0.68);
       font-size: 12px;
-      line-height: 1.4;
+      line-height: 1;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
@@ -588,6 +588,21 @@
       gap:18px;
       padding:18vh 0;
       scroll-behavior:smooth;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.18) transparent;
+    }
+
+    .playerLyricsScreenBody::-webkit-scrollbar{
+      width:8px;
+    }
+
+    .playerLyricsScreenBody::-webkit-scrollbar-track{
+      background:transparent;
+    }
+
+    .playerLyricsScreenBody::-webkit-scrollbar-thumb{
+      border-radius:999px;
+      background:rgba(255,255,255,.18);
     }
 
     .playerLyricsScreenLine{
@@ -596,6 +611,7 @@
       font-size:clamp(18px, 2.8vw, 34px);
       line-height:1.45;
       text-align:center;
+      cursor:pointer;
       transition: color .2s, transform .2s;
     }
 
@@ -613,6 +629,22 @@
       color:rgba(255,255,255,.86);
       font:inherit;
       line-height:1.8;
+    }
+
+    .playerLyricsScreenClose{
+      appearance:none;
+      border:0;
+      border-radius:999px;
+      background:rgba(255,255,255,.08);
+      color:rgba(255,255,255,.86);
+      padding:8px 14px;
+      cursor:pointer;
+      font-weight:800;
+    }
+
+    .playerLyricsScreenClose:hover{
+      background:rgba(255,255,255,.14);
+      color:#fff;
     }
 
     .now{
@@ -925,7 +957,7 @@
         <div class="playerLyricsScreenLabel">正在播放</div>
         <h2 class="playerLyricsScreenTitle" id="eggPlayerLyricsScreenTitle">歌词</h2>
       </div>
-      <button class="btn" id="eggPlayerLyricsScreenClose" type="button">关闭</button>
+      <button class="playerLyricsScreenClose" id="eggPlayerLyricsScreenClose" type="button">关闭</button>
     </div>
     <div class="playerLyricsScreenBody" id="eggPlayerLyricsScreenBody"></div>
   </div>
