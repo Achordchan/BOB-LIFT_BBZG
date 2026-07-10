@@ -1,0 +1,11 @@
+{
+  "id": "ocean-command",
+  "name": "深海指挥舱",
+  "description": "深蓝与暖金构成的经营指挥大屏，强调数据层级、团队荣誉和 TV 远距离识读。",
+  "version": "1.0.0",
+  "contractVersion": 1,
+  "scene": "高端展示",
+  "entry": "index.html",
+  "previewImage": "/themes/ocean-command/preview.png",
+  "isDefault": false
+}

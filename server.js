@@ -12,6 +12,7 @@ const {
 const { getData: getDataFromStore, saveData: saveDataFromStore } = require('./lib/data-store');
 const { createMainStreamHub } = require('./lib/main-stream-hub');
 const { createInitialData } = require('./lib/data-bootstrap');
+const { createThemeRegistry } = require('./lib/theme-registry');
 const { createUpload } = require('./services/uploads');
 const { registerAudioPlaybackRoutes } = require('./routes/audio-playback');
 const { registerInquiryRoutes } = require('./routes/inquiries');
@@ -29,6 +30,7 @@ const { registerPageSettingsRoutes } = require('./routes/page-settings');
 const { registerMiscRoutes } = require('./routes/misc');
 const { registerPublicMusicRoutes } = require('./routes/public-music');
 const { registerEggRoutes } = require('./routes/egg');
+const { registerThemeRoutes } = require('./routes/themes');
 
 // 添加性能诊断日志
 console.time('启动总时间');
@@ -84,7 +86,15 @@ function getData() {
   return getDataFromStore(DATA_PATH);
 }
 
-const mainStreamHub = createMainStreamHub({ getData, dataPath: DATA_PATH });
+const themeRegistry = createThemeRegistry({
+  themesDir: path.join(__dirname, 'public', 'themes')
+});
+
+const mainStreamHub = createMainStreamHub({
+  getData,
+  dataPath: DATA_PATH,
+  getActiveTheme: (data) => themeRegistry.getActiveTheme(data)
+});
 mainStreamHub.registerRoutes(app);
 
 // 保存数据
@@ -192,6 +202,13 @@ registerEggRoutes(app, {
   baseDir: __dirname
 });
 
+registerThemeRoutes(app, {
+  getData,
+  saveData,
+  requireLogin,
+  themeRegistry
+});
+
 // 获取用户音乐配置
 function getUserMusicConfig(userId) {
   const data = getData();
@@ -243,11 +260,6 @@ app.get('/health-check', (req, res) => {
 // 彩蛋页面（不需要登录）
 app.get('/egg-music', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'egg-music.html'));
-});
-
-// 提供主页
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // 404处理器 - 放在所有路由之后

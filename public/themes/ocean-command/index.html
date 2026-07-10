@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>巴布之光超级大屏</title>
-  <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/leaderboard.css">
-  <link rel="stylesheet" href="/css/tv-display.css">
+  <link rel="stylesheet" href="/themes/ocean-command/theme.css">
+  <link rel="stylesheet" href="/themes/ocean-command/panels.css">
+  <link rel="stylesheet" href="/themes/ocean-command/tv.css">
   <!-- 简化的TV检测 -->
   <script>
     // 检测TV浏览器并立即应用
@@ -29,7 +29,7 @@
     })();
   </script>
 </head>
-<body class="leaderboard-page">
+<body class="leaderboard-page theme-ocean-command" data-theme-id="ocean-command">
   <!-- 全屏庆祝动画遮罩层 -->
   <div class="celebration-overlay" id="celebrationOverlay">
     <div class="celebration-pattern"></div>
@@ -120,17 +120,17 @@
 
   <!-- 新增的大屏销售榜单主体内容 -->
   <div class="leaderboard-container">
+    <div class="theme-atmosphere" aria-hidden="true"></div>
     <!-- 头部区域 -->
-    <header class="leaderboard-header" style="
-    background-color: #c1121f; /* 移除透明度，使用不透明的颜色 */
-">
+    <header class="leaderboard-header">
       <div class="title-area">
+        <div class="theme-eyebrow">实时经营指挥中心</div>
         <h1 class="main-title">巴布之光3.0无限公司</h1>
         <h2 class="sub-title">无限进步</h2>
       </div>
       <div class="info-area">
         <div class="date-time" id="dateTimeDisplay">2025年5月11日 周日 00:00:00</div>
-       
+        <div class="theme-live-state"><span></span>数据实时同步</div>
       </div>
     </header>
 
@@ -138,6 +138,14 @@
     <main class="leaderboard-main">
       <!-- 左侧数据统计 -->
       <div class="stats-panel">
+        <div class="stats-panel-heading">
+          <div>
+            <span class="stats-panel-kicker">LIVE OPERATIONS</span>
+            <strong>经营脉冲</strong>
+          </div>
+          <div class="stats-panel-live"><span></span>实时</div>
+        </div>
+
         <!-- 上半部分：询盘总数和成交金额 -->
         <div class="stats-upper-section">
         <div class="stats-card">
@@ -188,7 +196,10 @@
         <!-- 下半部分：最近动态和平台目标切换区域 -->
         <div class="recent-activity-section">
           <div class="section-header">
-            <h3 id="sectionTitle">最近动态</h3>
+            <div class="activity-heading">
+              <h3 id="sectionTitle">最近动态</h3>
+              <span>LIVE EVENT STREAM</span>
+            </div>
             <div class="section-indicator">
               <span class="indicator-dot active" id="activityDot"></span>
               <span class="indicator-dot" id="platformDot"></span>
@@ -240,6 +251,9 @@
       您的浏览器不支持音频播放。
     </audio>
   </div>
+
+  <!-- 主题运行时必须先于公共业务脚本加载 -->
+  <script src="/js/theme-runtime.js"></script>
 
   <!-- 引入外部JS文件 -->
   <script src="/js/main.js"></script>        <!-- 主要功能和逻辑控制 -->

@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test",
     "deploy:baota": "bash scripts/deploy-baota.sh",
     "dev:admin": "vite --config vite.admin.config.ts",
     "build:admin": "tsc -p tsconfig.admin.json && vite build --config vite.admin.config.ts"

@@ -1,0 +1,152 @@
+@import url('/css/style.css');
+@import url('/css/leaderboard.css');
+@import url('/css/tv-display.css');
+
+body.theme-ocean-command {
+  --primary-color: #d6b36a;
+  --secondary-color: #091522;
+  --highlight-color: #f0cb7a;
+  --text-color: #f3f7fb;
+  --dark-text: #e7eef6;
+  --card-bg: #0b1724;
+  --border-color: #263b4d;
+  --item-bg: #0d1b29;
+  --item-hover: #122536;
+  --item-active: #163044;
+  --avatar-border: #d6b36a;
+  --badge-bg: #d6b36a;
+  --badge-text: #07111b;
+  --amount-color: #f0cb7a;
+  background: #020810;
+  color: #f3f7fb;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+body.theme-ocean-command .leaderboard-container {
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 14% 4%, rgba(24, 105, 136, .2), transparent 31%),
+    radial-gradient(circle at 82% 105%, rgba(198, 155, 74, .12), transparent 34%),
+    #040b13;
+  color: #f3f7fb;
+}
+
+body.theme-ocean-command .theme-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .3;
+  background-image:
+    linear-gradient(rgba(103, 167, 191, .08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(103, 167, 191, .08) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to bottom, black, transparent 82%);
+}
+
+body.theme-ocean-command .leaderboard-header {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 12vh;
+  height: 12vh;
+  min-height: 88px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  padding: 15px 32px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(214, 179, 106, .46);
+  background: rgba(5, 14, 23, .96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .32);
+}
+
+html.tv-browser body.theme-ocean-command .leaderboard-header {
+  background: #07131f !important;
+}
+
+body.theme-ocean-command .leaderboard-header::after {
+  content: "";
+  position: absolute;
+  right: 32px;
+  bottom: -1px;
+  width: 28%;
+  height: 2px;
+  background: #d6b36a;
+  box-shadow: 0 0 18px rgba(214, 179, 106, .52);
+}
+
+body.theme-ocean-command .title-area {
+  min-width: 0;
+  gap: 2px;
+}
+
+body.theme-ocean-command .theme-eyebrow {
+  color: #6eb6ca;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .28em;
+}
+
+body.theme-ocean-command .main-title {
+  max-width: 56vw;
+  overflow: hidden;
+  color: #f6f8fa;
+  font-size: 2.55rem;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+body.theme-ocean-command .sub-title {
+  color: #a7b8c7;
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: .12em;
+}
+
+body.theme-ocean-command .info-area {
+  min-width: 310px;
+  margin-left: auto;
+  align-items: flex-end;
+}
+
+body.theme-ocean-command .date-time {
+  margin: 0;
+  color: #f3f7fb;
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+body.theme-ocean-command .theme-live-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: #7890a3;
+  font-size: .8rem;
+}
+
+body.theme-ocean-command .theme-live-state span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #49c493;
+  box-shadow: 0 0 10px rgba(73, 196, 147, .72);
+  animation: ocean-live-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes ocean-live-pulse {
+  50% { opacity: .45; }
+}
+
+body.theme-ocean-command .leaderboard-main {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  grid-template-columns: minmax(0, 1.58fr) minmax(430px, .92fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 24px 22px;
+  background: transparent;
+}

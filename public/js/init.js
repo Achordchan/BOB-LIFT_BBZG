@@ -58,12 +58,14 @@ document.addEventListener('DOMContentLoaded', function() {
   // 页面加载完成时
   console.log('页面加载完成，初始化音频系统');
 
-  // 播放启动音频以激活音频系统（可配置，默认 Go.mp3）
-  loadStartupAudioAndPlay();
+  // 预览模式不播放任何音频，避免干扰后台操作。
+  if (!(window.BBZG_THEME && window.BBZG_THEME.preview)) {
+    loadStartupAudioAndPlay();
+  }
 
   // 设置TTS系统已初始化标志
   window.audioSystemInitialized = true;
-  window.userHasInteracted = true;
+  window.userHasInteracted = !(window.BBZG_THEME && window.BBZG_THEME.preview);
 
   // 获取询盘音效配置
   loadInquiryMusicConfig();
@@ -74,7 +76,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // 一次性初始化快照，避免页面在 SSE 首帧前长期停留“尝试加载中”
   bootstrapMainSnapshotOnce('init');
 
-  startMainEventStream();
+  // 后台主题预览只读取一次快照，不建立长期 SSE 连接。
+  if (!(window.BBZG_THEME && window.BBZG_THEME.preview)) {
+    startMainEventStream();
+  }
 
   // 音频预加载
   ensureAudioLoaded(inquirySound, 'inquiryAudioReady');
@@ -140,6 +145,7 @@ function playPersonalizedFireAudio(audioPath) {
 }
 
 function consumePersonalizedFireEvent(eventLike) {
+  if (window.BBZG_THEME && window.BBZG_THEME.preview) return;
   if (!eventLike || typeof eventLike !== 'object') return;
   if (!eventLike.id || !eventLike.audioPath) return;
 
@@ -205,6 +211,7 @@ async function applyMainStreamSnapshot(snapshot, rawPayload) {
   }
 
   const downstream = [
+    window.applyMainStreamSnapshotForTheme,
     window.applyMainStreamSnapshotForLeaderboard,
     window.applyMainStreamSnapshotForPlatformTargets
   ];
@@ -251,6 +258,7 @@ async function handleMainStreamPayload(payload, eventName) {
     snapshot.inquiryCount !== undefined ||
     snapshot.dealAmount !== undefined ||
     snapshot.dashboard ||
+    snapshot.theme ||
     snapshot.pageSettings ||
     snapshot.recentActivity ||
     snapshot.platformTargets ||
@@ -360,7 +368,8 @@ function startMainEventStream() {
     'page_settings',
     'recent_activity',
     'platform_targets',
-    'platform_display_settings'
+    'platform_display_settings',
+    'theme_settings'
   ].forEach(name => bindMainStreamEvent(source, name));
 }
 

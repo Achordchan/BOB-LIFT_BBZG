@@ -293,7 +293,8 @@ function createActivityItem(activity) {
   } else if (activity.type === 'inquiry') {
     // 询盘事件
     contentElement.textContent = activity.action === 'add' ? '询盘数量+1' : '询盘数量-1';
-    amountElement.textContent = `${activity.count}`;
+    const inquiryCount = activity.count ?? activity.currentCount ?? activity.inquiryCount;
+    amountElement.textContent = Number.isFinite(Number(inquiryCount)) ? String(inquiryCount) : '—';
     amountElement.style.color = activity.action === 'add' ? '#4caf50' : '#ff9800'; // 增加使用绿色，减少使用橙色
   }
 
@@ -587,6 +588,7 @@ async function loadTeamMembers() {
 
     // 创建最多6个成员元素，以便形成3x2的网格布局
     const maxMembersToShow = Math.min(6, usersWithPhotos.length);
+    teamPhotosElement.dataset.memberCount = String(maxMembersToShow);
 
     // 为每个用户创建照片元素
     for (let i = 0; i < maxMembersToShow; i++) {

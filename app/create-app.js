@@ -97,6 +97,7 @@ function configureApp(app) {
       '/personalized/fire',
       '/platform-display-settings',
       '/platforms/targets',
+      '/themes/active',
       '/defaultBattleSong/public'
     ]);
 
@@ -157,7 +158,7 @@ function configureUrlencodedParser(app) {
 function configureStaticPublic(app) {
   if (app.__bbzgStaticPublicConfigured) return;
   app.__bbzgStaticPublicConfigured = true;
-  app.use(express.static('public'));
+  app.use(express.static('public', { index: false }));
 }
 
 function configureStaticMusic(app, baseDir) {

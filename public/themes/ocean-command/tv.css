@@ -1,0 +1,182 @@
+@media screen and (min-width: 1920px) {
+  body.theme-ocean-command .leaderboard-main { grid-template-columns: minmax(0, 1.6fr) minmax(520px, .9fr) !important; gap: 22px; padding: 20px 28px 26px; }
+  body.theme-ocean-command .team-photos { display: block !important; }
+  body.theme-ocean-command .team-name { font-size: 1.28rem; }
+  body.theme-ocean-command .team-position { font-size: .88rem; }
+  body.theme-ocean-command .stats-panel .counter,
+  body.theme-ocean-command .stats-panel .deal-amount { font-size: 2.65rem; }
+  body.theme-ocean-command .stats-panel-heading strong { font-size: 1.25rem; }
+}
+
+@media screen and (max-width: 1500px) {
+  body.theme-ocean-command .leaderboard-main { grid-template-columns: minmax(0, 1.38fr) minmax(390px, .92fr); gap: 12px; padding: 12px 14px 15px; }
+  body.theme-ocean-command .leaderboard-header { min-height: 76px; padding: 11px 22px; }
+  body.theme-ocean-command .main-title { font-size: 2rem; }
+  body.theme-ocean-command .team-members { padding: 12px 14px 14px; }
+  body.theme-ocean-command .team-photo { margin-bottom: 5px; }
+  body.theme-ocean-command .stats-panel { gap: 8px; padding: 10px; }
+  body.theme-ocean-command .stats-panel-heading { min-height: 40px; padding-bottom: 6px; }
+  body.theme-ocean-command .stats-panel-heading strong { font-size: .94rem; }
+  body.theme-ocean-command .stats-panel-kicker { font-size: .5rem; }
+  body.theme-ocean-command .stats-upper-section { min-height: 220px; gap: 7px; }
+  body.theme-ocean-command .stats-card,
+  body.theme-ocean-command .stats-card:nth-child(1),
+  body.theme-ocean-command .stats-card:nth-child(2) { padding: 8px 10px; }
+  body.theme-ocean-command .progress-info { top: 8px; right: 10px; }
+}
+
+@media screen and (max-width: 1100px) {
+  body.theme-ocean-command .leaderboard-main { grid-template-columns: minmax(0, 1.15fr) minmax(345px, .85fr); }
+  body.theme-ocean-command .theme-eyebrow { font-size: .64rem; }
+  body.theme-ocean-command .main-title { font-size: 1.65rem; }
+  body.theme-ocean-command .sub-title { font-size: .78rem; }
+  body.theme-ocean-command .info-area { min-width: 220px; }
+  body.theme-ocean-command .date-time { font-size: 1rem; }
+  body.theme-ocean-command .team-members h3::after { display: none; }
+  body.theme-ocean-command .team-photos {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  body.theme-ocean-command .team-photos::before,
+  body.theme-ocean-command .team-photos::after { display: none; }
+  body.theme-ocean-command .team-member,
+  body.theme-ocean-command .team-member:nth-child(1),
+  body.theme-ocean-command .team-member:nth-child(2),
+  body.theme-ocean-command .team-member:nth-child(3),
+  body.theme-ocean-command .team-member:nth-child(4),
+  body.theme-ocean-command .team-member:nth-child(5),
+  body.theme-ocean-command .team-member:nth-child(6) {
+    position: relative;
+    inset: auto;
+    z-index: 2;
+    width: 100%;
+    height: auto;
+    padding: 6px;
+    overflow: hidden;
+    border-color: rgba(84, 119, 143, .23);
+    background: #0a1825;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, .2);
+    transform: none;
+  }
+  body.theme-ocean-command .team-photos[data-member-count="6"] .team-member:nth-child(4),
+  body.theme-ocean-command .team-photos[data-member-count="6"] .team-member:nth-child(5),
+  body.theme-ocean-command .team-photos[data-member-count="6"] .team-member:nth-child(6) {
+    inset: auto;
+    width: 100%;
+  }
+  body.theme-ocean-command .team-member .team-photo { clip-path: none; }
+  body.theme-ocean-command .team-photo {
+    flex: 0 0 auto;
+    width: 60%;
+    height: 0;
+    padding-bottom: 60%;
+    margin-bottom: 4px;
+  }
+  body.theme-ocean-command .team-name { font-size: .92rem; }
+  body.theme-ocean-command .team-position { font-size: .65rem; }
+  body.theme-ocean-command .stats-panel .counter,
+  body.theme-ocean-command .stats-panel .deal-amount { font-size: 1.72rem; }
+}
+
+@media screen and (max-width: 960px) and (max-height: 540px) {
+  html.tv-browser body.theme-ocean-command .leaderboard-header,
+  body.theme-ocean-command .leaderboard-header { flex-basis: 14vh; min-height: 66px; padding: 7px 14px; background: #07131f !important; }
+  body.theme-ocean-command .theme-eyebrow { display: none; }
+  body.theme-ocean-command .main-title { font-size: 1.55rem; }
+  body.theme-ocean-command .sub-title { font-size: .72rem; }
+  body.theme-ocean-command .date-time { font-size: .82rem; }
+  body.theme-ocean-command .theme-live-state { margin-top: 3px; font-size: .6rem; }
+  body.theme-ocean-command .leaderboard-main { grid-template-columns: 58% 42%; gap: 7px; padding: 7px; }
+  body.theme-ocean-command .team-members { padding: 7px; }
+  body.theme-ocean-command .team-members h3 { margin-bottom: 5px; padding: 0 0 5px 10px; font-size: .9rem; }
+  body.theme-ocean-command .team-members h3::before { top: 1px; bottom: 6px; width: 2px; }
+  body.theme-ocean-command .team-photos { gap: 5px !important; }
+  body.theme-ocean-command .team-member { padding: 4px; }
+  body.theme-ocean-command .team-photo { width: 58%; padding-bottom: 58%; margin-bottom: 2px; }
+  body.theme-ocean-command .team-name { font-size: .7rem; }
+  body.theme-ocean-command .team-position { margin-top: 1px; font-size: .52rem; }
+  body.theme-ocean-command .stats-panel { gap: 5px; padding: 6px; }
+  body.theme-ocean-command .stats-panel-heading { min-height: 26px; padding: 0 1px 3px; }
+  body.theme-ocean-command .stats-panel-heading strong { font-size: .66rem; }
+  body.theme-ocean-command .stats-panel-kicker { display: none; }
+  body.theme-ocean-command .stats-panel-live { gap: 3px; font-size: .48rem; }
+  body.theme-ocean-command .stats-panel-live span { width: 5px; height: 5px; }
+  body.theme-ocean-command .stats-upper-section { flex-basis: 43%; min-height: 150px; gap: 4px; margin: 0; }
+  body.theme-ocean-command .stats-card,
+  body.theme-ocean-command .stats-card:nth-child(1),
+  body.theme-ocean-command .stats-card:nth-child(2) { width: 100%; min-height: 0; padding: 4px 7px; }
+  body.theme-ocean-command .stats-card:nth-child(1) { width: 96%; }
+  body.theme-ocean-command .stats-card h3 { font-size: .62rem; }
+  body.theme-ocean-command .stats-panel .counter,
+  body.theme-ocean-command .stats-panel .deal-amount { margin: 1px 0 3px; font-size: 1.15rem; }
+  body.theme-ocean-command .progress-info { top: 4px; right: 6px; }
+  body.theme-ocean-command .progress-label,
+  body.theme-ocean-command .progress-percentage { font-size: .52rem; }
+  body.theme-ocean-command .progress-bar-container { height: 3px; margin-bottom: 2px; }
+  body.theme-ocean-command .target-info { font-size: .48rem; }
+  body.theme-ocean-command .recent-activity-section { max-height: none; height: auto; padding: 5px; }
+  body.theme-ocean-command .section-header { margin-bottom: 3px; padding-bottom: 3px; }
+  body.theme-ocean-command .recent-activity-section h3 { font-size: .68rem; }
+  body.theme-ocean-command .activity-heading > span { display: none; }
+  body.theme-ocean-command .stats-panel .activity-list { max-height: none; gap: 2px; }
+  body.theme-ocean-command .stats-panel .activity-item,
+  body.theme-ocean-command .stats-panel .activity-item:first-child { min-height: 20px; max-height: 25px; padding: 2px 4px; }
+  body.theme-ocean-command .stats-panel .activity-item:first-child { flex: 1 1 0; border-left-width: 2px; box-shadow: none; }
+  body.theme-ocean-command .stats-panel .activity-item:first-child::after { display: none; }
+  body.theme-ocean-command .stats-panel .activity-item:nth-child(n+2) { margin-left: 3px; }
+  body.theme-ocean-command .stats-panel .activity-time { flex-basis: 28px; font-size: .5rem; }
+  body.theme-ocean-command .stats-panel .activity-icon { flex-basis: 16px; width: 16px; height: 16px; margin-right: 3px; }
+  body.theme-ocean-command .stats-panel .activity-icon svg { width: 9px; height: 9px; }
+  body.theme-ocean-command .stats-panel .activity-content { font-size: .52rem; }
+  body.theme-ocean-command .stats-panel .activity-item:first-child .activity-amount { padding-top: 0; font-size: .58rem; }
+  body.theme-ocean-command .stats-panel .activity-amount { flex-basis: 44px; font-size: .58rem; }
+}
+
+@media screen and (min-width: 3840px) {
+  body.theme-ocean-command .leaderboard-header { min-height: 172px; padding: 28px 58px; }
+  body.theme-ocean-command .theme-eyebrow { font-size: 1.25rem; }
+  body.theme-ocean-command .main-title { font-size: 4.5rem; }
+  body.theme-ocean-command .sub-title { font-size: 1.8rem; }
+  body.theme-ocean-command .info-area { min-width: 580px; }
+  body.theme-ocean-command .date-time { font-size: 2.3rem; }
+  body.theme-ocean-command .theme-live-state { font-size: 1.3rem; }
+  body.theme-ocean-command .leaderboard-main { grid-template-columns: minmax(0, 1.6fr) minmax(940px, .9fr) !important; gap: 38px; padding: 38px 52px 46px; }
+  body.theme-ocean-command .team-members { padding: 34px 40px 38px; }
+  body.theme-ocean-command .team-members h3 { margin-bottom: 24px; padding: 0 0 22px 28px; font-size: 2.6rem; }
+  body.theme-ocean-command .team-members h3::after { font-size: 1.2rem; }
+  body.theme-ocean-command .team-photos { display: block !important; }
+  body.theme-ocean-command .team-member { padding: 20px 16px 16px; }
+  body.theme-ocean-command .team-photo { max-width: none; margin-bottom: 14px; }
+  body.theme-ocean-command .team-name { font-size: 2rem; }
+  body.theme-ocean-command .team-position { font-size: 1.3rem; }
+  body.theme-ocean-command .stats-panel { gap: 22px; padding: 28px; }
+  body.theme-ocean-command .stats-panel-heading { min-height: 86px; padding: 0 6px 18px; }
+  body.theme-ocean-command .stats-panel-heading strong { font-size: 2.1rem; }
+  body.theme-ocean-command .stats-panel-kicker { font-size: 1rem; }
+  body.theme-ocean-command .stats-panel-live { font-size: 1.2rem; }
+  body.theme-ocean-command .stats-panel-live span { width: 12px; height: 12px; }
+  body.theme-ocean-command .stats-upper-section { min-height: 450px; gap: 18px; }
+  body.theme-ocean-command .stats-card,
+  body.theme-ocean-command .stats-card:nth-child(1),
+  body.theme-ocean-command .stats-card:nth-child(2) { padding: 20px 24px; }
+  body.theme-ocean-command .progress-info { top: 20px; right: 24px; }
+  body.theme-ocean-command .stats-card h3 { font-size: 1.45rem; }
+  body.theme-ocean-command .stats-panel .counter,
+  body.theme-ocean-command .stats-panel .deal-amount { font-size: 4.35rem; }
+  body.theme-ocean-command .progress-label { font-size: 1.22rem; }
+  body.theme-ocean-command .progress-percentage { font-size: 2rem; }
+  body.theme-ocean-command .progress-bar-container { height: 9px; margin-bottom: 10px; }
+  body.theme-ocean-command .target-info { font-size: 1.05rem; }
+  body.theme-ocean-command .recent-activity-section { padding: 24px 22px 18px; }
+  body.theme-ocean-command .recent-activity-section h3 { font-size: 1.7rem; }
+  body.theme-ocean-command .activity-heading > span { font-size: .92rem; }
+  body.theme-ocean-command .stats-panel .activity-item { min-height: 58px; max-height: 76px; padding: 10px 13px; }
+  body.theme-ocean-command .stats-panel .activity-item:first-child { flex-basis: 92px; max-height: 92px; padding: 17px 15px; }
+  body.theme-ocean-command .stats-panel .activity-item:first-child::after { top: 9px; right: 12px; font-size: .9rem; }
+  body.theme-ocean-command .stats-panel .activity-time { flex-basis: 72px; font-size: 1.2rem; }
+  body.theme-ocean-command .stats-panel .activity-icon { flex-basis: 42px; width: 42px; height: 42px; margin-right: 13px; }
+  body.theme-ocean-command .stats-panel .activity-content { font-size: 1.28rem; }
+  body.theme-ocean-command .stats-panel .activity-amount { flex-basis: 130px; font-size: 1.4rem; }
+}

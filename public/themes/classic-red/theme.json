@@ -1,0 +1,11 @@
+{
+  "id": "classic-red",
+  "name": "经典红榜",
+  "description": "当前首页的红色经营大屏主题，适合日常战报与团队目标展示。",
+  "version": "1.0.0",
+  "contractVersion": 1,
+  "scene": "日常经营",
+  "entry": "index.html",
+  "previewImage": "/themes/classic-red/preview.png",
+  "isDefault": true
+}

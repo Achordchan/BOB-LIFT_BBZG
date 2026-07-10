@@ -18,6 +18,10 @@
   },
   "personalizedAudio": [],
   "personalizedFire": null,
+  "themeSettings": {
+    "activeThemeId": "classic-red",
+    "updatedAt": "2026-07-10T00:00:00.000Z"
+  },
   "targets": {
     "inquiryTarget": 0,
     "dealTarget": 0,
