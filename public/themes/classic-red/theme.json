@@ -3,9 +3,22 @@
   "name": "经典红榜",
   "description": "当前首页的红色经营大屏主题，适合日常战报与团队目标展示。",
   "version": "1.0.0",
-  "contractVersion": 1,
+  "contractVersion": 2,
   "scene": "日常经营",
   "entry": "index.html",
   "previewImage": "/themes/classic-red/preview.png",
-  "isDefault": true
+  "isDefault": true,
+  "pageSettings": {
+    "title": "经典红榜文案",
+    "description": "经典红榜支持配置首页标题、经营指标和团队区域文案。",
+    "fields": [
+      { "key": "mainTitle", "label": "主标题", "defaultValue": "巴布之光3.0无限公司", "maxLength": 36 },
+      { "key": "subTitle", "label": "副标题", "defaultValue": "无限进步", "maxLength": 36 },
+      { "key": "inquiryTitle", "label": "询盘标题", "defaultValue": "询盘总数", "maxLength": 20 },
+      { "key": "dealTitle", "label": "成交标题", "defaultValue": "成交金额", "maxLength": 20 },
+      { "key": "progressTitle", "label": "进度标题", "defaultValue": "目标进度", "maxLength": 20 },
+      { "key": "teamTitle", "label": "团队标题", "defaultValue": "团队成员", "maxLength": 24 },
+      { "key": "activityTitle", "label": "动态标题", "defaultValue": "最近动态", "maxLength": 24 }
+    ]
+  }
 }

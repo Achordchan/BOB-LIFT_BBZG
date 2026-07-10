@@ -47,15 +47,51 @@ export interface CelebrationMessage {
   createdAt?: string;
 }
 
-export interface PageSettings {
-  mainTitle: string;
-  subTitle: string;
-  inquiryTitle: string;
-  dealTitle: string;
-  progressTitle: string;
-  teamTitle: string;
-  activityTitle: string;
-  updatedAt?: string;
+export interface ThemePageSettingField {
+  key: string;
+  label: string;
+  defaultValue: string;
+  required: boolean;
+  maxLength: number;
+  description?: string;
+}
+
+export interface ThemePageSettingsDefinition {
+  title: string;
+  description?: string;
+  fields: ThemePageSettingField[];
+}
+
+export interface ThemeItem {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  contractVersion: number;
+  scene: string;
+  previewImage: string;
+  active: boolean;
+  pageSettings: ThemePageSettingsDefinition;
+}
+
+export interface ThemesResponse {
+  success: boolean;
+  activeThemeId: string;
+  themes: ThemeItem[];
+  message?: string;
+}
+
+export interface ThemePageSettingsResponse {
+  success: boolean;
+  theme: {
+    id: string;
+    name: string;
+    active: boolean;
+  };
+  definition: ThemePageSettingsDefinition;
+  settings: Record<string, string>;
+  saved: boolean;
+  message?: string;
 }
 
 export interface DashboardData {

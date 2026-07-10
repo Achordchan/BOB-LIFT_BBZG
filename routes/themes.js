@@ -52,7 +52,11 @@ function registerThemeRoutes(app, deps) {
       });
     }
 
+    const currentThemeSettings = data.themeSettings && typeof data.themeSettings === 'object'
+      ? data.themeSettings
+      : {};
     data.themeSettings = {
+      ...currentThemeSettings,
       activeThemeId: theme.id,
       updatedAt: new Date().toISOString()
     };
@@ -90,4 +94,3 @@ function registerThemeRoutes(app, deps) {
 module.exports = {
   registerThemeRoutes
 };
-

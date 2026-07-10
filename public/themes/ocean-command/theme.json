@@ -3,9 +3,23 @@
   "name": "深海指挥舱",
   "description": "深蓝与暖金构成的经营指挥大屏，强调数据层级、团队荣誉和 TV 远距离识读。",
   "version": "1.0.0",
-  "contractVersion": 1,
+  "contractVersion": 2,
   "scene": "高端展示",
   "entry": "index.html",
   "previewImage": "/themes/ocean-command/preview.png",
-  "isDefault": false
+  "isDefault": false,
+  "pageSettings": {
+    "title": "深海指挥舱文案",
+    "description": "深海主题拥有独立的指挥中心标题和经营脉冲标题，不提供经典红榜的进度标题设置。",
+    "fields": [
+      { "key": "eyebrowTitle", "label": "指挥中心标题", "defaultValue": "实时经营指挥中心", "maxLength": 24 },
+      { "key": "mainTitle", "label": "主标题", "defaultValue": "巴布之光3.0无限公司", "maxLength": 36 },
+      { "key": "subTitle", "label": "副标题", "defaultValue": "无限进步", "maxLength": 36 },
+      { "key": "overviewTitle", "label": "经营区域标题", "defaultValue": "经营脉冲", "maxLength": 20 },
+      { "key": "inquiryTitle", "label": "询盘标题", "defaultValue": "询盘总数", "maxLength": 20 },
+      { "key": "dealTitle", "label": "成交标题", "defaultValue": "成交金额", "maxLength": 20 },
+      { "key": "teamTitle", "label": "团队标题", "defaultValue": "团队成员", "maxLength": 24 },
+      { "key": "activityTitle", "label": "动态标题", "defaultValue": "最近动态", "maxLength": 24 }
+    ]
+  }
 }

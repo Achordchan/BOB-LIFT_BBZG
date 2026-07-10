@@ -124,9 +124,9 @@
     <!-- 头部区域 -->
     <header class="leaderboard-header">
       <div class="title-area">
-        <div class="theme-eyebrow">实时经营指挥中心</div>
-        <h1 class="main-title">巴布之光3.0无限公司</h1>
-        <h2 class="sub-title">无限进步</h2>
+        <div class="theme-eyebrow" data-theme-setting="eyebrowTitle">实时经营指挥中心</div>
+        <h1 class="main-title" data-theme-setting="mainTitle">巴布之光3.0无限公司</h1>
+        <h2 class="sub-title" data-theme-setting="subTitle">无限进步</h2>
       </div>
       <div class="info-area">
         <div class="date-time" id="dateTimeDisplay">2025年5月11日 周日 00:00:00</div>
@@ -141,7 +141,7 @@
         <div class="stats-panel-heading">
           <div>
             <span class="stats-panel-kicker">LIVE OPERATIONS</span>
-            <strong>经营脉冲</strong>
+            <strong data-theme-setting="overviewTitle">经营脉冲</strong>
           </div>
           <div class="stats-panel-live"><span></span>实时</div>
         </div>
@@ -149,7 +149,7 @@
         <!-- 上半部分：询盘总数和成交金额 -->
         <div class="stats-upper-section">
         <div class="stats-card">
-          <h3>询盘总数</h3>
+          <h3 data-theme-setting="inquiryTitle">询盘总数</h3>
           <div class="counter" id="inquiryCount">尝试加载中</div>
           <!-- 添加询盘目标进度 -->
           <div class="progress-container">
@@ -171,7 +171,7 @@
         </div>
         
         <div class="stats-card">
-          <h3>成交金额</h3>
+          <h3 data-theme-setting="dealTitle">成交金额</h3>
           <div class="deal-amount" id="dealAmount">尝试加载中</div>
           <!-- 添加成交目标进度 -->
           <div class="progress-container">
@@ -197,7 +197,7 @@
         <div class="recent-activity-section">
           <div class="section-header">
             <div class="activity-heading">
-              <h3 id="sectionTitle">最近动态</h3>
+              <h3 id="sectionTitle" data-theme-setting="activityTitle">最近动态</h3>
               <span>LIVE EVENT STREAM</span>
             </div>
             <div class="section-indicator">
@@ -220,7 +220,7 @@
 
       <!-- 团队成员展示 - 占据右侧全部区域 -->
       <div class="team-members">
-        <h3>团队成员</h3>
+        <h3 data-theme-setting="teamTitle">团队成员</h3>
         <div class="team-photos" id="teamPhotos">
           <!-- 团队成员照片将通过JavaScript动态加载 -->
         </div>

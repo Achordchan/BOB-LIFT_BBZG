@@ -102,9 +102,7 @@ function applyMainStreamPageSettings(settings) {
   if (!settings || typeof settings !== 'object') return;
   pageSettings = settings;
   applyPageSettings();
-  try {
-    localStorage.setItem('pageSettings', JSON.stringify(settings));
-  } catch (e) {}
+  cachePageSettings(settings);
 }
 
 function applyMainStreamRecentActivity(deals) {
@@ -441,6 +439,27 @@ function getColorFromName(name) {
 // 加载页面设置
 let __lastPageSettingsFetchAt = 0;
 
+function getPageSettingsStorageKey() {
+  const themeId = document.body && document.body.getAttribute('data-theme-id');
+  return themeId ? `pageSettings:${themeId}` : 'pageSettings';
+}
+
+function cachePageSettings(settings) {
+  try {
+    localStorage.setItem(getPageSettingsStorageKey(), JSON.stringify(settings));
+  } catch (e) {}
+}
+
+function readCachedPageSettings() {
+  try {
+    const themeSettings = localStorage.getItem(getPageSettingsStorageKey());
+    const legacySettings = localStorage.getItem('pageSettings');
+    return JSON.parse(themeSettings || legacySettings || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
 function loadPageSettings(force) {
   try {
     const now = Date.now();
@@ -460,11 +479,11 @@ function loadPageSettings(force) {
           applyPageSettings();
 
           // 同时保存到本地存储作为备份
-          localStorage.setItem('pageSettings', JSON.stringify(data.settings));
+          cachePageSettings(data.settings);
         } else {
           console.error('获取页面设置失败:', data.message);
           // 失败时使用本地存储的备份
-          const fallbackSettings = JSON.parse(localStorage.getItem('pageSettings')) || {};
+          const fallbackSettings = readCachedPageSettings();
           pageSettings = fallbackSettings;
           applyPageSettings();
         }
@@ -472,7 +491,7 @@ function loadPageSettings(force) {
       .catch(error => {
         console.error('加载页面设置失败:', error);
         // 网络错误时使用本地存储的备份
-        const fallbackSettings = JSON.parse(localStorage.getItem('pageSettings')) || {};
+        const fallbackSettings = readCachedPageSettings();
         pageSettings = fallbackSettings;
         applyPageSettings();
       });
@@ -483,46 +502,13 @@ function loadPageSettings(force) {
 
 // 应用页面设置
 function applyPageSettings() {
-  // 设置页面主标题和副标题
-  const mainTitleElement = document.querySelector('.main-title');
-  if (mainTitleElement && pageSettings.mainTitle) {
-    mainTitleElement.textContent = pageSettings.mainTitle;
-  }
-
-  const subTitleElement = document.querySelector('.sub-title');
-  if (subTitleElement && pageSettings.subTitle) {
-    subTitleElement.textContent = pageSettings.subTitle;
-  }
-
-  // 设置左侧各标题
-  const inquiryTitleElement = document.querySelector('.stats-card:nth-child(1) h3');
-  if (inquiryTitleElement && pageSettings.inquiryTitle) {
-    inquiryTitleElement.textContent = pageSettings.inquiryTitle;
-  }
-
-  const dealTitleElement = document.querySelector('.stats-card:nth-child(2) h3');
-  if (dealTitleElement && pageSettings.dealTitle) {
-    dealTitleElement.textContent = pageSettings.dealTitle;
-  }
-
-  // 设置目标进度标题
-  const progressLabelElements = document.querySelectorAll('.progress-label');
-  if (progressLabelElements.length > 0 && pageSettings.progressTitle) {
-    progressLabelElements.forEach(element => {
-      element.textContent = pageSettings.progressTitle;
-    });
-  }
-
-  // 设置团队成员标题
-  const teamTitleElement = document.querySelector('.team-members h3');
-  if (teamTitleElement && pageSettings.teamTitle) {
-    teamTitleElement.textContent = pageSettings.teamTitle;
-  }
-
-  // 设置最近动态标题
-  const activityTitleElement = document.querySelector('.recent-activity-section h3');
-  if (activityTitleElement && pageSettings.activityTitle) {
-    activityTitleElement.textContent = pageSettings.activityTitle;
+  const elements = document.querySelectorAll('[data-theme-setting]');
+  for (let i = 0; i < elements.length; i++) {
+    const element = elements[i];
+    const key = element.getAttribute('data-theme-setting');
+    if (key && Object.prototype.hasOwnProperty.call(pageSettings, key)) {
+      element.textContent = pageSettings[key];
+    }
   }
 }
 

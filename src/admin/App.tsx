@@ -81,7 +81,7 @@ const pages: Record<PageKey, { title: string; sub: string }> = {
   playback: { title: '播放配置', sub: '配置默认战歌、询盘音效、TTS、启动音频和个性化音频' },
   celebration: { title: '庆祝语管理', sub: '维护成交播报模板和变量占位符' },
   platforms: { title: '平台目标', sub: '维护平台销售目标、当前进度和首页展示方式' },
-  settings: { title: '首页设置', sub: '只管理首页文案配置，不改首页页面代码' },
+  settings: { title: '首页设置', sub: '按主题管理首页文案，共用经营目标保持独立' },
   themes: { title: '主题中心', sub: '预览并切换不同时期和场景的首页主题' },
   apis: { title: 'API 调试', sub: '集中测试成交、询盘、TTS 和系统诊断接口' },
   system: { title: '系统设置', sub: '系统维护' }

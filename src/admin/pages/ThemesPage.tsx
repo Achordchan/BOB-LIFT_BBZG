@@ -1,25 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { App, Button, Card, Empty, Modal, Segmented, Space, Spin, Tag, Typography } from 'antd';
-import { CheckCircleFilled, DesktopOutlined, EyeOutlined } from '@ant-design/icons';
+import { CheckCircleFilled, DesktopOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons';
 import { apiGet, apiJson } from '../api';
-
-interface ThemeItem {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  contractVersion: number;
-  scene: string;
-  previewImage: string;
-  active: boolean;
-}
-
-interface ThemesResponse {
-  success: boolean;
-  activeThemeId: string;
-  themes: ThemeItem[];
-  message?: string;
-}
+import type { ThemeItem, ThemesResponse } from '../types';
 
 const previewSizes = {
   large: { label: '大屏 1920×1080', width: 1920, height: 1080 },
@@ -122,6 +105,18 @@ export default function ThemesPage() {
             )}
             actions={[
               <Button key="preview" type="text" icon={<EyeOutlined />} onClick={() => setPreviewTheme(theme)}>预览</Button>,
+              theme.pageSettings.fields.length
+                ? (
+                  <Button
+                    key="settings"
+                    type="text"
+                    icon={<SettingOutlined />}
+                    href={`/admin?page=settings&themeId=${encodeURIComponent(theme.id)}`}
+                  >
+                    设置文案
+                  </Button>
+                )
+                : <Button key="settings" type="text" disabled>无文案设置</Button>,
               theme.active
                 ? <Button key="active" type="text" icon={<CheckCircleFilled />} disabled>当前主题</Button>
                 : <Button key="activate" type="link" loading={activatingId === theme.id} onClick={() => activateTheme(theme)}>启用主题</Button>
@@ -138,7 +133,9 @@ export default function ThemesPage() {
               description={(
                 <Space direction="vertical" size={6}>
                   <Typography.Text type="secondary">{theme.description}</Typography.Text>
-                  <Typography.Text type="secondary" className="theme-card-version">版本 {theme.version} · 主题协议 v{theme.contractVersion}</Typography.Text>
+                  <Typography.Text type="secondary" className="theme-card-version">
+                    版本 {theme.version} · 主题协议 v{theme.contractVersion} · {theme.pageSettings.fields.length} 项文案设置
+                  </Typography.Text>
                 </Space>
               )}
             />
@@ -176,4 +173,3 @@ export default function ThemesPage() {
     </Spin>
   );
 }
-

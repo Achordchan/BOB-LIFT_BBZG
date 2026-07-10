@@ -13,6 +13,7 @@ const { getData: getDataFromStore, saveData: saveDataFromStore } = require('./li
 const { createMainStreamHub } = require('./lib/main-stream-hub');
 const { createInitialData } = require('./lib/data-bootstrap');
 const { createThemeRegistry } = require('./lib/theme-registry');
+const { resolveThemePageSettings } = require('./lib/theme-page-settings');
 const { createUpload } = require('./services/uploads');
 const { registerAudioPlaybackRoutes } = require('./routes/audio-playback');
 const { registerInquiryRoutes } = require('./routes/inquiries');
@@ -93,7 +94,11 @@ const themeRegistry = createThemeRegistry({
 const mainStreamHub = createMainStreamHub({
   getData,
   dataPath: DATA_PATH,
-  getActiveTheme: (data) => themeRegistry.getActiveTheme(data)
+  getActiveTheme: (data) => themeRegistry.getActiveTheme(data),
+  getPageSettings: (data) => {
+    const activeTheme = themeRegistry.getActiveTheme(data);
+    return activeTheme ? resolveThemePageSettings(data, activeTheme) : {};
+  }
 });
 mainStreamHub.registerRoutes(app);
 
@@ -188,9 +193,9 @@ registerPlatformDisplaySettingsRoutes(app, {
 });
 
 registerPageSettingsRoutes(app, {
-  dataPath: DATA_PATH,
   getData,
-  saveData
+  saveData,
+  themeRegistry
 });
 
 registerPublicMusicRoutes(app);
