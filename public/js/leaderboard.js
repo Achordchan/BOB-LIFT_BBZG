@@ -293,7 +293,11 @@ function createActivityItem(activity) {
   } else if (activity.type === 'inquiry') {
     // 询盘事件
     contentElement.textContent = activity.action === 'add' ? '询盘数量+1' : '询盘数量-1';
-    const inquiryCount = activity.count ?? activity.currentCount ?? activity.inquiryCount;
+    const inquiryCount = activity.count !== undefined && activity.count !== null
+      ? activity.count
+      : (activity.currentCount !== undefined && activity.currentCount !== null
+        ? activity.currentCount
+        : activity.inquiryCount);
     amountElement.textContent = Number.isFinite(Number(inquiryCount)) ? String(inquiryCount) : '—';
     amountElement.style.color = activity.action === 'add' ? '#4caf50' : '#ff9800'; // 增加使用绿色，减少使用橙色
   }

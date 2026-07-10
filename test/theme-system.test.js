@@ -52,6 +52,15 @@ test('深海指挥舱移除无意义品牌方块并提供经营脉冲区', () =>
   assert.equal(themeHtml.includes('经营脉冲'), true);
 });
 
+test('TV 共享业务脚本不使用旧浏览器无法解析的空值合并语法', () => {
+  const sharedScript = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'leaderboard.js'),
+    'utf8'
+  );
+
+  assert.equal(sharedScript.includes('??'), false);
+});
+
 test('主题注册表忽略越界入口和损坏的主题包', () => {
   const themesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bbzg-themes-'));
   writeTheme(themesDir, 'classic-red', { isDefault: true });
