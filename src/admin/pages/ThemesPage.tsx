@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { App, Button, Card, Empty, Modal, Segmented, Space, Spin, Tag, Typography } from 'antd';
 import { CheckCircleFilled, DesktopOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons';
 import { apiGet, apiJson } from '../api';
+import { ThemePageSettingsForm } from '../components/ThemePageSettingsForm';
 import type { ThemeItem, ThemesResponse } from '../types';
 
 const previewSizes = {
@@ -50,6 +51,7 @@ export default function ThemesPage() {
   const [activatingId, setActivatingId] = useState('');
   const [themes, setThemes] = useState<ThemeItem[]>([]);
   const [previewTheme, setPreviewTheme] = useState<ThemeItem | null>(null);
+  const [settingsTheme, setSettingsTheme] = useState<ThemeItem | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize>('large');
 
   async function loadThemes() {
@@ -111,7 +113,7 @@ export default function ThemesPage() {
                     key="settings"
                     type="text"
                     icon={<SettingOutlined />}
-                    href={`/admin?page=settings&themeId=${encodeURIComponent(theme.id)}`}
+                    onClick={() => setSettingsTheme(theme)}
                   >
                     设置文案
                   </Button>
@@ -143,6 +145,18 @@ export default function ThemesPage() {
         ))}
       </div>
       {!loading && themes.length === 0 ? <Empty description="暂无可用主题" /> : null}
+
+      <Modal
+        className="theme-settings-modal"
+        open={Boolean(settingsTheme)}
+        title={settingsTheme ? `设置文案：${settingsTheme.name}` : '设置主题文案'}
+        width={780}
+        footer={null}
+        destroyOnHidden
+        onCancel={() => setSettingsTheme(null)}
+      >
+        {settingsTheme ? <ThemePageSettingsForm themeId={settingsTheme.id} /> : null}
+      </Modal>
 
       <Modal
         open={Boolean(previewTheme)}

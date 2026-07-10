@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Space, Statistic, Table, Tag, Typography, App } from 'antd';
 import { CheckCircleFilled, ExclamationCircleFilled, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import { apiGet, dateTime, money } from '../api';
+import { BusinessController } from '../components/BusinessController';
 import { SectionCard } from '../components/SectionCard';
-import type { DashboardData, UserItem, MusicItem } from '../types';
+import type { DashboardData, UserItem, MusicItem, PlatformTarget } from '../types';
 
 interface RecentDealItem {
   type?: string;
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardData>({ inquiryCount: 0, dealAmount: 0 });
   const [recentDeals, setRecentDeals] = useState<RecentDealItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [platforms, setPlatforms] = useState<PlatformTarget[]>([]);
   const [music, setMusic] = useState<MusicItem[]>([]);
   const [defaultSong, setDefaultSong] = useState<any>(null);
   const [tts, setTts] = useState<any>(null);
@@ -40,10 +42,11 @@ export default function DashboardPage() {
   async function load() {
     setLoading(true);
     try {
-      const [dash, recent, us, mu, def, ttsCfg] = await Promise.all([
+      const [dash, recent, us, platformData, mu, def, ttsCfg] = await Promise.all([
         apiGet<DashboardData>('/api/dashboard'),
         apiGet<{ deals: RecentDealItem[] }>('/api/deals/recent'),
         apiGet<{ users: UserItem[] }>('/api/users'),
+        apiGet<{ platforms: PlatformTarget[] }>('/api/platforms/targets'),
         apiGet<{ music: MusicItem[] }>('/api/music'),
         apiGet<{ defaultBattleSong: any }>('/api/defaultBattleSong'),
         apiGet<{ config: any }>('/api/aliyun-tts-config')
@@ -56,6 +59,7 @@ export default function DashboardPage() {
       });
       setRecentDeals(((recent as any).deals || []).filter((item: RecentDealItem) => item.type === 'deal'));
       setUsers((us as any).users || []);
+      setPlatforms((platformData as any).platforms || []);
       setMusic((mu as any).music || []);
       setDefaultSong((def as any).defaultBattleSong || null);
       setTts((ttsCfg as any).config || null);
@@ -116,6 +120,7 @@ export default function DashboardPage() {
         <Card className="dashboard-kpi-card"><Statistic title="音乐资产" value={music.length} suffix="个" /></Card>
       </div>
     </SectionCard>
+    <BusinessController dashboard={dashboard} users={users} platforms={platforms} onChanged={load} />
     <div className="content-grid">
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <SectionCard title="成交记录" description="最近成交数据">
@@ -138,7 +143,7 @@ export default function DashboardPage() {
             <Button icon={<SettingOutlined />} onClick={() => navigateTo('playback')}>播放配置</Button>
             <Button onClick={() => navigateTo('music')}>上传音乐</Button>
             <Button onClick={() => navigateTo('celebration')}>庆祝语管理</Button>
-            <Button onClick={() => navigateTo('apis')}>接口调试</Button>
+            <Button onClick={() => navigateTo('platforms')}>平台目标</Button>
           </div>
         </SectionCard>
       </Space>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, App, Button, Form, Input, InputNumber, Space, Tabs } from 'antd';
+import { Alert, App, Button, Form, Input, Space, Tabs } from 'antd';
 import { apiGet, apiJson } from '../api';
 import { SectionCard } from '../components/SectionCard';
 
@@ -14,53 +14,39 @@ export default function ApiDebugPage() {
 
   if (!enabled) return <SectionCard
     title="API 调试"
-    description="调试操作默认收起，避免误写真实数据"
+    description="诊断入口默认收起，避免干扰日常后台"
     extra={<Button type="primary" onClick={() => setEnabled(true)}>开启调试模式</Button>}
   >
     <Alert
       type="warning"
       showIcon
-      message="API 调试会写入真实数据"
-      description="增加成交、增减询盘、设置金额等操作会直接影响 data.json 和首页展示。确认需要排查时再开启。"
+      message="业务操作已移至工作台"
+      description="这里仅保留接口诊断与 TTS 测试。询盘和成交请统一在工作台的业务控制器中维护。"
     />
   </SectionCard>;
 
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
     <SectionCard
       title="API 调试"
-      description="当前页面会直接调用真实接口，完成排查后请离开。"
+      description="用于读取接口状态和测试 TTS，不维护业务数据。"
       extra={<Button danger onClick={() => setEnabled(false)}>退出调试</Button>}
     >
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Alert type="warning" showIcon message="API 调试已开启" description="当前页面会直接调用真实接口，完成排查后请离开。" />
+        <Alert type="info" showIcon message="API 调试已开启" description="询盘和成交写操作已集中到工作台，避免出现多个业务入口。" />
         <div className="content-grid">
           <SectionCard title="调试面板" description="集中测试现有接口">
             <Tabs items={[
               { key: 'base', label: '基础诊断', children: <Space wrap><Button onClick={() => run(() => apiGet('/api/ping'))}>健康检查</Button><Button onClick={() => run(() => apiGet('/api/debug/routes'))}>路由清单</Button><Button onClick={() => run(() => apiGet('/api/dashboard'))}>工作台数据</Button></Space> },
-              { key: 'inquiry', label: '询盘', children: <Space direction="vertical"><Space wrap><Button onClick={() => run(() => apiGet('/api/inquiries/add'))}>新增询盘</Button><Button onClick={() => run(() => apiGet('/api/inquiries/reduce'))}>减少询盘</Button><Button onClick={() => run(() => apiGet('/api/inquiries/latest'))}>最近询盘</Button></Space><Form layout="inline" onFinish={(v) => run(() => apiJson('/api/inquiries/set', 'POST', v))}><Form.Item name="count" rules={[{ required: true }]}><InputNumber min={0} placeholder="询盘总数" /></Form.Item><Button type="primary" htmlType="submit">设置询盘</Button></Form></Space> },
+              { key: 'inquiry', label: '询盘诊断', children: <Space wrap><Button onClick={() => run(() => apiGet('/api/inquiries'))}>询盘数据</Button><Button onClick={() => run(() => apiGet('/api/inquiries/latest'))}>最近询盘</Button></Space> },
               {
                 key: 'deal',
-                label: '成交',
+                label: '成交诊断',
                 children: (
-                  <Space direction="vertical">
-                    <Form
-                      layout="inline"
-                      onFinish={(v) => run(() => apiGet(`/api/deals/add?zongjine=${v.amount}&fuzeren=${encodeURIComponent(v.person)}&laiyuanpingtai=${encodeURIComponent(v.platform)}`))}
-                    >
-                      <Form.Item name="amount" rules={[{ required: true }]}><InputNumber min={1} placeholder="成交金额" /></Form.Item>
-                      <Form.Item name="person" rules={[{ required: true, message: '请输入真实负责人' }]}><Input placeholder="负责人" /></Form.Item>
-                      <Form.Item name="platform" rules={[{ required: true, message: '请输入真实平台' }]}><Input placeholder="平台" /></Form.Item>
-                      <Button type="primary" htmlType="submit">增加成交</Button>
-                    </Form>
-                    <Form layout="inline" onFinish={(v) => run(() => apiJson('/api/deals/set', 'POST', v))}>
-                      <Form.Item name="amount" rules={[{ required: true }]}><InputNumber min={0} placeholder="成交总额" /></Form.Item>
-                      <Button htmlType="submit">设置总额</Button>
-                    </Form>
-                    <Space wrap>
-                      <Button onClick={() => run(() => apiGet('/api/deals/latest'))}>最近成交</Button>
-                      <Button onClick={() => run(() => apiGet('/api/deals/leaderboard'))}>排行榜</Button>
-                      <Button onClick={() => run(() => apiGet('/api/deals/recent'))}>成交记录</Button>
-                    </Space>
+                  <Space wrap>
+                    <Button onClick={() => run(() => apiGet('/api/deals'))}>成交总额</Button>
+                    <Button onClick={() => run(() => apiGet('/api/deals/latest'))}>最近成交</Button>
+                    <Button onClick={() => run(() => apiGet('/api/deals/leaderboard'))}>排行榜</Button>
+                    <Button onClick={() => run(() => apiGet('/api/deals/recent'))}>成交记录</Button>
                   </Space>
                 )
               },
