@@ -72,33 +72,42 @@ body { margin: 0; background: #f4f7fb; }
 .quick-action-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .quick-action-grid .ant-btn { height: 40px; font-weight: 600; }
 .recent-deal-table .ant-table-thead > tr > th { background: #f8fafc; color: #475569; font-weight: 600; }
-.business-controller-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 16px; }
-.business-controller-panel { min-width: 0; padding: 18px; border: 1px solid #e6ebf2; border-radius: 14px; background: #f8fafc; }
-.business-controller-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.business-controller-layout { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr); gap: 26px; align-items: start; }
+.business-controller-section { min-width: 0; padding: 2px 0; }
+.business-controller-deal-section { padding-inline-start: 26px; border-inline-start: 1px solid #e6ebf2; }
+.business-controller-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .business-controller-header > div:last-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.business-controller-icon { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: #155eef; background: #eaf2ff; font-size: 19px; }
+.business-controller-icon { flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: #155eef; background: #eaf2ff; font-size: 17px; }
 .business-controller-icon-deal { color: #15803d; background: #eaf8ef; }
-.inquiry-stepper { display: grid; grid-template-columns: 46px minmax(96px, 1fr) 46px; gap: 10px; align-items: stretch; margin-bottom: 14px; }
-.inquiry-stepper .ant-btn { width: 46px; height: 54px; }
-.inquiry-stepper-value { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 7px 12px; border: 1px solid #dbe3ef; border-radius: 10px; background: #fff; }
-.inquiry-stepper-value strong { color: #0f172a; font-size: 26px; line-height: 38px; }
-.inquiry-stepper-value span { color: #64748b; font-size: 12px; white-space: nowrap; }
-.business-correction-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
-.business-correction-row .ant-input-number { width: 100%; }
-.business-deal-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.business-deal-form-grid .ant-form-item { min-width: 0; margin-bottom: 14px; }
-.business-deal-form-grid .ant-input-number,
-.business-deal-form-grid .ant-select { width: 100%; }
-.business-correction-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e6ebf2; }
+.inquiry-control-row { display: grid; grid-template-columns: 42px minmax(128px, 1fr) 42px; gap: 8px; align-items: stretch; }
+.inquiry-control-row .ant-btn { width: 42px; height: 46px; border-radius: 10px; }
+.inquiry-control-value { min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 5px; padding: 6px 12px; border: 1px solid #dbe3ef; border-radius: 10px; background: #f8fafc; }
+.inquiry-control-value span { color: #64748b; font-size: 12px; white-space: nowrap; }
+.inquiry-control-value strong { color: #0f172a; font-size: 24px; line-height: 32px; }
+.inquiry-control-value em { color: #64748b; font-size: 12px; font-style: normal; white-space: nowrap; }
+.business-adjustment-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e6ebf2; }
+.business-adjustment-row .ant-input-number { width: 100%; }
+.business-deal-entry-row { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(150px, 1fr) minmax(150px, 1fr) auto; gap: 10px; align-items: end; }
+.business-deal-entry-row .ant-form-item { min-width: 0; margin-bottom: 0; }
+.business-deal-entry-row .ant-input-number,
+.business-deal-entry-row .ant-select { width: 100%; }
+.business-deal-submit { min-width: 112px; height: 32px; }
+.business-deal-adjustment-row { margin-top: 14px; }
 @media (max-width: 1180px) { .quick-action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 960px) { .business-controller-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1080px) {
+  .business-controller-layout { grid-template-columns: 1fr; gap: 18px; }
+  .business-controller-deal-section { padding: 18px 0 0; border-inline-start: 0; border-top: 1px solid #e6ebf2; }
+  .business-deal-entry-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .business-deal-submit { grid-column: 1 / -1; justify-self: end; }
+}
 @media (max-width: 720px) {
   .quick-action-grid { grid-template-columns: 1fr; }
   .status-title-row { align-items: flex-start; flex-direction: column; gap: 6px; }
-  .business-controller-panel { padding: 14px; }
-  .business-deal-form-grid { grid-template-columns: 1fr; gap: 0; }
-  .business-correction-row { grid-template-columns: 1fr; }
-  .business-correction-row .ant-btn { width: 100%; }
+  .business-deal-entry-row { grid-template-columns: 1fr; gap: 10px; }
+  .business-deal-entry-row .ant-form-item { margin-bottom: 0; }
+  .business-deal-submit { grid-column: auto; width: 100%; }
+  .business-adjustment-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .business-adjustment-row > .ant-typography { grid-column: 1 / -1; }
 }
 .image-crop-upload { min-width: 0; }
 .image-crop-thumb-button { padding: 0; border: 0; background: transparent; cursor: zoom-in; line-height: 0; }

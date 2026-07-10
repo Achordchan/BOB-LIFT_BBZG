@@ -100,12 +100,12 @@ export default function DashboardPage() {
     },
     {
       label: '成员配置',
-      value: `${configuredUsers} / ${users.length} 已配置`,
-      ok: users.length > 0 && configuredUsers === users.length,
+      value: `已配置 ${configuredUsers} 人`,
+      ok: configuredUsers > 0,
       action: '维护成员',
       href: 'users'
     }
-  ], [configuredUsers, defaultSong, songs, sounds, ttsReady, users.length]);
+  ], [configuredUsers, defaultSong, songs, sounds, ttsReady]);
 
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
     <SectionCard
@@ -116,7 +116,7 @@ export default function DashboardPage() {
       <div className="metric-grid">
         <Card className="dashboard-kpi-card"><Statistic title="成交金额" value={money(dashboard.dealAmount)} /></Card>
         <Card className="dashboard-kpi-card"><Statistic title="询盘数量" value={dashboard.inquiryCount} suffix="条" /></Card>
-        <Card className="dashboard-kpi-card"><Statistic title="成员战歌配置" value={configuredUsers} suffix={`/ ${users.length}`} /></Card>
+        <Card className="dashboard-kpi-card"><Statistic title="已配置专属战歌" value={configuredUsers} suffix="人" /></Card>
         <Card className="dashboard-kpi-card"><Statistic title="音乐资产" value={music.length} suffix="个" /></Card>
       </div>
     </SectionCard>

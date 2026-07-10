@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  App,
-  AutoComplete,
-  Button,
-  Form,
-  InputNumber,
-  Space,
-  Typography
-} from 'antd';
+import { App, AutoComplete, Button, Form, InputNumber, Typography } from 'antd';
 import {
   DollarOutlined,
   MinusOutlined,
@@ -135,17 +127,17 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
 
   return (
     <SectionCard title="业务控制器" description="手动记录询盘与成交，保存后立即同步首页">
-      <div className="business-controller-grid">
-        <section className="business-controller-panel">
+      <div className="business-controller-layout">
+        <section className="business-controller-section">
           <div className="business-controller-header">
             <div className="business-controller-icon"><TeamOutlined /></div>
             <div>
               <Typography.Text strong>询盘控制</Typography.Text>
-              <Typography.Text type="secondary">当前 {dashboard.inquiryCount} 条</Typography.Text>
+              <Typography.Text type="secondary">即时调整首页询盘数量</Typography.Text>
             </div>
           </div>
 
-          <div className="inquiry-stepper">
+          <div className="inquiry-control-row">
             <Button
               size="large"
               icon={<MinusOutlined />}
@@ -154,9 +146,10 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
               loading={pending === 'inquiry-reduce'}
               onClick={() => changeInquiry('reduce')}
             />
-            <div className="inquiry-stepper-value">
+            <div className="inquiry-control-value">
+              <span>当前询盘</span>
               <strong>{dashboard.inquiryCount}</strong>
-              <span>条询盘</span>
+              <em>条</em>
             </div>
             <Button
               type="primary"
@@ -168,7 +161,8 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
             />
           </div>
 
-          <div className="business-correction-row">
+          <div className="business-adjustment-row">
+            <Typography.Text type="secondary">数量校正</Typography.Text>
             <InputNumber
               min={0}
               precision={0}
@@ -180,7 +174,7 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
           </div>
         </section>
 
-        <section className="business-controller-panel">
+        <section className="business-controller-section business-controller-deal-section">
           <div className="business-controller-header">
             <div className="business-controller-icon business-controller-icon-deal"><DollarOutlined /></div>
             <div>
@@ -190,7 +184,7 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
           </div>
 
           <Form form={dealForm} layout="vertical" onFinish={addDeal}>
-            <div className="business-deal-form-grid">
+            <div className="business-deal-entry-row">
               <Form.Item name="amount" label="成交金额" rules={[{ required: true, message: '请输入成交金额' }]}>
                 <InputNumber min={0.01} precision={2} placeholder="0.00" />
               </Form.Item>
@@ -200,24 +194,20 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
               <Form.Item name="platform" label="来源平台" rules={[{ required: true, message: '请选择或输入平台' }]}>
                 <AutoComplete options={platformOptions} placeholder="请选择或输入平台" filterOption />
               </Form.Item>
+              <Button type="primary" htmlType="submit" className="business-deal-submit" loading={pending === 'deal-add'}>录入成交</Button>
             </div>
-            <Button type="primary" htmlType="submit" block loading={pending === 'deal-add'}>确认录入成交</Button>
           </Form>
 
-          <div className="business-correction-block">
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Typography.Text type="secondary">校正只修改累计总额，不新增成交记录。</Typography.Text>
-              <div className="business-correction-row">
-                <InputNumber
-                  min={0}
-                  precision={2}
-                  value={dealCorrection}
-                  onChange={value => setDealCorrection(Number(value || 0))}
-                  aria-label="校正成交总额"
-                />
-                <Button loading={pending === 'deal-set'} onClick={confirmDealCorrection}>校正总额</Button>
-              </div>
-            </Space>
+          <div className="business-adjustment-row business-deal-adjustment-row">
+            <Typography.Text type="secondary">累计总额校正</Typography.Text>
+            <InputNumber
+              min={0}
+              precision={2}
+              value={dealCorrection}
+              onChange={value => setDealCorrection(Number(value || 0))}
+              aria-label="校正成交总额"
+            />
+            <Button loading={pending === 'deal-set'} onClick={confirmDealCorrection}>校正总额</Button>
           </div>
         </section>
       </div>
