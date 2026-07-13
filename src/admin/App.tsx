@@ -28,6 +28,11 @@ import SystemPage from './pages/SystemPage';
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
 import { apiGet, apiText } from './api';
 import { AdminAccountMenu } from './components/AdminAccountMenu';
+import {
+  keepLyricsForReplay,
+  keepLyricsWhenReloadHasNoContent
+} from './lyrics-state';
+import type { TrackLyricsState } from './lyrics-state';
 import type { AdminAudioTrack, PlayAdminTrackInput } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -37,12 +42,7 @@ interface LyricLine {
   text: string;
 }
 
-interface AdminLyricsPanelState {
-  title: string;
-  rawContent: string;
-  lines: LyricLine[];
-  trackId: string;
-}
+type AdminLyricsPanelState = TrackLyricsState<LyricLine>;
 
 
 function parseLrc(content: string): LyricLine[] {
@@ -146,16 +146,30 @@ export default function App() {
         }
 
         if (lyricsRequestRef.current !== requestId) return;
-        const normalized = (content && content.trim()) || '暂无歌词';
-        setLyricsPanel({
+        const normalized = content && content.trim();
+        const fallback = {
           title,
-          rawContent: normalized,
-          lines: parseLrc(normalized),
+          rawContent: '暂无歌词',
+          lines: [],
           trackId
+        };
+        setLyricsPanel((currentLyrics) => {
+          if (!normalized) {
+            return keepLyricsWhenReloadHasNoContent(currentLyrics, trackId, fallback);
+          }
+          return {
+            title,
+            rawContent: normalized,
+            lines: parseLrc(normalized),
+            trackId
+          };
         });
       } catch {
         if (lyricsRequestRef.current !== requestId) return;
-        setLyricsPanel({ title, rawContent: '暂无歌词', lines: [], trackId });
+        const fallback = { title, rawContent: '暂无歌词', lines: [], trackId };
+        setLyricsPanel((currentLyrics) => (
+          keepLyricsWhenReloadHasNoContent(currentLyrics, trackId, fallback)
+        ));
       }
     }
 
@@ -170,13 +184,13 @@ export default function App() {
   }
 
   function playTrack(input: PlayAdminTrackInput) {
-    setAdminAudioCurrentTime(0);
-    setLyricsPanel(null);
     const sources = Array.from(new Set(input.sources.filter(Boolean)));
     if (!sources.length) {
       message.warning('当前音频没有可播放文件');
       return;
     }
+    setAdminAudioCurrentTime(0);
+    setLyricsPanel((currentLyrics) => keepLyricsForReplay(currentLyrics, input.id));
     setPlayerTrack({ ...input, sources, sourceIndex: 0 });
   }
 
