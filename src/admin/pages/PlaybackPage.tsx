@@ -27,9 +27,9 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
   const [startupForm] = Form.useForm();
   const [uploadPersonForm] = Form.useForm();
   const [ttsPersonForm] = Form.useForm();
-  const [pathPersonForm] = Form.useForm();
+  const [libraryPersonForm] = Form.useForm();
   const [ttsForm] = Form.useForm();
-  const [personalizedSubmitting, setPersonalizedSubmitting] = useState<'upload' | 'tts' | 'path' | null>(null);
+  const [personalizedSubmitting, setPersonalizedSubmitting] = useState<'upload' | 'tts' | 'library' | null>(null);
   const startupMode = Form.useWatch('mode', startupForm) || startup?.mode || 'default';
   const startupAudioPath = Form.useWatch('audioPath', startupForm) || startup?.audioPath || '/music/Go.mp3';
   const soundOptions = useMemo(() => music.map(m => ({ label: `${m.isSound ? '音效' : '音乐'} · ${m.name}`, value: m.id })), [music]);
@@ -136,6 +136,10 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
   function personalizedSource(item: any) {
     if (item.source === 'upload') return { label: '上传音频', color: 'cyan' };
     if (item.source === 'tts' || String(item.audioPath || '').includes('/music/tts/')) return { label: 'TTS 生成', color: 'purple' };
+    if (
+      item.source === 'library'
+      || (item.audioPath && music.some(m => m.filename && audioUrl(m.filename) === item.audioPath))
+    ) return { label: '音乐库', color: 'green' };
     return { label: '路径添加', color: 'default' };
   }
   function isTrackActive(trackId: string) { return activeTrackId === trackId; }
@@ -159,7 +163,33 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
     if (!item?.audioPath) return;
     playTrackWithId(`cleanup-${item.id || item.audioPath}`, '音频清理预览', item.audioPath || '', item.audioPath);
   }
-  async function addPersonalized(values: any) { try { setPersonalizedSubmitting('path'); await apiJson('/api/personalized/add', 'POST', values); message.success('已添加'); pathPersonForm.resetFields(); setPersonalizedCreateOpen(false); load(); } catch (e: any) { message.error(e.message || '添加失败'); } finally { setPersonalizedSubmitting(null); } }
+  function onLibraryMusicChange(musicId?: string) {
+    if (!musicId) return;
+    const selected = music.find(m => m.id === musicId);
+    if (!selected) return;
+    const currentName = String(libraryPersonForm.getFieldValue('name') || '').trim();
+    if (!currentName && selected.name) {
+      libraryPersonForm.setFieldsValue({ name: selected.name });
+    }
+  }
+  async function addPersonalizedFromLibrary(values: any) {
+    const name = String(values.name || '').trim();
+    const selected = music.find(m => m.id === values.musicId);
+    if (!name) { message.warning('请输入音频名称'); return; }
+    if (!selected?.filename) { message.warning('请选择音乐库中的音频'); return; }
+    try {
+      setPersonalizedSubmitting('library');
+      await apiJson('/api/personalized/add', 'POST', { name, audioPath: audioUrl(selected.filename), source: 'library' });
+      message.success('已添加');
+      libraryPersonForm.resetFields();
+      setPersonalizedCreateOpen(false);
+      load();
+    } catch (e: any) {
+      message.error(e.message || '添加失败');
+    } finally {
+      setPersonalizedSubmitting(null);
+    }
+  }
   async function uploadPersonalized(values: any) {
     const file = values.personalizedFile?.[0]?.originFileObj;
     const name = String(values.uploadName || '').trim();
@@ -297,7 +327,7 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
       children: (
         <SectionCard title="个性化音频" description="预设临时音频，需要时一键推送到首页播放">
           <Space direction="vertical" size={18} style={{ width: '100%' }}>
-            {!personalizedCreateOpen ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setPersonalizedCreateOpen(true)}>新增音频</Button> : <Card size="small" className="personalized-create-card" title="新增音频" extra={<Button onClick={() => { setPersonalizedCreateOpen(false); uploadPersonForm.resetFields(); ttsPersonForm.resetFields(); pathPersonForm.resetFields(); }}>收起</Button>}>
+            {!personalizedCreateOpen ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setPersonalizedCreateOpen(true)}>新增音频</Button> : <Card size="small" className="personalized-create-card" title="新增音频" extra={<Button onClick={() => { setPersonalizedCreateOpen(false); uploadPersonForm.resetFields(); ttsPersonForm.resetFields(); libraryPersonForm.resetFields(); }}>收起</Button>}>
               <Tabs
                 size="small"
                 items={[
@@ -326,13 +356,23 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
                     )
                   },
                   {
-                    key: 'path',
-                    label: '高级路径',
+                    key: 'library',
+                    label: '音乐库选择',
                     children: (
-                      <Form form={pathPersonForm} layout="inline" className="personalized-inline-form" onFinish={addPersonalized} onFinishFailed={() => message.warning('请补全内部路径信息')}>
+                      <Form form={libraryPersonForm} layout="inline" className="personalized-inline-form" onFinish={addPersonalizedFromLibrary} onFinishFailed={() => message.warning('请补全音乐库选择信息')}>
                         <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}><Input placeholder="音频名称" /></Form.Item>
-                        <Form.Item name="audioPath" label="内部文件" rules={[{ required: true, message: '请输入内部文件地址' }]}><Input placeholder="/music/custom/xxx.mp3" /></Form.Item>
-                        <Button type="primary" htmlType="submit" loading={personalizedSubmitting === 'path'}>添加</Button>
+                        <Form.Item name="musicId" label="从音乐库选择" rules={[{ required: true, message: '请选择音乐库中的音频' }]}>
+                          <Select
+                            showSearch
+                            allowClear
+                            optionFilterProp="label"
+                            placeholder="选择一首已有音乐"
+                            options={startupMusicOptions}
+                            onChange={onLibraryMusicChange}
+                            style={{ minWidth: 220 }}
+                          />
+                        </Form.Item>
+                        <Button type="primary" htmlType="submit" loading={personalizedSubmitting === 'library'}>添加</Button>
                       </Form>
                     )
                   }
