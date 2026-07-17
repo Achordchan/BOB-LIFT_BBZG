@@ -1,34 +1,25 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const https = require('https');
+const { createNeteaseClient } = require('../lib/netease-client');
+const { getClientIp } = require('../lib/request-ip');
+const { hashPassword, verifyPassword, needsRehash } = require('../lib/password');
+const { createRateLimiter } = require('../lib/rate-limit');
 
 function registerEggRoutes(app, deps) {
-  const { getData, saveData, uuidv4, baseDir } = deps;
+  const netease = createNeteaseClient();
+  const { getData, saveData, updateData, uuidv4, baseDir } = deps;
 
-  const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
-
-  const NETEASE_API_BASE = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
-  const NETEASE_API_TIMEOUT_MS = Number.parseInt(process.env.BBZG_MUSIC_API_TIMEOUT_MS || '12000', 10);
+  const guessExtByUrl = netease.guessExtByUrl;
+  const guessExtByContentType = netease.guessExtByContentType;
+  const fetchNeteaseLyric = netease.fetchNeteaseLyric;
+  const resolveNeteasePlayableUrl = netease.resolveNeteasePlayableUrl;
+  const eggLoginLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, blockMs: 15 * 60 * 1000 });
 
   function safeUnlink(targetPath) {
     try {
       if (targetPath && fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
     } catch (e) {}
-  }
-
-  async function withInsecureTls(fn) {
-    const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    try {
-      return await fn();
-    } finally {
-      if (typeof prev === 'undefined') {
-        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      } else {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = String(prev);
-      }
-    }
   }
 
   function sanitizeText(x) {
@@ -55,25 +46,7 @@ function registerEggRoutes(app, deps) {
     };
   }
 
-  function guessExtByUrl(url) {
-    try {
-      const u = new URL(url);
-      const ext = path.extname(u.pathname || '').toLowerCase();
-      if (ext && ext.length <= 8) return ext;
-    } catch (e) {}
-    return '';
-  }
 
-  function guessExtByContentType(contentType) {
-    const ct = String(contentType || '').toLowerCase();
-    if (ct.includes('audio/flac') || ct.includes('audio/x-flac')) return '.flac';
-    if (ct.includes('audio/mpeg')) return '.mp3';
-    if (ct.includes('audio/wav')) return '.wav';
-    if (ct.includes('audio/aac')) return '.aac';
-    if (ct.includes('audio/mp4')) return '.m4a';
-    if (ct.includes('audio/ogg')) return '.ogg';
-    return '';
-  }
 
   function ensureMusicDir() {
     const dir = path.join(baseDir, 'public', 'music');
@@ -102,95 +75,9 @@ function registerEggRoutes(app, deps) {
     };
   }
 
-  async function resolveNeteasePlayableUrl(neteaseId) {
-    async function requestLevel(level) {
-      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, {
-        id: String(neteaseId),
-        level,
-        type: 'url'
-      }, {
-        timeout: 15000,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' }
-      }));
 
-      const payload = resp && resp.data;
-      if (!payload || payload.success === false) {
-        throw new Error((payload && payload.message) ? payload.message : '获取播放链接失败');
-      }
 
-      const data = payload && payload.data ? payload.data : null;
-      const url = (data && typeof data.url === 'string')
-        ? data.url
-        : (data && data.data && Array.isArray(data.data) && data.data[0] && typeof data.data[0].url === 'string')
-          ? data.data[0].url
-          : '';
 
-      return String(url || '').trim();
-    }
-
-    const exhigh = await requestLevel('exhigh').catch(() => '');
-    if (exhigh) return exhigh;
-    const standard = await requestLevel('standard');
-    if (!standard) throw new Error('获取播放链接失败');
-    return standard;
-  }
-
-  function extractLyricPayload(payload) {
-    if (payload == null) return { lyric: '', tLyric: '' };
-    const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
-
-    const getLyric = (obj) => {
-      if (!obj) return '';
-      if (typeof obj === 'string') return String(obj).trim();
-      if (typeof obj !== 'object') return '';
-      return typeof obj.lyric === 'string' ? String(obj.lyric).trim() : '';
-    };
-
-    return {
-      lyric: getLyric(data.lrc),
-      tLyric: getLyric(data.tlyric)
-    };
-  }
-
-  async function requestNeteaseSongApi(neteaseId, requestType) {
-    const reqData = { id: String(neteaseId), type: requestType };
-    const attempts = [
-      () => withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, reqData, {
-        timeout: NETEASE_API_TIMEOUT_MS,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' }
-      })),
-      () => withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/song`, {
-        timeout: NETEASE_API_TIMEOUT_MS,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' },
-        params: reqData
-      }))
-    ];
-
-    let lastError = null;
-    for (const attempt of attempts) {
-      try {
-        const resp = await attempt();
-        return resp && resp.data ? resp.data : null;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (lastError) throw lastError;
-    throw new Error('音乐 API 请求失败');
-  }
-
-  async function fetchNeteaseLyric(neteaseId) {
-    const payload = await requestNeteaseSongApi(neteaseId, 'lyric');
-    if (payload && payload.success === false) {
-      throw new Error((payload && payload.message) ? payload.message : '获取歌词失败');
-    }
-    const result = extractLyricPayload(payload);
-    return result.lyric || result.tLyric ? result : { lyric: '', tLyric: '' };
-  }
 
   async function importNeteaseToLocal(payload) {
     const idStr = String(payload && payload.neteaseId ? payload.neteaseId : '').trim();
@@ -213,8 +100,17 @@ function registerEggRoutes(app, deps) {
                 const cachedLyricName = `${path.parse(found.filename).name}.lrc`;
                 const cachedLyricPath = path.join(baseDir, 'public', 'music', cachedLyricName);
                 fs.writeFileSync(cachedLyricPath, lyricText, 'utf8');
-                found.lrcFilename = cachedLyricName;
-                if (Array.isArray(existingData.music)) {
+                // 异步后锁内重读，避免旧快照覆盖并发写入
+                if (typeof updateData === 'function') {
+                  updateData((latest) => {
+                    if (!latest.music || !Array.isArray(latest.music)) return false;
+                    const target = latest.music.find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
+                    if (!target || target.lrcFilename) return false;
+                    target.lrcFilename = cachedLyricName;
+                    return latest;
+                  });
+                } else if (Array.isArray(existingData.music)) {
+                  found.lrcFilename = cachedLyricName;
                   saveData(existingData);
                 }
               }
@@ -234,15 +130,14 @@ function registerEggRoutes(app, deps) {
     const playableUrl = await resolveNeteasePlayableUrl(idStr);
     if (!playableUrl) throw new Error('获取播放链接失败');
 
-    const response = await withInsecureTls(() => axios.get(playableUrl, {
+    const response = await axios.get(playableUrl, {
       responseType: 'stream',
-      timeout: 0,
+      timeout: Number(process.env.BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS || 30000),
       maxRedirects: 5,
-      httpsAgent: insecureHttpsAgent,
       headers: {
         'User-Agent': 'bbzg-egg-import'
       }
-    }));
+    });
 
     let ext = guessExtByUrl(playableUrl);
     if (!ext) ext = guessExtByContentType(response && response.headers ? response.headers['content-type'] : '');
@@ -298,8 +193,26 @@ function registerEggRoutes(app, deps) {
       }
     }
 
-    data.music.push(musicRecord);
-    saveData(data);
+    if (typeof updateData === 'function') {
+      const result = updateData((latest) => {
+        if (!latest.music) latest.music = [];
+        // 并发下若已有同 sourceId 记录则复用
+        const existing = latest.music.find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
+        if (existing) {
+          if (!existing.lrcFilename && musicRecord.lrcFilename) existing.lrcFilename = musicRecord.lrcFilename;
+          return latest;
+        }
+        latest.music.push(musicRecord);
+        return latest;
+      });
+      if (result && result.ok && result.data) {
+        const saved = (result.data.music || []).find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
+        if (saved) return saved;
+      }
+    } else {
+      data.music.push(musicRecord);
+      saveData(data);
+    }
 
     return musicRecord;
   }
@@ -308,6 +221,13 @@ function registerEggRoutes(app, deps) {
     try {
       const username = String(req.body && req.body.username ? req.body.username : '').trim();
       const password = String(req.body && req.body.password ? req.body.password : '');
+      const ip = getClientIp(req);
+      const rateKey = `egg-login:${ip}:${username.toLowerCase()}`;
+      const limited = eggLoginLimiter.check(rateKey);
+      if (!limited.allowed) {
+        res.status(429).json({ success: false, message: '登录尝试过多，请稍后再试' });
+        return;
+      }
 
       if (!username || !password) {
         res.status(400).json({ success: false, message: '请填写账号和密码' });
@@ -320,17 +240,40 @@ function registerEggRoutes(app, deps) {
         : null;
 
       if (!user || !user.loginPassword) {
+        eggLoginLimiter.fail(rateKey);
         res.status(400).json({ success: false, message: '账号不存在或未开通' });
         return;
       }
 
-      if (String(user.loginPassword) !== password) {
+      if (!verifyPassword(password, user.loginPassword)) {
+        eggLoginLimiter.fail(rateKey);
         res.status(400).json({ success: false, message: '账号或密码错误' });
         return;
       }
 
-      req.session.eggUserId = user.id;
-      res.json({ success: true, user: sanitizeUserForResponse(user) });
+      if (needsRehash(user.loginPassword)) {
+        user.loginPassword = hashPassword(password);
+        user.updatedAt = new Date().toISOString();
+        saveData(data);
+      }
+
+      const respond = () => {
+        req.session.eggUserId = user.id;
+        eggLoginLimiter.success(rateKey);
+        res.json({ success: true, user: sanitizeUserForResponse(user) });
+      };
+
+      if (req.session && typeof req.session.regenerate === 'function') {
+        req.session.regenerate((err) => {
+          if (err) {
+            res.status(500).json({ success: false, message: '登录失败' });
+            return;
+          }
+          respond();
+        });
+      } else {
+        respond();
+      }
     } catch (e) {
       res.status(500).json({ success: false, message: '登录失败' });
     }
@@ -454,8 +397,13 @@ function registerEggRoutes(app, deps) {
       return;
     }
 
-    if (String(user.loginPassword || '') !== currentPassword) {
+    if (!verifyPassword(currentPassword, user.loginPassword || '')) {
       res.status(400).json({ success: false, message: '当前密码不正确' });
+      return;
+    }
+
+    if (String(newPassword).length < 6) {
+      res.status(400).json({ success: false, message: '新密码至少 6 位' });
       return;
     }
 
@@ -466,7 +414,7 @@ function registerEggRoutes(app, deps) {
       return;
     }
 
-    target.loginPassword = newPassword;
+    target.loginPassword = hashPassword(newPassword);
     target.updatedAt = new Date().toISOString();
     saveData(data);
 

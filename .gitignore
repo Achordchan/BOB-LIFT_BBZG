@@ -38,3 +38,10 @@ music-api/downloads/
 music-api/music_api.log
 music-api/.venv/
 music-api/__pycache__/
+
+# session store
+storage/sessions/*
+!storage/sessions/.gitkeep
+
+# 运行时音乐/egg 缓存
+.bbzg-cache/

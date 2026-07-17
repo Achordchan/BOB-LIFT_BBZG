@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Layout, Menu, Button, Typography, Space, Input, App as AntApp } from 'antd';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Layout, Menu, Button, Typography, Space, Input, App as AntApp, Spin } from 'antd';
 import {
   ApiOutlined,
   AudioOutlined,
@@ -15,16 +15,16 @@ import {
   TeamOutlined,
   TrophyOutlined
 } from '@ant-design/icons';
-import DashboardPage from './pages/DashboardPage';
-import UsersPage from './pages/UsersPage';
-import MusicPage from './pages/MusicPage';
-import PlaybackPage from './pages/PlaybackPage';
-import CelebrationPage from './pages/CelebrationPage';
-import PlatformPage from './pages/PlatformPage';
-import HomeSettingsPage from './pages/HomeSettingsPage';
-import ThemesPage from './pages/ThemesPage';
-import ApiDebugPage from './pages/ApiDebugPage';
-import SystemPage from './pages/SystemPage';
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const MusicPage = lazy(() => import('./pages/MusicPage'));
+const PlaybackPage = lazy(() => import('./pages/PlaybackPage'));
+const CelebrationPage = lazy(() => import('./pages/CelebrationPage'));
+const PlatformPage = lazy(() => import('./pages/PlatformPage'));
+const HomeSettingsPage = lazy(() => import('./pages/HomeSettingsPage'));
+const ThemesPage = lazy(() => import('./pages/ThemesPage'));
+const ApiDebugPage = lazy(() => import('./pages/ApiDebugPage'));
+const SystemPage = lazy(() => import('./pages/SystemPage'));
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
 import { apiGet, apiText } from './api';
 import { AdminAccountMenu } from './components/AdminAccountMenu';
@@ -92,6 +92,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [debugEnabled] = useState(() => new URLSearchParams(window.location.search).get('debug') === '1' || window.localStorage.getItem('bbzg-admin-debug') === '1');
   const [page, setPage] = useState<PageKey>('dashboard');
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [playerTrack, setPlayerTrack] = useState<AdminAudioTrack | null>(null);
   const [adminAudioCurrentTime, setAdminAudioCurrentTime] = useState(0);
   const [lyricsPanel, setLyricsPanel] = useState<AdminLyricsPanelState | null>(null);
@@ -120,6 +121,37 @@ export default function App() {
     media.addEventListener('change', sync);
     return () => media.removeEventListener('change', sync);
   }, [debugEnabled]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await apiGet<any>('/api/admin/profile');
+        if (cancelled) return;
+        const force = new URLSearchParams(window.location.search).get('forcePassword') === '1';
+        const must = !!(profile && profile.mustChangePassword) || force;
+        setMustChangePassword(must);
+        if (must) {
+          setPage('system');
+          const url = new URL(window.location.href);
+          url.searchParams.set('page', 'system');
+          if (force) url.searchParams.set('forcePassword', '1');
+          window.history.replaceState({}, '', url.toString());
+        }
+      } catch {
+        // 未拿到 profile 时不阻断页面
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    function onPasswordChanged() {
+      setMustChangePassword(false);
+    }
+    window.addEventListener('bbzg-password-changed', onPasswordChanged);
+    return () => window.removeEventListener('bbzg-password-changed', onPasswordChanged);
+  }, []);
 
 
   useEffect(() => {
@@ -177,6 +209,10 @@ export default function App() {
   }, [playerTrack]);
 
   function switchPage(key: PageKey) {
+    if (mustChangePassword && key !== 'system') {
+      message.warning('请先修改默认密码');
+      key = 'system';
+    }
     setPage(key);
     const url = new URL(window.location.href);
     url.searchParams.set('page', key);
@@ -256,7 +292,11 @@ export default function App() {
             <AdminAccountMenu />
           </Space>
         </Header>
-        <Content className={playerTrack ? 'admin-content admin-content-with-player' : 'admin-content'}>{renderPage()}</Content>
+        <Content className={playerTrack ? 'admin-content admin-content-with-player' : 'admin-content'}>
+          <Suspense fallback={<div style={{ padding: 48, textAlign: 'center' }}><Spin tip="页面加载中" /></div>}>
+            {renderPage()}
+          </Suspense>
+        </Content>
       </Layout>
       {playerTrack ? <GlobalAudioPlayer
         track={playerTrack}

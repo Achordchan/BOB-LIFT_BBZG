@@ -6,7 +6,6 @@
 
 // 当DOM加载完成后执行初始化
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('初始化系统...');
   if (!window.fetchWithTimeout) {
     window.fetchWithTimeout = function fetchWithTimeout(url, options = {}) {
       const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 4000;
@@ -56,7 +55,6 @@ document.addEventListener('DOMContentLoaded', function() {
   setupMusicPlayerEvents();
 
   // 页面加载完成时
-  console.log('页面加载完成，初始化音频系统');
 
   // 预览模式不播放任何音频，避免干扰后台操作。
   if (!(window.BBZG_THEME && window.BBZG_THEME.preview)) {
@@ -85,7 +83,6 @@ document.addEventListener('DOMContentLoaded', function() {
   ensureAudioLoaded(inquirySound, 'inquiryAudioReady');
   ensureAudioLoaded(deleteSound, 'deleteAudioReady');
 
-  console.log('初始化完成');
 });
 
 function loadStartupAudioAndPlay() {
@@ -339,7 +336,6 @@ function startMainEventStream() {
   window.mainEventSource = source;
 
   source.onopen = function() {
-    console.log('[SSE] /api/stream/main 已连接');
   };
 
   source.onmessage = async function(evt) {
@@ -391,16 +387,16 @@ function startMainPolling() {
 // 播放激活音频（Go.mp3）
 function playActivationSound(src) {
   const audioSrc = (typeof src === 'string' && src.trim()) ? src.trim() : '/music/Go.mp3';
-  console.log('播放激活音频:', audioSrc);
+  if (localStorage.getItem('bbzgDebug') === '1') console.log('播放激活音频:', audioSrc);
   const activationSound = new Audio(audioSrc);
   activationSound.volume = 0.3; // 设置较低音量
 
   activationSound.oncanplaythrough = function() {
-    console.log('激活音频已加载，准备播放');
+    if (localStorage.getItem('bbzgDebug') === '1') console.log('激活音频已加载，准备播放');
   };
 
   activationSound.onended = function() {
-    console.log('激活音频播放完成，音频系统已启动');
+    if (localStorage.getItem('bbzgDebug') === '1') console.log('激活音频播放完成，音频系统已启动');
   };
 
   activationSound.onerror = function(e) {
@@ -412,7 +408,7 @@ function playActivationSound(src) {
 
   if (playPromise !== undefined) {
     playPromise.then(() => {
-      console.log('激活音频开始播放');
+      if (localStorage.getItem('bbzgDebug') === '1') console.log('激活音频开始播放');
     }).catch(error => {
       console.error('播放激活音频失败:', error);
       // 用户交互后再尝试播放
@@ -443,7 +439,7 @@ function testConnection() {
       return response.json();
     })
     .then(data => {
-      console.log('服务器连接状态:', data);
+      if (localStorage.getItem('bbzgDebug') === '1') console.log('服务器连接状态:', data);
     })
     .catch(error => {
       console.error('服务器连接失败:', error);

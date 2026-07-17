@@ -53,29 +53,6 @@ let celebrationAnimationTimers = [];
 // 播放状态
 let isPlaying = false;
 
-// 测试成交API (用于调试)
-function testDealAPI(amount, fuzeren, laiyuanpingtai, userName) {
-  const url = `/api/deals/add?zongjine=${amount}&fuzeren=${encodeURIComponent(fuzeren)}&laiyuanpingtai=${encodeURIComponent(laiyuanpingtai)}${userName ? `&userName=${encodeURIComponent(userName)}` : ''}`;
-  
-  fetch(url)
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-        // 更新显示的总金额
-        dealAmountElement.textContent = data.amount.toLocaleString('zh-CN', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        });
-        
-        // 显示动效和播报文案 - 使用API返回的文案
-        showDealAnimation(parseFloat(amount), data.announcement, data.musicToPlay);
-        
-        // 更新最后的金额记录
-        lastDealAmount = data.amount;
-      }
-    })
-    .catch(error => console.error('测试成交API失败:', error));
-}
 
 // 移除页面加载完成的重复事件监听，这部分在init.js中已经定义
 // 保留一些init.js中没有的初始化代码
@@ -99,8 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// 将测试函数绑定到全局，便于调试
-window.testDealAPI = testDealAPI;
+// 调试入口已移除
 window.testSpeech = function(text) {
   if (!text) text = "这是一条测试语音，看看是否能正常播放。如果您听到这条语音，说明系统工作正常！";
   speakText(text);

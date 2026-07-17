@@ -9,7 +9,7 @@ const {
   configureStaticPublic,
   configureStaticMusic
 } = require('./app/create-app');
-const { getData: getDataFromStore, saveData: saveDataFromStore } = require('./lib/data-store');
+const { getData: getDataFromStore, saveData: saveDataFromStore, updateDataSync: updateDataSyncFromStore } = require('./lib/data-store');
 const { createMainStreamHub } = require('./lib/main-stream-hub');
 const { createInitialData } = require('./lib/data-bootstrap');
 const { createThemeRegistry } = require('./lib/theme-registry');
@@ -86,6 +86,41 @@ console.timeEnd('数据文件读取时间');
 function getData() {
   return getDataFromStore(DATA_PATH);
 }
+app.set('bbzgGetData', getData);
+
+function ensureDealsLedgerMigrated(data) {
+  if (!data || typeof data !== 'object') return data;
+  if (!Array.isArray(data.dealsHistory)) data.dealsHistory = [];
+  if (!Array.isArray(data.dealsLedger) || data.dealsLedger.length === 0) {
+    if (data.dealsHistory.length) {
+      data.dealsLedger = data.dealsHistory.map((deal) => ({
+        id: deal && deal.id ? deal.id : null,
+        amount: deal ? deal.amount : 0,
+        person: deal ? deal.person : '',
+        userId: deal && deal.userId ? deal.userId : null,
+        platform: deal ? deal.platform : '',
+        timestamp: deal ? deal.timestamp : null
+      }));
+    } else if (!Array.isArray(data.dealsLedger)) {
+      data.dealsLedger = [];
+    }
+  }
+  return data;
+}
+
+// 启动时显式迁移成交账本，避免首笔新成交覆盖历史
+try {
+  const bootData = getData();
+  const beforeLen = Array.isArray(bootData.dealsLedger) ? bootData.dealsLedger.length : 0;
+  ensureDealsLedgerMigrated(bootData);
+  const afterLen = Array.isArray(bootData.dealsLedger) ? bootData.dealsLedger.length : 0;
+  if (afterLen > beforeLen) {
+    saveDataFromStore(DATA_PATH, bootData);
+    console.log(`成交账本已迁移: ${beforeLen} -> ${afterLen}`);
+  }
+} catch (error) {
+  console.error('成交账本启动迁移失败:', error);
+}
 
 const themeRegistry = createThemeRegistry({
   themesDir: path.join(__dirname, 'public', 'themes')
@@ -111,6 +146,15 @@ function saveData(data) {
   return saved;
 }
 
+// 串行更新：锁内重读最新数据再写入，避免持有旧快照覆盖
+function updateData(mutator) {
+  const result = updateDataSyncFromStore(DATA_PATH, mutator);
+  if (result && result.ok && result.data) {
+    mainStreamHub.broadcastSnapshot('updateData', result.data);
+  }
+  return result;
+}
+
 registerAudioPlaybackRoutes(app, {
   requireLogin,
   upload,
@@ -122,12 +166,14 @@ registerAudioPlaybackRoutes(app, {
 
 registerInquiryRoutes(app, {
   getData,
-  saveData
+  saveData,
+  updateData
 });
 
 registerDealRoutes(app, {
   getData,
   saveData,
+  updateData,
   uuidv4,
   getUserMusicConfig,
   parseDealAmountInput,
@@ -137,6 +183,7 @@ registerDealRoutes(app, {
 registerUserRoutes(app, {
   getData,
   saveData,
+  updateData,
   uuidv4,
   upload,
   baseDir: __dirname
@@ -155,6 +202,7 @@ registerTtsRoutes(app, {
   requireLogin,
   getData,
   saveData,
+  updateData,
   baseDir: __dirname,
   parseDealAmountInput,
   formatDealAmountForTts
@@ -168,7 +216,8 @@ registerPlatformTargetsRoutes(app, {
 
 registerTargetsRoutes(app, {
   getData,
-  saveData
+  saveData,
+  updateData
 });
 
 registerCelebrationRoutes(app, {
@@ -182,6 +231,7 @@ registerDebugRoutes(app);
 registerAuthRoutes(app, {
   getData,
   saveData,
+  updateData,
   baseDir: __dirname,
   requireLogin
 });
@@ -203,6 +253,7 @@ registerPublicMusicRoutes(app);
 registerEggRoutes(app, {
   getData,
   saveData,
+  updateData,
   uuidv4,
   baseDir: __dirname
 });
@@ -257,9 +308,59 @@ function requireLogin(req, res, next) {
   }
 }
 
-// 健康检查页面（不需要登录）
+// 健康检查：页面 + 业务可用性 JSON
 app.get('/health-check', (req, res) => {
+  if (String(req.query.format || '') === 'json' || String(req.headers.accept || '').includes('application/json')) {
+    return res.redirect(307, '/api/health');
+  }
   res.sendFile(path.join(__dirname, 'public', 'health-check.html'));
+});
+
+app.get('/api/health', async (req, res) => {
+  const started = Date.now();
+  const checks = {
+    dataFile: false,
+    dataReadable: false,
+    publicDir: false,
+    musicDir: false,
+    musicApi: false
+  };
+  let ok = true;
+  let detail = null;
+
+  try {
+    checks.dataFile = fs.existsSync(DATA_PATH);
+    if (checks.dataFile) {
+      const data = getData();
+      checks.dataReadable = !!(data && typeof data === 'object');
+    }
+    checks.publicDir = fs.existsSync(path.join(__dirname, 'public'));
+    checks.musicDir = fs.existsSync(path.join(__dirname, 'public', 'music'));
+
+    const musicBase = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
+    try {
+      const axios = require('axios');
+      const resp = await axios.get(`${musicBase}/`, { timeout: 2500, validateStatus: () => true });
+      checks.musicApi = !!(resp && resp.status && resp.status < 500);
+    } catch (error) {
+      checks.musicApi = false;
+      detail = error && error.message ? error.message : 'music api unreachable';
+    }
+
+    ok = checks.dataFile && checks.dataReadable && checks.publicDir && checks.musicDir;
+  } catch (error) {
+    ok = false;
+    detail = error && error.message ? error.message : 'health check failed';
+  }
+
+  res.status(ok ? 200 : 503).json({
+    success: ok,
+    status: ok ? 'ok' : 'degraded',
+    uptimeSec: Math.round(process.uptime()),
+    durationMs: Date.now() - started,
+    checks,
+    ...(detail ? { detail } : {})
+  });
 });
 
 // 彩蛋页面（不需要登录）

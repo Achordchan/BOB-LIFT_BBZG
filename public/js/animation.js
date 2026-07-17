@@ -226,7 +226,7 @@ function showPreparedCelebration() {
   
   // 显示简洁的庆祝语，不重复播报内容
   let celebrationMsg = '手拿把掐了哥们';
-  messageElement.innerHTML = celebrationMsg;
+  messageElement.textContent = celebrationMsg;
   
   // 清除之前的特效元素和定时器
   clearCelebrationEffects();

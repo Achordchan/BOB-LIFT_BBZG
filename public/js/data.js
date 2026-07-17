@@ -1,3 +1,13 @@
+// bbzg debug: 默认静默；localStorage.BBZG_DEBUG=1 或 window.BBZG_DEBUG=true 时输出
+function bbzgDebug() {
+  try {
+    if (window.BBZG_DEBUG === true) return console.log.apply(console, arguments);
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('BBZG_DEBUG') === '1') {
+      return console.log.apply(console, arguments);
+    }
+  } catch (_) {}
+}
+
 // 更新成交金额显示
 function updateDealAmount() {
   fetch('/api/deals')
@@ -228,6 +238,11 @@ const targetData = {
   inquiryTarget: 0,
   dealTarget: 0,
   lastResetTime: null,
+  periodKey: null,
+  periodInquiryCount: null,
+  periodDealAmount: null,
+  migrationPending: false,
+  migrationNote: null,
   nextResetTime: null
 };
 
@@ -236,7 +251,7 @@ const targetData = {
  */
 async function loadTargetData() {
   try {
-    console.log('开始加载目标数据...');
+    bbzgDebug('开始加载目标数据...');
     const response = await (window.fetchWithTimeout ? window.fetchWithTimeout('/api/targets') : fetch('/api/targets'));
     
     if (!response.ok) {
@@ -244,7 +259,7 @@ async function loadTargetData() {
     }
     
     const data = await response.json();
-    console.log('获取到目标数据:', data);
+    bbzgDebug('获取到目标数据:', data);
     
     if (data.success !== undefined && !data.success) {
       console.warn('API返回失败状态:', data.message);
@@ -264,12 +279,18 @@ async function loadTargetData() {
     targetData.inquiryTarget = typeof data.inquiryTarget === 'number' ? data.inquiryTarget : parseInt(data.inquiryTarget) || 0;
     targetData.dealTarget = typeof data.dealTarget === 'number' ? data.dealTarget : parseInt(data.dealTarget) || 0;
     targetData.lastResetTime = data.lastResetTime ? new Date(data.lastResetTime) : null;
+    targetData.periodKey = data.periodKey || null;
+    targetData.periodInquiryCount = Number.isFinite(Number(data.periodInquiryCount)) ? Number(data.periodInquiryCount) : null;
+    targetData.periodDealAmount = Number.isFinite(Number(data.periodDealAmount)) ? Number(data.periodDealAmount) : null;
+    targetData.migrationPending = !!data.migrationPending;
+    targetData.migrationNote = data.migrationNote || null;
     targetData.nextResetTime = null; // 不设置下次重置时间
     
-    console.log('目标数据已更新:', targetData);
+    bbzgDebug('目标数据已更新:', targetData);
     
     // 更新UI显示
     updateTargetUI();
+    updateMigrationNotice();
     
     // 保存到本地存储备份
     localStorage.setItem('targetData', JSON.stringify({
@@ -306,18 +327,42 @@ function loadTargetDataFromLocalStorage() {
   }
 }
 
+function updateMigrationNotice() {
+  let el = document.getElementById('targetMigrationNotice');
+  if (!targetData.migrationPending) {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'targetMigrationNotice';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:9999;max-width:420px;padding:10px 12px;border-radius:8px;background:rgba(120,53,15,0.92);color:#fff;font-size:13px;line-height:1.45;box-shadow:0 4px 16px rgba(0,0,0,0.25);';
+    document.body.appendChild(el);
+  }
+  el.textContent = targetData.migrationNote
+    || '本周期进度待校准：当前从迁移时刻起计，请管理员在后台首页设置中确认本周进度。';
+}
+
 /**
  * 更新目标UI显示
  */
 function updateTargetUI() {
-  // 获取当前询盘数和成交金额
-  const currentInquiryCount = parseInt(document.getElementById('inquiryCount').textContent.replace(/,/g, '')) || 0;
-  const currentDealAmount = parseFloat(document.getElementById('dealAmount').textContent.replace(/[^\d.]/g, '')) || 0;
-  
+  // 周期进度优先；无周期字段时回退全量累计
+  const totalInquiryCount = parseInt(document.getElementById('inquiryCount').textContent.replace(/,/g, '')) || 0;
+  const totalDealAmount = parseFloat(document.getElementById('dealAmount').textContent.replace(/[^\d.]/g, '')) || 0;
+  // null/undefined 必须回退累计；注意 Number(null)===0 不能当有效周期进度
+  const currentInquiryCount = (targetData.periodInquiryCount === null || targetData.periodInquiryCount === undefined)
+    ? totalInquiryCount
+    : (Number.isFinite(Number(targetData.periodInquiryCount)) ? Number(targetData.periodInquiryCount) : totalInquiryCount);
+  const currentDealAmount = (targetData.periodDealAmount === null || targetData.periodDealAmount === undefined)
+    ? totalDealAmount
+    : (Number.isFinite(Number(targetData.periodDealAmount)) ? Number(targetData.periodDealAmount) : totalDealAmount);
+
   // 计算完成百分比
   let inquiryPercentage = targetData.inquiryTarget > 0 ? Math.min(100, Math.round((currentInquiryCount / targetData.inquiryTarget) * 100)) : 0;
   let dealPercentage = targetData.dealTarget > 0 ? Math.min(100, Math.round((currentDealAmount / targetData.dealTarget) * 100)) : 0;
-  
+
   // 超过目标特殊标记
   let inquiryExceeded = currentInquiryCount > targetData.inquiryTarget && targetData.inquiryTarget > 0;
   let dealExceeded = currentDealAmount > targetData.dealTarget && targetData.dealTarget > 0;

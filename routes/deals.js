@@ -1,12 +1,35 @@
+const { sanitizeDealPerson, sanitizeDealPlatform } = require('../lib/sanitize-text');
+
 function registerDealRoutes(app, deps) {
   const {
     getData,
     saveData,
+    updateData,
     uuidv4,
     getUserMusicConfig,
     parseDealAmountInput,
     formatDealAmountForTts
   } = deps;
+
+  function ensureDealsLedger(data) {
+    if (!Array.isArray(data.dealsHistory)) data.dealsHistory = [];
+    if (!Array.isArray(data.dealsLedger) || data.dealsLedger.length === 0) {
+      if (data.dealsHistory.length) {
+        data.dealsLedger = data.dealsHistory.map((deal) => ({
+          id: deal && deal.id ? deal.id : null,
+          amount: deal ? deal.amount : 0,
+          person: deal ? deal.person : '',
+          userId: deal && deal.userId ? deal.userId : null,
+          platform: deal ? deal.platform : '',
+          timestamp: deal ? deal.timestamp : null
+        }));
+      } else if (!Array.isArray(data.dealsLedger)) {
+        data.dealsLedger = [];
+      }
+    }
+    return data;
+  }
+
 
   // API: 设置成交金额
   app.post('/api/deals/set', (req, res) => {
@@ -49,18 +72,15 @@ function registerDealRoutes(app, deps) {
     res.json({ dealAmount: data.dealAmount || 0 });
   });
 
-  // API: 添加成交记录
-  app.get('/api/deals/add', (req, res) => {
-    const data = getData();
-
-    // 获取请求参数
-    const rawAmountInput = req.query.zongjine;
+  // API: 添加成交记录（POST 主路径；GET 仅兼容开关）
+  function handleDealAdd(req, res) {
+    // 获取请求参数（公开入口，业务文本做长度/危险字符清洗）
+    const input = (req.method === 'POST' && req.body && typeof req.body === 'object') ? req.body : (req.query || {});
+    const rawAmountInput = input.zongjine != null ? input.zongjine : input.amount;
     const amount = parseDealAmountInput(rawAmountInput);
-    const person = req.query.fuzeren || '匿名';
-    const platform = req.query.laiyuanpingtai || '未知平台';
-
-    // 用于生成庆祝文案的其他参数
-    const userName = req.query.userName || person; // 可选，如果提供则使用这个名称
+    const person = sanitizeDealPerson(input.fuzeren != null ? input.fuzeren : input.person);
+    const platform = sanitizeDealPlatform(input.laiyuanpingtai != null ? input.laiyuanpingtai : input.platform);
+    const userName = sanitizeDealPerson(input.userName || person);
 
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({
@@ -69,135 +89,171 @@ function registerDealRoutes(app, deps) {
       });
     }
 
-    // 更新成交总额
-    data.dealAmount = (data.dealAmount || 0) + amount;
-
-    // 检查用户是否存在自定义配置的成交音乐
-    let musicToPlay = null;
-    let userConfig = null;
-
-    // 根据请求中的人名查找对应的用户配置
-    const user = data.users.find(u => u.name === person || u.name === userName);
-
-    if (user && user.musicId) {
-      userConfig = getUserMusicConfig(user.id);
-
-      if (userConfig && userConfig.music) {
-        musicToPlay = {
-          musicId: userConfig.music.id,
-          musicName: userConfig.music.name,
-          musicFile: userConfig.music.filename,
-          userName: user.name.trim(),
-          userPosition: user.position ? user.position.trim() : '运营专员'
-        };
-      }
-    }
-
-    // 如果用户没有配置音乐，但系统有配置默认战歌，则使用默认战歌
-    if (!musicToPlay && data.defaultBattleSong) {
-      const defaultMusic = data.defaultBattleSong.musicId
-        ? data.music.find(m => m.id === data.defaultBattleSong.musicId)
-        : null;
-      const defaultSong = defaultMusic || data.defaultBattleSong;
-      if (defaultSong && defaultSong.filename) {
-        musicToPlay = {
-          musicId: defaultMusic ? defaultMusic.id : data.defaultBattleSong.id,
-          musicName: defaultSong.name || '默认战歌',
-          musicFile: defaultSong.filename,
-          userName: person.trim(),
-          userPosition: user ? (user.position ? user.position.trim() : '运营专员') : '运营专员'
-        };
-      }
-    }
-
-    // 生成庆祝文案
     let announcement = '';
-    if (data.celebrationMessages && data.celebrationMessages.length > 0) {
-      // 随机选择一条庆祝语
-      const randomIndex = Math.floor(Math.random() * data.celebrationMessages.length);
+    let musicToPlay = null;
+    let totalAmount = 0;
 
-      // 预处理模板，不仅去除多余空格，还处理占位符中的空格问题
-      let template = data.celebrationMessages[randomIndex].message;
+    const mutator = (data) => {
+      // 更新成交总额
+      data.dealAmount = (data.dealAmount || 0) + amount;
 
-      // 修复占位符内的空格问题，例如"{ person }"变成"{person}"
-      template = template
-        .replace(/\{\s*person\s*\}/g, "{person}")
-        .replace(/\{\s*platform\s*\}/g, "{platform}")
-        .replace(/\{\s*amount\s*\}/g, "{amount}")
-        .replace(/\s+/g, ' ')
-        .trim();
+      // 检查用户是否存在自定义配置的成交音乐
+      musicToPlay = null;
+      let userConfig = null;
 
-      // 准备干净的替换值
-      const cleanUserName = userName.trim();
-      const cleanPlatform = platform.trim();
-      const formattedAmount = formatDealAmountForTts(rawAmountInput, amount);
+      // 根据请求中的人名查找对应的用户配置
+      const user = Array.isArray(data.users)
+        ? data.users.find(u => u.name === person || u.name === userName)
+        : null;
 
-      // 执行替换
-      announcement = template
-        .replace(/{person}/g, cleanUserName)
-        .replace(/{platform}/g, cleanPlatform)
-        .replace(/{amount}/g, formattedAmount);
+      if (user && user.musicId) {
+        userConfig = getUserMusicConfig(user.id);
 
-      // 最后确保没有多余空格
-      announcement = announcement.replace(/\s+/g, ' ').trim();
-    } else {
-      // 默认文案
-      announcement = `恭喜${userName.trim()}在${platform.trim()}成交了${formatDealAmountForTts(rawAmountInput, amount)}元！`.replace(/\s+/g, ' ').trim();
-    }
+        if (userConfig && userConfig.music) {
+          musicToPlay = {
+            musicId: userConfig.music.id,
+            musicName: userConfig.music.name,
+            musicFile: userConfig.music.filename,
+            userName: user.name.trim(),
+            userPosition: user.position ? user.position.trim() : '运营专员'
+          };
+        }
+      }
 
-    // 创建成交记录对象
-    const dealData = {
-      amount,
-      person: userName.trim(),
-      platform: platform.trim(),
-      timestamp: new Date().toISOString(),
-      announcement,
-      musicToPlay
+      // 如果用户没有配置音乐，但系统有配置默认战歌，则使用默认战歌
+      if (!musicToPlay && data.defaultBattleSong) {
+        const defaultMusic = data.defaultBattleSong.musicId && Array.isArray(data.music)
+          ? data.music.find(m => m.id === data.defaultBattleSong.musicId)
+          : null;
+        const defaultSong = defaultMusic || data.defaultBattleSong;
+        if (defaultSong && defaultSong.filename) {
+          musicToPlay = {
+            musicId: defaultMusic ? defaultMusic.id : data.defaultBattleSong.id,
+            musicName: defaultSong.name || '默认战歌',
+            musicFile: defaultSong.filename,
+            userName: person.trim(),
+            userPosition: user ? (user.position ? user.position.trim() : '运营专员') : '运营专员'
+          };
+        }
+      }
+
+      // 生成庆祝文案
+      announcement = '';
+      if (data.celebrationMessages && data.celebrationMessages.length > 0) {
+        // 随机选择一条庆祝语
+        const randomIndex = Math.floor(Math.random() * data.celebrationMessages.length);
+
+        // 预处理模板，不仅去除多余空格，还处理占位符中的空格问题
+        let template = data.celebrationMessages[randomIndex].message;
+
+        // 修复占位符内的空格问题，例如"{ person }"变成"{person}"
+        template = template
+          .replace(/\{\s*person\s*\}/g, "{person}")
+          .replace(/\{\s*platform\s*\}/g, "{platform}")
+          .replace(/\{\s*amount\s*\}/g, "{amount}")
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        // 准备干净的替换值
+        const cleanUserName = userName.trim();
+        const cleanPlatform = platform.trim();
+        const formattedAmount = formatDealAmountForTts(rawAmountInput, amount);
+
+        // 执行替换
+        announcement = template
+          .replace(/{person}/g, cleanUserName)
+          .replace(/{platform}/g, cleanPlatform)
+          .replace(/{amount}/g, formattedAmount);
+
+        // 最后确保没有多余空格
+        announcement = announcement.replace(/\s+/g, ' ').trim();
+      } else {
+        // 默认文案
+        announcement = `恭喜${userName.trim()}在${platform.trim()}成交了${formatDealAmountForTts(rawAmountInput, amount)}元！`.replace(/\s+/g, ' ').trim();
+      }
+
+      // 创建成交记录对象
+      const matchedUser = Array.isArray(data.users)
+        ? (data.users.find(u => u.name === person || u.name === userName) || null)
+        : null;
+      const dealData = {
+        id: uuidv4(),
+        amount,
+        person: userName.trim(),
+        userId: matchedUser ? matchedUser.id : null,
+        platform: platform.trim(),
+        timestamp: new Date().toISOString(),
+        announcement,
+        musicToPlay
+      };
+
+      // 保存最新成交记录
+      data.latestDeal = dealData;
+
+      // 更新平台累计金额
+      if (!data.platformTargets) {
+        data.platformTargets = [];
+      }
+
+      // 查找对应的平台并累计金额
+      const platformItem = data.platformTargets.find(p => p.name === platform.trim());
+      if (platformItem) {
+        platformItem.current = (platformItem.current || 0) + amount;
+        console.log(`平台 ${platform.trim()} 累计金额更新: +${amount}, 总计: ${platformItem.current}`);
+      } else {
+        // 如果平台不存在，创建新的平台记录
+        data.platformTargets.push({
+          id: uuidv4(),
+          name: platform.trim(),
+          target: 0,
+          current: amount,
+          enabled: true
+        });
+        console.log(`新增平台 ${platform.trim()}, 初始金额: ${amount}`);
+      }
+
+      // 最近动态只保留 30 条；排行榜账本长期保存
+      // 写入前先迁移历史，避免首笔新成交创建空账本导致排行榜历史消失
+      ensureDealsLedger(data);
+      data.dealsHistory.push(dealData);
+      if (data.dealsHistory.length > 30) {
+        data.dealsHistory = data.dealsHistory.slice(-30);
+      }
+      data.dealsLedger.push({
+        id: dealData.id,
+        amount: dealData.amount,
+        person: dealData.person,
+        userId: dealData.userId,
+        platform: dealData.platform,
+        timestamp: dealData.timestamp
+      });
+      // 账本保留上限，避免 JSON 无限增长
+      if (data.dealsLedger.length > 5000) {
+        data.dealsLedger = data.dealsLedger.slice(-5000);
+      }
+
+      totalAmount = data.dealAmount;
+      return data;
     };
 
-    // 保存最新成交记录
-    data.latestDeal = dealData;
-
-    // 更新平台累计金额
-    if (!data.platformTargets) {
-      data.platformTargets = [];
-    }
-
-    // 查找对应的平台并累计金额
-    const platformItem = data.platformTargets.find(p => p.name === platform.trim());
-    if (platformItem) {
-      platformItem.current = (platformItem.current || 0) + amount;
-      console.log(`平台 ${platform.trim()} 累计金额更新: +${amount}, 总计: ${platformItem.current}`);
+    if (typeof updateData === 'function') {
+      const result = updateData(mutator);
+      if (!result || !result.ok) {
+        return res.status(500).json({ success: false, message: '保存成交记录失败' });
+      }
     } else {
-      // 如果平台不存在，创建新的平台记录
-      data.platformTargets.push({
-        id: uuidv4(),
-        name: platform.trim(),
-        target: 0,
-        current: amount,
-        enabled: true
-      });
-      console.log(`新增平台 ${platform.trim()}, 初始金额: ${amount}`);
+      const data = getData();
+      mutator(data);
+      if (!saveData(data)) {
+        return res.status(500).json({ success: false, message: '保存成交记录失败' });
+      }
     }
-
-    // 添加到成交历史记录
-    if (!data.dealsHistory) {
-      data.dealsHistory = [];
-    }
-    data.dealsHistory.push(dealData);
-
-    // 只保留最近的30条记录
-    if (data.dealsHistory.length > 30) {
-      data.dealsHistory = data.dealsHistory.slice(-30);
-    }
-
-    saveData(data);
 
     // 格式化返回结果，确保所有可能影响TTS的字段中没有多余空格
     const response = {
       success: true,
       message: '成交记录已添加',
-      amount: data.dealAmount
+      amount: totalAmount
     };
 
     // 处理announcement中的多余空格，确保TTS播放流畅
@@ -215,6 +271,17 @@ function registerDealRoutes(app, deps) {
     }
 
     res.json(response);
+  }
+
+  app.post('/api/deals/add', handleDealAdd);
+  app.get('/api/deals/add', (req, res) => {
+    if (String(process.env.BBZG_ALLOW_LEGACY_GET_WRITE || '').trim() !== '1') {
+      return res.status(405).json({
+        success: false,
+        message: '请使用 POST /api/deals/add；临时兼容可设置 BBZG_ALLOW_LEGACY_GET_WRITE=1'
+      });
+    }
+    return handleDealAdd(req, res);
   });
 
   // API: 获取最近一次成交详情
@@ -272,15 +339,13 @@ function registerDealRoutes(app, deps) {
         data.users = [];
       }
 
-      // 确保成交历史存在
-      if (!data.dealsHistory) {
+      // 排行榜优先用长期账本；读取时也做一次显式迁移
+      ensureDealsLedger(data);
+      if (!Array.isArray(data.dealsHistory)) {
         data.dealsHistory = [];
       }
 
-      // 计算每个用户的总成交额
       const userTotals = {};
-
-      // 先从用户数据中提取信息
       data.users.forEach(user => {
         userTotals[user.id] = {
           id: user.id,
@@ -290,29 +355,31 @@ function registerDealRoutes(app, deps) {
         };
       });
 
-      // 统计成交历史中的金额
-      data.dealsHistory.forEach(deal => {
-        // 查找匹配的用户
-        const matchingUser = data.users.find(user => user.name === deal.person);
+      const ledger = Array.isArray(data.dealsLedger) && data.dealsLedger.length
+        ? data.dealsLedger
+        : data.dealsHistory;
 
-        if (matchingUser) {
-          // 如果找到匹配的用户，累加金额
-          userTotals[matchingUser.id].amount += deal.amount;
-        } else {
-          // 如果未找到匹配的用户（可能是历史记录中的用户已被删除），创建一个临时条目
-          const tempId = `temp_${deal.person.replace(/\s+/g, '_')}`;
-
-          if (!userTotals[tempId]) {
-            userTotals[tempId] = {
-              id: tempId,
-              name: deal.person,
-              position: '',
-              amount: 0
-            };
-          }
-
-          userTotals[tempId].amount += deal.amount;
+      ledger.forEach(deal => {
+        if (!deal) return;
+        let targetId = deal.userId && userTotals[deal.userId] ? deal.userId : null;
+        if (!targetId) {
+          const matchingUser = data.users.find(user => user.name === deal.person);
+          if (matchingUser) targetId = matchingUser.id;
         }
+        if (targetId) {
+          userTotals[targetId].amount += Number(deal.amount) || 0;
+          return;
+        }
+        const tempId = `temp_${String(deal.person || 'unknown').replace(/\s+/g, '_')}`;
+        if (!userTotals[tempId]) {
+          userTotals[tempId] = {
+            id: tempId,
+            name: deal.person || '未知',
+            position: '',
+            amount: 0
+          };
+        }
+        userTotals[tempId].amount += Number(deal.amount) || 0;
       });
 
       // 转换为数组并按金额排序

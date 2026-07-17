@@ -57,7 +57,6 @@ async function fetchExchangeRate() {
 // 获取并更新成交排行榜
 async function updateLeaderboard() {
   // 不再更新排行榜，因为相关DOM元素已经移除
-  console.log("排行榜更新功能已禁用");
   return; // 直接返回，不再处理
 }
 
@@ -94,7 +93,6 @@ function showUpdateNotification(message) {
 // 渲染排行榜
 function renderLeaderboard(leaderboardData) {
   // 不再尝试渲染排行榜，因为相关DOM元素已经移除
-  console.log("排行榜功能已禁用");
   return; // 直接返回，不再处理
 }
 
@@ -176,7 +174,6 @@ function renderRecentActivity(activityData, animate = false) {
 // 为最近动态列表添加自动滚动功能 - 已禁用
 function setupActivityAutoScroll() {
   // 自动滚动功能已禁用，因为它不稳定
-  console.log("最近动态自动滚动功能已禁用");
   return;
 
   // 以下是原来的代码，现已禁用
@@ -309,81 +306,69 @@ function createActivityItem(activity) {
   return activityItem;
 }
 
-// 生成模拟排行榜数据
-function generateMockLeaderboard() {
-  // 不再生成模拟数据，因为排行榜已被移除
-  console.log("排行榜模拟数据功能已禁用");
-  return; // 直接返回，不再处理
+function isMockActivityPayload(list) {
+  if (!Array.isArray(list) || !list.length) return false;
+  // 仅清理明确带 mock 标记的旧缓存，避免误删真实同名成员
+  let mockFlagHits = 0;
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i] || {};
+    if (item.mock === true || item.isMock === true || item.source === 'mock') {
+      mockFlagHits += 1;
+    }
+  }
+  if (mockFlagHits >= 2) return true;
+  // 兼容极旧缓存：整表成员都是演示四名且数量较少
+  const demoNames = new Set(['jolin', 'linda', 'nancy', 'eula']);
+  if (list.length >= 4 && list.length <= 8) {
+    const allDemo = list.every((item) => demoNames.has(String(item && item.person || '').trim().toLowerCase()));
+    if (allDemo) return true;
+  }
+  return false;
 }
 
-// 生成模拟活动数据
-function generateMockActivity() {
-  // 从缓存中加载数据
-  const cachedData = localStorage.getItem('activityData');
-  if (cachedData) {
-    activityData = JSON.parse(cachedData);
-    renderRecentActivity(activityData);
-    return;
+function clearLegacyActivityCache() {
+  try {
+    const raw = localStorage.getItem('activityData');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (isMockActivityPayload(parsed)) {
+      localStorage.removeItem('activityData');
+      localStorage.removeItem('activityUpdateTime');
+    }
+  } catch (e) {
+    localStorage.removeItem('activityData');
+    localStorage.removeItem('activityUpdateTime');
   }
+}
 
+function showActivityState(message) {
   const activityList = document.getElementById('activityList');
-
-  if (!activityList) {
-    return;
-  }
-
-  // 模拟数据
-  const mockActivities = [
-    { type: 'deal', person: 'Jolin', platform: '阿里巴巴', amount: 56789, timestamp: new Date(Date.now() - 5 * 60000).toISOString() },
-    { type: 'inquiry', timestamp: new Date(Date.now() - 15 * 60000).toISOString() },
-    { type: 'deal', person: 'Linda', platform: '速卖通', amount: 34567, timestamp: new Date(Date.now() - 35 * 60000).toISOString() },
-    { type: 'inquiry', timestamp: new Date(Date.now() - 55 * 60000).toISOString() },
-    { type: 'deal', person: 'Nancy', platform: '谷歌', amount: 78901, timestamp: new Date(Date.now() - 85 * 60000).toISOString() },
-    { type: 'inquiry', timestamp: new Date(Date.now() - 95 * 60000).toISOString() },
-    { type: 'deal', person: 'Eula', platform: '亚马逊', amount: 12345, timestamp: new Date(Date.now() - 125 * 60000).toISOString() },
-    { type: 'inquiry', timestamp: new Date(Date.now() - 145 * 60000).toISOString() }
-  ];
-
-  // 存储活动数据
-  activityData = mockActivities;
-
-  // 清空列表
-  activityList.innerHTML = '';
-
-  // 渲染活动并添加动画
-  mockActivities.forEach((activity, index) => {
-    const activityItem = createActivityItem(activity);
-
-    // 添加动画效果
-    activityItem.style.opacity = '0';
-    activityItem.style.transform = 'translateX(20px)';
-
-    activityList.appendChild(activityItem);
-
-    // 延迟显示，创建级联效果
-    setTimeout(() => {
-      activityItem.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      activityItem.style.opacity = '1';
-      activityItem.style.transform = 'translateX(0)';
-    }, index * 50);
-  });
+  if (!activityList) return;
+  activityList.textContent = '';
+  const empty = document.createElement('div');
+  empty.className = 'activity-empty-state';
+  empty.textContent = message;
+  activityList.appendChild(empty);
 }
 
-// 初始化数据
+// 初始化数据：只使用真实活动，不再回填 Mock 成交
 function initLeaderboardData() {
-  // 不再初始化排行榜相关数据
+  clearLegacyActivityCache();
   const cachedActivityData = localStorage.getItem('activityData');
-
-  // 只处理最近动态数据
   if (cachedActivityData) {
-    activityData = JSON.parse(cachedActivityData);
-    renderRecentActivity(activityData);
-  } else {
-    generateMockActivity();
+    try {
+      const parsed = JSON.parse(cachedActivityData);
+      if (Array.isArray(parsed) && parsed.length && !isMockActivityPayload(parsed)) {
+        activityData = parsed;
+        renderRecentActivity(activityData);
+        return;
+      }
+    } catch (e) {}
+    localStorage.removeItem('activityData');
+    localStorage.removeItem('activityUpdateTime');
   }
-
-  // 加载团队成员照片
-  loadTeamMembers();
+  activityData = [];
+  showActivityState('动态加载中...');
 }
 
 // 工具函数：格式化数字
@@ -523,15 +508,13 @@ document.addEventListener('DOMContentLoaded', function() {
   // 设置定时更新时间
   setInterval(updateDateTime, 1000);
 
-  // 加载团队成员
-  loadTeamMembers();
-
   // 汇率显示已禁用
   // fetchExchangeRate();
   // setInterval(fetchExchangeRate, 3600000); // 每小时更新一次汇率
 
-  // 初始化数据
+  // 初始化最近动态 + 团队成员（只初始化一次）
   initLeaderboardData();
+  loadTeamMembers();
 
   // 平台显示控制已移动到platform-targets.js中的PlatformTargetsManager统一处理
   // 不再在这里重复初始化平台显示控制

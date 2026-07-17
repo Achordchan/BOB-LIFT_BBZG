@@ -1,16 +1,70 @@
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const fs = require('fs');
+const { createFileSessionStore } = require('../lib/session-file-store');
+const FileStore = createFileSessionStore(session);
 
 function configureApp(app) {
   // 配置session
+  const sessionSecret = String(process.env.BBZG_SESSION_SECRET || process.env.SESSION_SECRET || '').trim();
+  if (!sessionSecret) {
+    const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+    if (isProd) {
+      throw new Error('生产环境必须设置 BBZG_SESSION_SECRET 或 SESSION_SECRET');
+    }
+    console.warn('警告: 未设置 BBZG_SESSION_SECRET，使用开发默认密钥；生产环境必须配置独立密钥');
+  }
+  const cookieSecure = String(process.env.BBZG_COOKIE_SECURE || '').trim() === '1'
+    || String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+  const sameSite = String(process.env.BBZG_COOKIE_SAMESITE || 'lax').toLowerCase();
+  const trustProxy = String(process.env.BBZG_TRUST_PROXY || '').trim();
+  const trustProxyLower = trustProxy.toLowerCase();
+  if (trustProxy === '1' || trustProxyLower === 'true') {
+    app.set('trust proxy', 1);
+  } else if (trustProxy && /^\d+$/.test(trustProxy) && Number(trustProxy) >= 1) {
+    // hop 数必须 >= 1；0 等价于不信任反代，生产 Secure Cookie 会失效
+    app.set('trust proxy', Number(trustProxy));
+  }
+
+  const sessionDir = String(process.env.BBZG_SESSION_DIR || path.join(process.cwd(), 'storage', 'sessions')).trim();
+  try {
+    fs.mkdirSync(sessionDir, { recursive: true });
+  } catch (error) {
+    console.warn('创建 session 目录失败，将继续尝试 FileStore:', sessionDir, error && error.message);
+  }
   app.use(session({
-    secret: 'bbzg-admin-secret',
+    secret: sessionSecret || 'bbzg-dev-only-change-me',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 3600000 } // 1小时过期
+    name: 'bbzg.sid',
+    store: (() => {
+      const store = new FileStore({
+        path: sessionDir,
+        ttl: 3600,
+        retries: 1,
+        logFn: function () {}
+      });
+      // 跨重启清理过期 session，不阻塞启动
+      if (typeof store.purgeExpired === 'function') {
+        store.purgeExpired((err) => {
+          if (err && process.env.BBZG_API_LOG === '1') {
+            console.warn('清理过期 session 失败:', err.message || err);
+          }
+        });
+      }
+      return store;
+    })(),
+    cookie: {
+      maxAge: 3600000, // 1小时过期
+      httpOnly: true,
+      sameSite: ['lax', 'strict', 'none'].includes(sameSite) ? sameSite : 'lax',
+      secure: cookieSecure
+    }
   }));
-  console.timeLog('启动总时间', 'Session配置完成');
+  if (process.env.BBZG_PROFILE_STARTUP === '1') {
+    try { console.timeLog('启动总时间', 'Session配置完成'); } catch (_) {}
+  }
 
   configureParsers(app);
 
@@ -74,22 +128,21 @@ function configureApp(app) {
       return;
     }
 
+    // 公开只读接口（不含任何写操作路径）
     const publicReadonly = new Set([
       '/text-to-speech',
       '/aliyun-tts-config',
       '/ping',
+      '/health',
       '/dashboard',
       '/stream/main',
       '/page-settings',
       '/users',
       '/deals',
-      '/deals/add',
       '/deals/latest',
       '/deals/leaderboard',
       '/deals/recent',
       '/inquiries',
-      '/inquiries/add',
-      '/inquiries/reduce',
       '/inquiries/latest',
       '/inquiries/config',
       '/targets',
@@ -101,11 +154,16 @@ function configureApp(app) {
       '/defaultBattleSong/public'
     ]);
 
+    // 大屏公开 POST：严格限流在路由内完成，不与成交/询盘写凭证混用
+    const publicAnonymousPost = new Set([
+      '/text-to-speech'
+    ]);
+
+    // 业务写入入口：允许 token / 管理员会话（不含 TTS）
     const publicWrite = new Set([
       '/deals/add',
       '/inquiries/add',
-      '/inquiries/reduce',
-      '/text-to-speech'
+      '/inquiries/reduce'
     ]);
 
     if ((req.method === 'GET' || req.method === 'HEAD') && publicReadonly.has(p)) {
@@ -113,18 +171,90 @@ function configureApp(app) {
       return;
     }
 
-    if (req.method === 'POST' && publicWrite.has(p)) {
+    if (req.method === 'POST' && publicAnonymousPost.has(p)) {
       next();
+      return;
+    }
+
+    function adminMustChangePassword() {
+      const getData = typeof app.get === 'function' ? app.get('bbzgGetData') : null;
+      if (typeof getData !== 'function') return false;
+      try {
+        const data = getData();
+        const admin = data && data.admin ? data.admin : null;
+        return !!(admin && admin.mustChangePassword);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function rejectIfMustChangePassword() {
+      if (!isAdmin || !adminMustChangePassword()) return false;
+      const allowed = new Set([
+        '/admin/profile',
+        '/admin/account',
+        '/change-password',
+        '/logout',
+        '/health',
+        '/ping'
+      ]);
+      if (allowed.has(p)) return false;
+      res.status(403).json({
+        success: false,
+        message: '请先修改默认密码后再使用后台功能',
+        mustChangePassword: true
+      });
+      return true;
+    }
+
+    const allowLegacyGetWrite = String(process.env.BBZG_ALLOW_LEGACY_GET_WRITE || '').trim() === '1';
+    if (((req.method === 'POST') || (allowLegacyGetWrite && req.method === 'GET')) && publicWrite.has(p)) {
+      // 管理员在强制改密期间不能通过会话绕过写入口
+      if (rejectIfMustChangePassword()) return;
+      const configuredToken = String(process.env.BBZG_PUBLIC_WRITE_TOKEN || '').trim();
+      if (isAdmin) {
+        next();
+        return;
+      }
+      if (configuredToken) {
+        // 只接受请求头，避免 token 进入 URL / 访问日志 / 浏览器历史
+        const provided = String(req.get('x-bbzg-write-token') || '').trim();
+        if (provided && provided === configuredToken) {
+          next();
+          return;
+        }
+        res.status(401).json({ success: false, message: '未授权访问：缺少有效写入凭证' });
+        return;
+      }
+      // 兼容开关：显式开启后才允许匿名写入（不推荐）
+      const allowOpen = String(process.env.BBZG_ALLOW_PUBLIC_WRITE || '').trim() === '1';
+      if (allowOpen) {
+        if (!app.__bbzgPublicWriteWarned) {
+          app.__bbzgPublicWriteWarned = true;
+          console.warn('警告: BBZG_ALLOW_PUBLIC_WRITE=1，成交/询盘写接口允许匿名访问');
+        }
+        next();
+        return;
+      }
+      res.status(401).json({
+        success: false,
+        message: '未授权访问：请登录后台或配置 BBZG_PUBLIC_WRITE_TOKEN'
+      });
       return;
     }
 
     if (isAdmin) {
-      console.log(`已登录用户访问: ${req.method} ${req.path}`);
+      if (rejectIfMustChangePassword()) return;
+      if (process.env.BBZG_API_LOG === '1') {
+        console.log(`已登录用户访问: ${req.method} ${req.path}`);
+      }
       next();
       return;
     }
 
-    console.log(`拒绝未授权访问: ${req.method} ${req.path} - Session:`, req.session);
+    if (process.env.BBZG_API_LOG === '1') {
+      console.log(`拒绝未授权访问: ${req.method} ${req.path}`);
+    }
     res.status(401).json({ success: false, message: '未授权访问' });
   });
 }

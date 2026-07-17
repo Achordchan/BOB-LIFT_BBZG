@@ -67,7 +67,7 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
   async function changeInquiry(direction: 'add' | 'reduce') {
     await run(
       direction === 'add' ? 'inquiry-add' : 'inquiry-reduce',
-      () => apiGet(`/api/inquiries/${direction}`),
+      () => apiJson(`/api/inquiries/${direction}`, 'POST'),
       result => `${direction === 'add' ? '询盘已增加' : '询盘已减少'}，当前 ${Number(result.count || 0)} 条`
     ).catch(() => undefined);
   }
@@ -91,17 +91,15 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
     const person = String(values.person || '').trim();
     const platform = String(values.platform || '').trim();
     const amount = Number(values.amount);
-    const params = new URLSearchParams({
-      zongjine: String(amount),
-      fuzeren: person,
-      userName: person,
-      laiyuanpingtai: platform
-    });
-
     try {
       await run(
         'deal-add',
-        () => apiGet(`/api/deals/add?${params.toString()}`),
+        () => apiJson('/api/deals/add', 'POST', {
+          zongjine: amount,
+          fuzeren: person,
+          userName: person,
+          laiyuanpingtai: platform
+        }),
         result => `成交已录入，累计 ${money(Number(result.amount || 0))}`
       );
       dealForm.setFieldValue('amount', undefined);

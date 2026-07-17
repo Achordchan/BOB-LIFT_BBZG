@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { hashPassword } = require('../lib/password');
 
 function registerUserRoutes(app, deps) {
   const { getData, saveData, uuidv4, upload, baseDir } = deps;
@@ -174,7 +175,13 @@ function registerUserRoutes(app, deps) {
             message: '请先设置登录账号'
           });
         }
-        user.loginPassword = nextPassword;
+        if (nextPassword.length < 6) {
+          return res.status(400).json({
+            success: false,
+            message: '登录密码至少 6 位'
+          });
+        }
+        user.loginPassword = hashPassword(nextPassword);
       }
     }
 
@@ -255,7 +262,11 @@ function registerUserRoutes(app, deps) {
       }
       newUser.loginUsername = nextUsername;
       if (loginPassword) {
-        newUser.loginPassword = String(loginPassword);
+        const nextPassword = String(loginPassword || '');
+        if (nextPassword.length < 6) {
+          return res.status(400).json({ success: false, message: '登录密码至少 6 位' });
+        }
+        newUser.loginPassword = hashPassword(nextPassword);
       }
     }
 
@@ -382,8 +393,8 @@ function registerUserRoutes(app, deps) {
     const userId = req.params.userId;
 
     try {
-      const data = getData();
-      const userIndex = data.users.findIndex(u => u.id === userId);
+      let data = getData();
+      let userIndex = data.users.findIndex(u => u.id === userId);
 
       if (userIndex === -1) {
         // 删除已上传的文件
@@ -789,6 +800,18 @@ function registerUserRoutes(app, deps) {
           }
         }
       }
+
+      // await 图片处理后重新读取整库，避免用旧快照覆盖期间新增的成交/询盘
+      const photoUrl = data.users[userIndex].photoUrl;
+      const fullPhotoUrl = data.users[userIndex].fullPhotoUrl;
+      data = getData();
+      userIndex = data.users.findIndex(u => u.id === userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ success: false, message: '用户不存在' });
+      }
+      if (photoUrl) data.users[userIndex].photoUrl = photoUrl;
+      if (fullPhotoUrl) data.users[userIndex].fullPhotoUrl = fullPhotoUrl;
+      data.users[userIndex].updatedAt = new Date().toISOString();
 
       // 保存更新后的数据
       if (saveData(data)) {

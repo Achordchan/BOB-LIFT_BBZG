@@ -409,7 +409,7 @@ export default function MusicPage({
   }
 
   function getMusicSources(row: MusicItem) {
-    const sources = [];
+    const sources: string[] = [];
     if (row.filename) sources.push(audioUrl(row.filename));
     if ((row as any).sourceId) sources.push(`/api/public/music/stream?id=${encodeURIComponent(String((row as any).sourceId))}`);
     return Array.from(new Set(sources));

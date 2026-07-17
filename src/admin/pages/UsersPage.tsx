@@ -92,7 +92,7 @@ export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) 
   }
 
   function getPreviewSources(song: MusicItem) {
-    const sources = [];
+    const sources: string[] = [];
     if (song.filename) sources.push(audioUrl(song.filename));
     const sourceId = (song as any).sourceId;
     if (sourceId) sources.push(`/api/public/music/stream?id=${encodeURIComponent(String(sourceId))}`);

@@ -3,6 +3,15 @@ const path = require('path');
 const crypto = require('crypto');
 const RPCClient = require('@alicloud/pop-core').RPCClient;
 const cron = require('node-cron');
+const { createRateLimiter, createConcurrencyGate } = require('../lib/rate-limit');
+const { publicErrorPayload, logSafe } = require('../lib/safe-error');
+const { getClientIp } = require('../lib/request-ip');
+
+function ttsDebug(...args) {
+  if (String(process.env.BBZG_TTS_DEBUG || process.env.BBZG_API_LOG || '').trim() === '1') {
+    console.log(...args);
+  }
+}
 
 function registerTtsRoutes(app, deps) {
   const {
@@ -13,6 +22,15 @@ function registerTtsRoutes(app, deps) {
     parseDealAmountInput,
     formatDealAmountForTts
   } = deps;
+
+  const ttsRateLimiter = createRateLimiter({
+    windowMs: Number(process.env.BBZG_TTS_RATE_WINDOW_MS || 60_000),
+    max: Number(process.env.BBZG_TTS_RATE_MAX || 20),
+    blockMs: Number(process.env.BBZG_TTS_RATE_BLOCK_MS || 60_000)
+  });
+  const ttsGate = createConcurrencyGate(Number(process.env.BBZG_TTS_CONCURRENCY || 2));
+  const MAX_TTS_TEXT_LENGTH = Number(process.env.BBZG_TTS_MAX_TEXT_LENGTH || 180);
+  const inFlightHashes = new Map();
 
   function normalizeTtsText(text) {
     if (text == null) return '';
@@ -53,6 +71,29 @@ function registerTtsRoutes(app, deps) {
     // 额外处理输入文本：先做金额清洗，再去除多余空格，确保TTS播放流畅
     text = normalizeTtsText(text).replace(/\s+/g, ' ').trim();
 
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        message: '文本为空'
+      });
+    }
+    if (text.length > MAX_TTS_TEXT_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `文本过长，最多 ${MAX_TTS_TEXT_LENGTH} 字`
+      });
+    }
+
+    const rateKey = `tts:${getClientIp(req)}`;
+    const limited = ttsRateLimiter.hit(rateKey);
+    if (!limited.allowed) {
+      return res.status(429).json({
+        success: false,
+        message: 'TTS 调用过于频繁，请稍后再试',
+        retryAfterMs: limited.retryAfterMs
+      });
+    }
+
     // 记录设备类型信息用于排查问题
     const deviceInfo = {
       type: deviceType || 'unknown',
@@ -60,47 +101,115 @@ function registerTtsRoutes(app, deps) {
       userAgent: req.headers['user-agent'] || 'unknown'
     };
 
-    console.log(`文本转语音请求: ${text.substring(0, 20)}... [设备类型: ${deviceInfo.type}, 屏幕: ${deviceInfo.screen}]`);
-    console.log('文本转语音最终文本(截断):', text.length > 120 ? (text.slice(0, 120) + '...') : text);
+    ttsDebug(`文本转语音请求: 长度=${text.length}, 设备=${deviceInfo.type}, 屏幕=${deviceInfo.screen}`);
+
+    let resolveInFlight = null;
+    let rejectInFlight = null;
+    let clearInFlight = null;
+    let filePath = '';
+    let relativePath = '';
+    let hash = '';
+    let inflightPromise = null;
+    // 先做缓存命中判断，再进入并发门闸，避免已缓存文本也占并发
+    hash = crypto.createHash('md5').update(text).digest('hex');
+    const filename = `${hash}.mp3`;
+    filePath = path.join(baseDir, 'public', 'music', 'tts', filename);
+    relativePath = `/music/tts/${filename}`;
+
+    // 确保tts目录存在（缓存检查前）
+    const ttsDirEarly = path.join(baseDir, 'public', 'music', 'tts');
+    if (!fs.existsSync(ttsDirEarly)) {
+      try {
+        fs.mkdirSync(ttsDirEarly, { recursive: true });
+      } catch (mkdirError) {
+        console.error('创建TTS目录失败:', mkdirError);
+        return res.status(500).json(publicErrorPayload('无法创建TTS目录', mkdirError));
+      }
+    }
+
+    if (fs.existsSync(filePath)) {
+      ttsDebug('TTS文件已存在，直接返回:', relativePath);
+      return res.json({
+        success: true,
+        message: '语音文件已存在',
+        audioPath: relativePath
+      });
+    }
+
+    if (inFlightHashes.has(hash)) {
+      try {
+        const audioPath = await inFlightHashes.get(hash);
+        return res.json({
+          success: true,
+          message: '语音文件已生成',
+          audioPath
+        });
+      } catch (error) {
+        // 前一个同文本任务失败，继续生成
+      }
+    }
+
+    const gateStats = ttsGate.stats();
+    // queued 上限：max*4，防止队列无限增长
+    if (gateStats.active + gateStats.queued >= gateStats.max * 4) {
+      return res.status(429).json({
+        success: false,
+        message: 'TTS 服务繁忙，请稍后再试'
+      });
+    }
 
     try {
-      // 生成文件名: 使用文本的MD5哈希值作为文件名以避免重复生成
-      const hash = crypto.createHash('md5').update(text).digest('hex');
-      const filename = `${hash}.mp3`;
-      const filePath = path.join(baseDir, 'public', 'music', 'tts', filename);
-      const relativePath = `/music/tts/${filename}`;
+      await ttsGate.run(async () => {
+      // 进入门闸后再次检查缓存/in-flight，避免排队期间已生成
 
-      // 确保tts目录存在
-      const ttsDir = path.join(baseDir, 'public', 'music', 'tts');
-      if (!fs.existsSync(ttsDir)) {
-        try {
-          fs.mkdirSync(ttsDir, { recursive: true });
-          console.log('创建TTS目录:', ttsDir);
-        } catch (mkdirError) {
-          console.error('创建TTS目录失败:', mkdirError);
-          return res.status(500).json({
-            success: false,
-            message: '无法创建TTS目录',
-            error: mkdirError.message
+      if (fs.existsSync(filePath)) {
+        ttsDebug('TTS文件已存在，直接返回:', relativePath);
+        if (!res.headersSent) {
+          res.json({
+            success: true,
+            message: '语音文件已存在',
+            audioPath: relativePath
           });
+        }
+        return;
+      }
+
+      if (inFlightHashes.has(hash)) {
+        try {
+          const audioPath = await inFlightHashes.get(hash);
+          if (!res.headersSent) {
+            res.json({
+              success: true,
+              message: '语音文件已生成',
+              audioPath
+            });
+          }
+          return;
+        } catch (error) {
+          // 前一个同文本任务失败，继续生成
         }
       }
 
-      // 检查文件是否已经存在
-      if (fs.existsSync(filePath)) {
-        console.log('TTS文件已存在，直接返回:', relativePath);
-        return res.json({
-          success: true,
-          message: '语音文件已存在',
-          audioPath: relativePath
-        });
-      }
+      inflightPromise = new Promise((resolve, reject) => {
+        resolveInFlight = resolve;
+        rejectInFlight = reject;
+      });
+      // 立即挂兜底 catch，避免 rejectInFlight 在无等待方时变成 unhandledRejection
+      inflightPromise.catch(() => {});
+      inFlightHashes.set(hash, inflightPromise);
+      clearInFlight = () => {
+        if (inFlightHashes.get(hash) === inflightPromise) {
+          inFlightHashes.delete(hash);
+        }
+      };
 
       // 从数据文件中获取阿里云TTS配置
       const data = getData();
       const ttsConfig = data.aliyunTtsConfig || {};
 
       if (!ttsConfig.accessKeyId || !ttsConfig.accessKeySecret || !ttsConfig.appKey) {
+        rejectInFlight(new Error('missing tts config'));
+        clearInFlight();
         return res.status(400).json({
           success: false,
           message: '未配置阿里云TTS服务参数，请先配置AccessKey ID、AppKey和AccessKey Secret'
@@ -115,20 +224,18 @@ function registerTtsRoutes(app, deps) {
         apiVersion: '2019-02-28'
       });
 
-      console.log('正在获取阿里云Token...');
+      logSafe('log', '正在获取阿里云Token');
       const tokenResult = await client.request('CreateToken');
       if (!tokenResult || !tokenResult.Token || !tokenResult.Token.Id) {
-        console.error('获取阿里云Token失败:', tokenResult);
-        return res.status(500).json({
-          success: false,
-          message: '获取阿里云Token失败',
-          error: '无效的Token响应'
-        });
+        logSafe('error', '获取阿里云Token失败');
+        rejectInFlight(new Error('token failed'));
+        clearInFlight();
+        return res.status(500).json(publicErrorPayload('获取阿里云Token失败', new Error('无效的Token响应')));
       }
 
       // 使用获取到的Token
       const token = tokenResult.Token.Id;
-      console.log('成功获取阿里云Token:', token.slice(0, 10) + '...');
+      logSafe('log', '成功获取阿里云Token');
 
       // 引入阿里云语音合成SDK
       const Nls = require('alibabacloud-nls');
@@ -137,11 +244,11 @@ function registerTtsRoutes(app, deps) {
       const fileStream = fs.createWriteStream(filePath);
       fileStream.on('error', (streamError) => {
         console.error('创建TTS文件流失败:', streamError);
-        return res.status(500).json({
-          success: false,
-          message: '创建语音文件失败',
-          error: streamError.message
-        });
+        try { if (typeof rejectInFlight === 'function') rejectInFlight(streamError); } catch (_) {}
+        try { if (typeof clearInFlight === 'function') clearInFlight(); } catch (_) {}
+        if (!res.headersSent) {
+          return res.status(500).json(publicErrorPayload('创建语音文件失败', streamError));
+        }
       });
 
       // 创建语音合成实例
@@ -161,14 +268,14 @@ function registerTtsRoutes(app, deps) {
       param.speech_rate = parseInt(ttsConfig.speechRate) || 0;
       param.pitch_rate = parseInt(ttsConfig.pitchRate) || 0;
 
-      console.log('语音合成参数:', JSON.stringify(param));
+      ttsDebug('语音合成参数已就绪', { voice: param.voice, format: param.format, sample_rate: param.sample_rate });
 
       let isSynthesisCompleted = false;
       let synthesisError = null;
 
       // 设置回调函数
       tts.on('meta', (msg) => {
-        console.log('阿里云TTS元信息:', msg);
+        ttsDebug('阿里云TTS元信息已接收');
       });
 
       tts.on('data', (data) => {
@@ -176,54 +283,74 @@ function registerTtsRoutes(app, deps) {
       });
 
       tts.on('completed', (msg) => {
-        console.log('阿里云TTS合成完成:', msg);
-        fileStream.end();
+        ttsDebug('阿里云TTS合成完成');
         isSynthesisCompleted = true;
 
-        // 验证文件是否真的存在且大小正常
-        try {
-          const stats = fs.statSync(filePath);
-          if (stats.size === 0) {
-            console.error('TTS文件生成成功但是文件大小为0');
-            fs.unlinkSync(filePath); // 删除无效文件
-            return res.status(500).json({
-              success: false,
-              message: '生成的语音文件大小为0，请重试',
-              error: 'Empty file'
-            });
-          }
+        // fileStream.end 异步落盘，必须等 finish 再 stat/响应，否则易读到 0 字节
+        const finalizeSuccess = () => {
+          try {
+            const stats = fs.statSync(filePath);
+            if (stats.size === 0) {
+              console.error('TTS文件生成成功但是文件大小为0');
+              try { fs.unlinkSync(filePath); } catch (_) {}
+              rejectInFlight(new Error('empty tts file'));
+              clearInFlight();
+              if (!res.headersSent) {
+                res.status(500).json({
+                  success: false,
+                  message: '生成的语音文件大小为0，请重试',
+                  error: 'Empty file'
+                });
+              }
+              return;
+            }
 
-          // 返回结果
-          res.json({
-            success: true,
-            message: '语音文件生成成功',
-            audioPath: relativePath
-          });
-        } catch (statError) {
-          console.error('读取或验证TTS文件失败:', statError);
-          return res.status(500).json({
-            success: false,
-            message: '语音文件验证失败',
-            error: statError.message
-          });
-        }
+            resolveInFlight(relativePath);
+            clearInFlight();
+            if (!res.headersSent) {
+              res.json({
+                success: true,
+                message: '语音文件生成成功',
+                audioPath: relativePath
+              });
+            }
+          } catch (statError) {
+            console.error('读取或验证TTS文件失败:', statError);
+            rejectInFlight(statError || new Error('tts validate failed'));
+            clearInFlight();
+            if (!res.headersSent) {
+              res.status(500).json(publicErrorPayload('语音文件验证失败', statError));
+            }
+          }
+        };
+
+        fileStream.once('finish', finalizeSuccess);
+        fileStream.once('error', (streamError) => {
+          console.error('TTS 文件流 finish 前失败:', streamError);
+          rejectInFlight(streamError);
+          clearInFlight();
+          if (!res.headersSent) {
+            res.status(500).json(publicErrorPayload('写入语音文件失败', streamError));
+          }
+        });
+        fileStream.end();
       });
 
       tts.on('closed', () => {
-        console.log('阿里云TTS连接关闭');
+        ttsDebug('阿里云TTS连接关闭');
         if (!isSynthesisCompleted) {
           fileStream.end();
 
           // 如果没有合成完成但连接关闭了，检查是否有错误
           if (synthesisError) {
             if (!res.headersSent) {
-              res.status(500).json({
-                success: false,
-                message: '阿里云TTS连接关闭，合成失败',
-                error: synthesisError
-              });
+              rejectInFlight(new Error(synthesisError || 'tts closed'));
+              clearInFlight();
+              res.status(500).json(publicErrorPayload('阿里云TTS连接关闭，合成失败', new Error(String(synthesisError || 'tts closed'))));
             }
           } else if (!res.headersSent) {
+            rejectInFlight(new Error('tts closed unexpectedly'));
+            clearInFlight();
             res.status(500).json({
               success: false,
               message: '阿里云TTS连接意外关闭',
@@ -239,6 +366,8 @@ function registerTtsRoutes(app, deps) {
         fileStream.end();
 
         if (!isSynthesisCompleted && !res.headersSent) {
+          rejectInFlight(new Error(msg || 'tts failed'));
+          clearInFlight();
           res.status(500).json({
             success: false,
             message: '阿里云TTS合成失败',
@@ -251,6 +380,8 @@ function registerTtsRoutes(app, deps) {
       setTimeout(() => {
         if (!isSynthesisCompleted && !res.headersSent) {
           console.error('阿里云TTS合成请求超时');
+          rejectInFlight(new Error('tts timeout'));
+          clearInFlight();
           res.status(504).json({
             success: false,
             message: '阿里云TTS合成请求超时',
@@ -261,15 +392,31 @@ function registerTtsRoutes(app, deps) {
 
       // 开始合成 - 修改调用方式，确保参数正确
       await tts.start(param, true, 6000);
+      // 门闸持有到合成完成/失败，真正限制阿里云并发连接数
+      await inflightPromise;
+      }); // ttsGate.run
 
     } catch (error) {
       console.error('文本转语音失败:', error);
-      return res.status(500).json({
-        success: false,
-        message: '生成语音文件失败',
-        error: error.message,
-        stack: error.stack
-      });
+      try {
+        if (typeof rejectInFlight === 'function') rejectInFlight(error);
+      } catch (_) {}
+      try {
+        if (typeof clearInFlight === 'function') clearInFlight();
+        else if (hash && inflightPromise && inFlightHashes.get(hash) === inflightPromise) {
+          inFlightHashes.delete(hash);
+        }
+      } catch (_) {}
+      // 失败时尽量删除半成品文件，避免脏缓存
+      try {
+        if (typeof filePath === 'string' && filePath && fs.existsSync(filePath)) {
+          const st = fs.statSync(filePath);
+          if (!st.size) fs.unlinkSync(filePath);
+        }
+      } catch (_) {}
+      if (!res.headersSent) {
+        return res.status(500).json(publicErrorPayload('生成语音文件失败', error));
+      }
     }
   });
 
@@ -376,7 +523,7 @@ function registerTtsRoutes(app, deps) {
   // API: 测试阿里云TTS配置
   app.post('/api/test-aliyun-tts', async (req, res) => {
     try {
-      console.log('开始测试阿里云TTS Token获取...');
+      logSafe('log', '开始测试阿里云TTS Token获取');
       const data = getData();
       const ttsConfig = data.aliyunTtsConfig || {};
 
@@ -388,7 +535,7 @@ function registerTtsRoutes(app, deps) {
         });
       }
 
-      console.log('使用AccessKey ID获取Token:', ttsConfig.accessKeyId);
+      logSafe('log', '使用已配置 AccessKey 获取 Token');
 
       // 使用阿里云SDK获取Token
       const client = new RPCClient({
@@ -399,15 +546,11 @@ function registerTtsRoutes(app, deps) {
       });
 
       const result = await client.request('CreateToken');
-      console.log('阿里云返回Token响应:', JSON.stringify(result, null, 2));
+      logSafe('log', '阿里云返回 Token 响应');
 
       if (!result || !result.Token || !result.Token.Id) {
-        console.error('Token响应格式不正确:', result);
-        return res.status(400).json({
-          success: false,
-          message: '获取阿里云Token失败，返回数据格式不正确',
-          response: result
-        });
+        logSafe('error', 'Token响应格式不正确');
+        return res.status(400).json(publicErrorPayload('获取阿里云Token失败，返回数据格式不正确', new Error('invalid token response')));
       }
 
       const token = result.Token.Id;
@@ -426,44 +569,33 @@ function registerTtsRoutes(app, deps) {
 
       if (!Number.isFinite(expireMs)) {
         console.error('Token过期时间解析失败，原始值:', rawExpireTime);
-        return res.status(500).json({
-          success: false,
-          message: '获取阿里云Token成功，但解析过期时间失败',
-          error: 'Invalid ExpireTime',
-          apiResponse: result
-        });
+        return res.status(500).json(publicErrorPayload('获取阿里云Token成功，但解析过期时间失败', new Error('Invalid ExpireTime')));
       }
 
       const expireTime = new Date(expireMs);
 
-      console.log('成功获取Token:', token);
-      console.log('Token过期时间:', expireTime);
+      logSafe('log', '成功获取 Token');
+      logSafe('log', 'Token 过期时间已解析');
 
+      const masked = token && token.length > 8
+        ? `${token.slice(0, 4)}***${token.slice(-4)}`
+        : '***';
       return res.json({
         success: true,
         message: '阿里云TTS Token获取成功',
         token: {
-          id: token,
+          id: masked,
           expireTime: expireTime.toISOString()
         }
       });
 
     } catch (error) {
-      console.error('测试阿里云TTS Token获取失败:', error.message);
+      logSafe('error', '测试阿里云TTS Token获取失败', error);
       if (error.response) {
-        console.error('阿里云返回错误:', error.response.data);
-        return res.status(500).json({
-          success: false,
-          message: '测试阿里云TTS Token获取失败',
-          error: error.message,
-          apiResponse: error.response.data
-        });
+        logSafe('error', '阿里云返回错误');
+        return res.status(500).json(publicErrorPayload('测试阿里云TTS Token获取失败', error));
       }
-      return res.status(500).json({
-        success: false,
-        message: '测试阿里云TTS Token获取失败',
-        error: error.message
-      });
+      return res.status(500).json(publicErrorPayload('测试阿里云TTS Token获取失败', error));
     }
   });
 
@@ -531,20 +663,21 @@ function registerTtsRoutes(app, deps) {
     });
   }
 
-  // 定时清理TTS文件
-  console.log('配置TTS文件定时清理任务...');
-  // 每天凌晨3点执行清理任务
-  cron.schedule('0 3 * * *', () => {
-    cleanupTtsFiles();
-  }, {
-    scheduled: true
-  });
+  // 定时清理TTS文件（测试环境可关闭，避免挂起测试进程）
+  const enableTtsMaintenance = process.env.BBZG_DISABLE_TTS_MAINTENANCE !== '1';
+  if (enableTtsMaintenance) {
+    console.log('配置TTS文件定时清理任务...');
+    cron.schedule('0 3 * * *', () => {
+      cleanupTtsFiles();
+    }, {
+      scheduled: true
+    });
 
-  // 服务器启动时执行一次清理
-  console.log('服务器启动，执行一次TTS文件清理...');
-  setTimeout(() => {
-    cleanupTtsFiles();
-  }, 5000); // 延迟5秒执行，确保服务器其他部分已初始化完成
+    console.log('服务器启动，执行一次TTS文件清理...');
+    setTimeout(() => {
+      cleanupTtsFiles();
+    }, 5000);
+  }
 
   // 添加手动清理TTS文件的API
   app.post('/api/cleanup-tts-files', requireLogin, (req, res) => {
@@ -558,11 +691,7 @@ function registerTtsRoutes(app, deps) {
       });
     } catch (error) {
       console.error('手动清理TTS文件失败:', error);
-      res.status(500).json({
-        success: false,
-        message: '清理TTS文件失败',
-        error: error.message
-      });
+      res.status(500).json(publicErrorPayload('清理TTS文件失败', error));
     }
   });
 

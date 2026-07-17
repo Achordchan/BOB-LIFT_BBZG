@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const https = require('https');
+const { createNeteaseClient } = require('../lib/netease-client');
 
 function registerMusicRoutes(app, deps) {
+  const netease = createNeteaseClient();
   const {
     requireLogin,
     upload,
@@ -15,24 +16,13 @@ function registerMusicRoutes(app, deps) {
 
   const importJobs = new Map();
 
-  const NETEASE_API_BASE = process.env.BBZG_MUSIC_API_BASE || 'http://127.0.0.1:5000';
-  const NETEASE_API_TIMEOUT_MS = Number.parseInt(process.env.BBZG_MUSIC_API_TIMEOUT_MS || '12000', 10);
+  const guessExtByUrl = netease.guessExtByUrl;
+  const guessExtByContentType = netease.guessExtByContentType;
+  const fetchNeteaseLyric = netease.fetchNeteaseLyric;
+  const resolveNeteasePlayableUrl = netease.resolveNeteasePlayableUrl;
 
-  const insecureHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-  async function withInsecureTls(fn) {
-    const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    try {
-      return await fn();
-    } finally {
-      if (typeof prev === 'undefined') {
-        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      } else {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = String(prev);
-      }
-    }
-  }
+
 
   function formatBytes(bytes) {
     if (!Number.isFinite(bytes) || bytes <= 0) return '0B';
@@ -46,25 +36,7 @@ function registerMusicRoutes(app, deps) {
     return `${v.toFixed(i === 0 ? 0 : 1)}${units[i]}`;
   }
 
-  function guessExtByUrl(url) {
-    try {
-      const u = new URL(url);
-      const ext = path.extname(u.pathname || '').toLowerCase();
-      if (ext && ext.length <= 8) return ext;
-    } catch (e) {}
-    return '';
-  }
 
-  function guessExtByContentType(contentType) {
-    const ct = String(contentType || '').toLowerCase();
-    if (ct.includes('audio/flac') || ct.includes('audio/x-flac')) return '.flac';
-    if (ct.includes('audio/mpeg')) return '.mp3';
-    if (ct.includes('audio/wav')) return '.wav';
-    if (ct.includes('audio/aac')) return '.aac';
-    if (ct.includes('audio/mp4')) return '.m4a';
-    if (ct.includes('audio/ogg')) return '.ogg';
-    return '';
-  }
 
   function ensureMusicDir() {
     const dir = path.join(baseDir, 'public', 'music');
@@ -115,62 +87,8 @@ function registerMusicRoutes(app, deps) {
     } catch (e) {}
   }
 
-  function extractLyricPayload(payload) {
-    if (payload == null) return { lyric: '', tLyric: '' };
-    const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
 
-    const getLyric = (obj) => {
-      if (!obj) return '';
-      if (typeof obj === 'string') return String(obj).trim();
-      if (typeof obj !== 'object') return '';
-      return typeof obj.lyric === 'string' ? String(obj.lyric).trim() : '';
-    };
 
-    return {
-      lyric: getLyric(data.lrc),
-      tLyric: getLyric(data.tlyric)
-    };
-  }
-
-  async function requestNeteaseSongApi(neteaseId, requestType) {
-    const reqData = { id: String(neteaseId), type: requestType };
-    const attempts = [
-      () => withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, reqData, {
-        timeout: NETEASE_API_TIMEOUT_MS,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' }
-      })),
-      () => withInsecureTls(() => axios.get(`${NETEASE_API_BASE}/song`, {
-        timeout: NETEASE_API_TIMEOUT_MS,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' },
-        params: reqData
-      }))
-    ];
-
-    let lastError = null;
-    for (const attempt of attempts) {
-      try {
-        const resp = await attempt();
-        return resp && resp.data ? resp.data : null;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (lastError) throw lastError;
-    throw new Error('音乐 API 请求失败');
-  }
-
-  async function fetchNeteaseLyric(neteaseId) {
-    const payload = await requestNeteaseSongApi(neteaseId, 'lyric');
-    if (payload && payload.success === false) {
-      const msg = payload && payload.message ? payload.message : '获取歌词失败';
-      throw new Error(msg);
-    }
-    const result = extractLyricPayload(payload);
-    return result.lyric || result.tLyric ? result : { lyric: '', tLyric: '' };
-  }
 
   function toImportJobPayload(job) {
     return {
@@ -246,39 +164,6 @@ function registerMusicRoutes(app, deps) {
     }, 30 * 60 * 1000);
   }
 
-  async function resolveNeteasePlayableUrl(neteaseId) {
-    async function requestLevel(level) {
-      const resp = await withInsecureTls(() => axios.post(`${NETEASE_API_BASE}/song`, {
-        id: String(neteaseId),
-        level,
-        type: 'url'
-      }, {
-        timeout: 15000,
-        httpsAgent: insecureHttpsAgent,
-        headers: { 'Content-Type': 'application/json' }
-      }));
-
-      const payload = resp && resp.data;
-      if (!payload || payload.success === false) {
-        throw new Error((payload && payload.message) ? payload.message : '获取播放链接失败');
-      }
-
-      const data = payload && payload.data ? payload.data : null;
-      const url = (data && typeof data.url === 'string')
-        ? data.url
-        : (data && data.data && Array.isArray(data.data) && data.data[0] && typeof data.data[0].url === 'string')
-          ? data.data[0].url
-          : '';
-
-      return String(url || '').trim();
-    }
-
-    const exhigh = await requestLevel('exhigh').catch(() => '');
-    if (exhigh) return exhigh;
-    const standard = await requestLevel('standard');
-    if (!standard) throw new Error('获取播放链接失败');
-    return standard;
-  }
 
   function buildDefaultBattleSongPayload(data) {
     if (!data || !data.defaultBattleSong) return null;
@@ -316,15 +201,14 @@ function registerMusicRoutes(app, deps) {
     const musicDir = ensureMusicDir();
     let ext = guessExtByUrl(playableUrl);
 
-    const response = await withInsecureTls(() => axios.get(playableUrl, {
+    const response = await axios.get(playableUrl, {
       responseType: 'stream',
-      timeout: 0,
+      timeout: Number(process.env.BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS || 30000),
       maxRedirects: 5,
-      httpsAgent: insecureHttpsAgent,
       headers: {
         'User-Agent': 'bbzg-music-import'
       }
-    }));
+    });
 
     if (!ext) {
       ext = guessExtByContentType(response && response.headers ? response.headers['content-type'] : '');

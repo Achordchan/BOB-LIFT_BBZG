@@ -1,125 +1,150 @@
 function registerInquiryRoutes(app, deps) {
-  const { getData, saveData } = deps;
+  const { getData, saveData, updateData } = deps;
 
-  // API: 获取询盘数量
+  // API: 获取询盘数量（公开接口仅返回数量，避免泄露 data.json）
   app.get('/api/inquiries', (req, res) => {
     const data = getData();
-    res.json(data);
+    const inquiryCount = typeof data.inquiryCount === 'number' && Number.isFinite(data.inquiryCount)
+      ? data.inquiryCount
+      : 0;
+    res.json({ inquiryCount });
   });
 
-  // API: 增加询盘数量
-  app.get('/api/inquiries/add', (req, res) => {
-    const data = getData();
-    data.inquiryCount += 1;
-
-    // 查找是否有配置的增加询盘音效
+  // API: 增加询盘数量（POST 主路径；GET 仅兼容开关）
+  function handleInquiryAdd(req, res) {
     let musicToPlay = null;
-    if (data.inquiryConfig && data.inquiryConfig.addInquiryMusicId) {
-      const music = data.music.find(m => m.id === data.inquiryConfig.addInquiryMusicId);
-      if (music) {
-        musicToPlay = {
-          musicId: music.id,
-          musicName: music.name,
-          musicFile: music.filename
-        };
-      }
-    }
+    let responseCount = 0;
 
-    // 记录本次询盘信息
-    const inquiryData = {
-      type: 'add',
-      count: data.inquiryCount,
-      timestamp: new Date().toISOString(),
-      musicToPlay
+    const mutator = (data) => {
+      data.inquiryCount = Number(data.inquiryCount || 0) + 1;
+      musicToPlay = null;
+      if (data.inquiryConfig && data.inquiryConfig.addInquiryMusicId && Array.isArray(data.music)) {
+        const music = data.music.find(m => m.id === data.inquiryConfig.addInquiryMusicId);
+        if (music) {
+          musicToPlay = {
+            musicId: music.id,
+            musicName: music.name,
+            musicFile: music.filename
+          };
+        }
+      }
+
+      const inquiryData = {
+        type: 'add',
+        count: data.inquiryCount,
+        timestamp: new Date().toISOString(),
+        musicToPlay
+      };
+      data.latestInquiry = inquiryData;
+      if (!data.inquiriesHistory) data.inquiriesHistory = [];
+      data.inquiriesHistory.push(inquiryData);
+      if (data.inquiriesHistory.length > 30) {
+        data.inquiriesHistory = data.inquiriesHistory.slice(-30);
+      }
+      responseCount = data.inquiryCount;
+      return data;
     };
 
-    // 保存最近一次询盘信息
-    data.latestInquiry = inquiryData;
-
-    // 添加到询盘历史记录
-    if (!data.inquiriesHistory) {
-      data.inquiriesHistory = [];
+    if (typeof updateData === 'function') {
+      const result = updateData(mutator);
+      if (!result || !result.ok) {
+        return res.status(500).json({ success: false, message: '保存询盘失败' });
+      }
+    } else {
+      const data = getData();
+      mutator(data);
+      if (!saveData(data)) {
+        return res.status(500).json({ success: false, message: '保存询盘失败' });
+      }
     }
-    data.inquiriesHistory.push(inquiryData);
-
-    // 只保留最近的30条记录
-    if (data.inquiriesHistory.length > 30) {
-      data.inquiriesHistory = data.inquiriesHistory.slice(-30);
-    }
-
-    saveData(data);
 
     const response = {
       success: true,
       message: '询盘已增加',
-      count: data.inquiryCount
+      count: responseCount
     };
-
-    // 如果有配置的音效，添加到响应中
-    if (musicToPlay) {
-      response.musicToPlay = musicToPlay;
-    }
-
+    if (musicToPlay) response.musicToPlay = musicToPlay;
     res.json(response);
+  }
+
+  app.post('/api/inquiries/add', handleInquiryAdd);
+  app.get('/api/inquiries/add', (req, res) => {
+    if (String(process.env.BBZG_ALLOW_LEGACY_GET_WRITE || '').trim() !== '1') {
+      return res.status(405).json({
+        success: false,
+        message: '请使用 POST /api/inquiries/add；临时兼容可设置 BBZG_ALLOW_LEGACY_GET_WRITE=1'
+      });
+    }
+    return handleInquiryAdd(req, res);
   });
 
-  // API: 减少询盘数量
-  app.get('/api/inquiries/reduce', (req, res) => {
-    const data = getData();
-    // 防止询盘数量小于0
-    if (data.inquiryCount > 0) {
-      data.inquiryCount -= 1;
-    }
-
-    // 查找是否有配置的减少询盘音效
+  // API: 减少询盘数量（POST 主路径；GET 仅兼容开关）
+  function handleInquiryReduce(req, res) {
     let musicToPlay = null;
-    if (data.inquiryConfig && data.inquiryConfig.reduceInquiryMusicId) {
-      const music = data.music.find(m => m.id === data.inquiryConfig.reduceInquiryMusicId);
-      if (music) {
-        musicToPlay = {
-          musicId: music.id,
-          musicName: music.name,
-          musicFile: music.filename
-        };
-      }
-    }
+    let responseCount = 0;
 
-    // 记录本次询盘信息
-    const inquiryData = {
-      type: 'reduce',
-      count: data.inquiryCount,
-      timestamp: new Date().toISOString(),
-      musicToPlay
+    const mutator = (data) => {
+      const current = Number(data.inquiryCount || 0);
+      data.inquiryCount = current > 0 ? current - 1 : 0;
+      musicToPlay = null;
+      if (data.inquiryConfig && data.inquiryConfig.reduceInquiryMusicId && Array.isArray(data.music)) {
+        const music = data.music.find(m => m.id === data.inquiryConfig.reduceInquiryMusicId);
+        if (music) {
+          musicToPlay = {
+            musicId: music.id,
+            musicName: music.name,
+            musicFile: music.filename
+          };
+        }
+      }
+
+      const inquiryData = {
+        type: 'reduce',
+        count: data.inquiryCount,
+        timestamp: new Date().toISOString(),
+        musicToPlay
+      };
+      data.latestInquiry = inquiryData;
+      if (!data.inquiriesHistory) data.inquiriesHistory = [];
+      data.inquiriesHistory.push(inquiryData);
+      if (data.inquiriesHistory.length > 30) {
+        data.inquiriesHistory = data.inquiriesHistory.slice(-30);
+      }
+      responseCount = data.inquiryCount;
+      return data;
     };
 
-    // 保存最近一次询盘信息
-    data.latestInquiry = inquiryData;
-
-    // 添加到询盘历史记录
-    if (!data.inquiriesHistory) {
-      data.inquiriesHistory = [];
+    if (typeof updateData === 'function') {
+      const result = updateData(mutator);
+      if (!result || !result.ok) {
+        return res.status(500).json({ success: false, message: '保存询盘失败' });
+      }
+    } else {
+      const data = getData();
+      mutator(data);
+      if (!saveData(data)) {
+        return res.status(500).json({ success: false, message: '保存询盘失败' });
+      }
     }
-    data.inquiriesHistory.push(inquiryData);
-
-    // 只保留最近的30条记录
-    if (data.inquiriesHistory.length > 30) {
-      data.inquiriesHistory = data.inquiriesHistory.slice(-30);
-    }
-
-    saveData(data);
 
     const response = {
       success: true,
       message: '询盘已减少',
-      count: data.inquiryCount
+      count: responseCount
     };
-
-    // 如果有配置的音效，添加到响应中
-    if (musicToPlay) {
-      response.musicToPlay = musicToPlay;
-    }
-
+    if (musicToPlay) response.musicToPlay = musicToPlay;
     res.json(response);
+  }
+
+  app.post('/api/inquiries/reduce', handleInquiryReduce);
+  app.get('/api/inquiries/reduce', (req, res) => {
+    if (String(process.env.BBZG_ALLOW_LEGACY_GET_WRITE || '').trim() !== '1') {
+      return res.status(405).json({
+        success: false,
+        message: '请使用 POST /api/inquiries/reduce；临时兼容可设置 BBZG_ALLOW_LEGACY_GET_WRITE=1'
+      });
+    }
+    return handleInquiryReduce(req, res);
   });
 
   // API: 获取最近一次询盘详情

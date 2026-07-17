@@ -117,64 +117,42 @@ class PlatformTargetsManager {
     this.renderPlatformTargets();
   }
 
-  // 加载模拟数据（开发阶段使用）
-  loadMockData() {
-    this.platformData = [
-      {
-        name: '阿里巴巴',
-        target: 8000000,
-        current: 4500000,
-        percentage: 56
-      },
-      {
-        name: '独立站',
-        target: 6000000,
-        current: 3200000,
-        percentage: 53
-      },
-      {
-        name: '亚马逊',
-        target: 5000000,
-        current: 2800000,
-        percentage: 56
-      },
-      {
-        name: '1688',
-        target: 3000000,
-        current: 1156549,
-        percentage: 39
-      },
-      {
-        name: '其他平台',
-        target: 2000000,
-        current: 800000,
-        percentage: 40
-      }
-    ];
-    this.renderPlatformTargets();
-  }
-
-  // 渲染平台目标
+  // 渲染平台目标（DOM 节点，避免平台名 XSS）
   renderPlatformTargets() {
     if (!this.platformTargets) return;
 
     const platformCount = this.platformData.length;
-    // 根据平台数量选择布局模式
     const useListLayout = platformCount >= 3;
     const singlePlatform = platformCount === 1;
 
-    // 设置容器样式类，为多平台添加特殊类
     let layoutClass = useListLayout ? 'list-layout' : 'card-layout';
     if (platformCount >= 6) {
       layoutClass += ' many-platforms';
     }
     this.platformTargets.className = `platform-targets ${layoutClass}`;
+    this.platformTargets.textContent = '';
 
-    const html = this.platformData.map((platform, index) => {
+    if (this.platformData.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      const icon = document.createElement('div');
+      icon.className = 'empty-icon';
+      icon.textContent = '暂无';
+      const title = document.createElement('h3');
+      title.textContent = '暂无平台目标';
+      const desc = document.createElement('p');
+      desc.textContent = '请在管理后台添加平台目标';
+      empty.appendChild(icon);
+      empty.appendChild(title);
+      empty.appendChild(desc);
+      this.platformTargets.appendChild(empty);
+      return;
+    }
+
+    this.platformData.forEach((platform) => {
       const percentage = platform.target > 0 ?
         Math.round((platform.current / platform.target) * 100) : 0;
 
-      // 根据完成度确定状态
       let statusClass = 'platform-status';
       let statusText = '正常';
       if (percentage >= 100) {
@@ -187,92 +165,114 @@ class PlatformTargetsManager {
         statusText = '需努力';
       }
 
-      // 计算还需金额
       const remaining = Math.max(0, platform.target - platform.current);
+      const item = document.createElement('div');
+      item.className = useListLayout
+        ? 'platform-item list-item'
+        : ('platform-item' + (singlePlatform ? ' single-platform' : ''));
+
+      const header = document.createElement('div');
+      header.className = 'platform-header';
+      const nameEl = document.createElement('h4');
+      nameEl.className = 'platform-name';
+      nameEl.textContent = String(platform.name || '未命名平台');
+      const statusEl = document.createElement('span');
+      statusEl.className = statusClass;
+      statusEl.textContent = statusText;
+      header.appendChild(nameEl);
+      header.appendChild(statusEl);
+      item.appendChild(header);
 
       if (useListLayout) {
-        // 列表布局模式 - 适用于多平台
-        return `
-          <div class="platform-item list-item">
-            <div class="platform-header">
-              <h4 class="platform-name">${platform.name}</h4>
-              <span class="${statusClass}">${statusText}</span>
-            </div>
+        const progressSection = document.createElement('div');
+        progressSection.className = 'platform-progress-section';
+        const progressHeader = document.createElement('div');
+        progressHeader.className = 'progress-header';
+        const progressLabel = document.createElement('span');
+        progressLabel.className = 'progress-label';
+        progressLabel.textContent = '目标进度';
+        const progressPercentage = document.createElement('span');
+        progressPercentage.className = 'progress-percentage';
+        progressPercentage.textContent = percentage + '%';
+        progressHeader.appendChild(progressLabel);
+        progressHeader.appendChild(progressPercentage);
+        const barWrapper = document.createElement('div');
+        barWrapper.className = 'progress-bar-wrapper';
+        const barFill = document.createElement('div');
+        barFill.className = 'progress-bar-fill';
+        barFill.style.width = Math.min(percentage, 100) + '%';
+        barWrapper.appendChild(barFill);
+        progressSection.appendChild(progressHeader);
+        progressSection.appendChild(barWrapper);
+        item.appendChild(progressSection);
 
-            <div class="platform-progress-section">
-              <div class="progress-header">
-                <span class="progress-label">目标进度</span>
-                <span class="progress-percentage">${percentage}%</span>
-              </div>
-              <div class="progress-bar-wrapper">
-                <div class="progress-bar-fill" style="width: ${Math.min(percentage, 100)}%"></div>
-              </div>
-            </div>
-
-            <div class="list-item-info">
-              <div class="list-item-amount">
-                <span class="current-amount">¥${this.formatNumber(platform.current)}</span>
-                <span class="target-amount">目标: ¥${this.formatNumber(platform.target)}</span>
-              </div>
-            </div>
-          </div>
-        `;
+        const listInfo = document.createElement('div');
+        listInfo.className = 'list-item-info';
+        const amountWrap = document.createElement('div');
+        amountWrap.className = 'list-item-amount';
+        const currentAmount = document.createElement('span');
+        currentAmount.className = 'current-amount';
+        currentAmount.textContent = '¥' + this.formatNumber(platform.current);
+        const targetAmount = document.createElement('span');
+        targetAmount.className = 'target-amount';
+        targetAmount.textContent = '目标: ¥' + this.formatNumber(platform.target);
+        amountWrap.appendChild(currentAmount);
+        amountWrap.appendChild(targetAmount);
+        listInfo.appendChild(amountWrap);
+        item.appendChild(listInfo);
       } else {
-        // 卡片布局模式 - 适用于少量平台
-        return `
-          <div class="platform-item ${singlePlatform ? 'single-platform' : ''}">
-            <div class="platform-header">
-              <h4 class="platform-name">${platform.name}</h4>
-              <span class="${statusClass}">${statusText}</span>
-            </div>
+        const metrics = document.createElement('div');
+        metrics.className = 'platform-metrics' + (singlePlatform ? ' single-platform-metrics' : '');
+        const cards = [
+          { value: '¥' + this.formatNumber(platform.current), label: '当前金额' },
+          { value: '¥' + this.formatNumber(platform.target), label: '目标金额' }
+        ];
+        if (singlePlatform) {
+          cards.push(
+            { value: '¥' + this.formatNumber(remaining), label: '还需金额' },
+            { value: percentage + '%', label: '完成进度' }
+          );
+        }
+        cards.forEach((card) => {
+          const cardEl = document.createElement('div');
+          cardEl.className = 'metric-card';
+          const valueEl = document.createElement('span');
+          valueEl.className = 'metric-value';
+          valueEl.textContent = card.value;
+          const labelEl = document.createElement('span');
+          labelEl.className = 'metric-label';
+          labelEl.textContent = card.label;
+          cardEl.appendChild(valueEl);
+          cardEl.appendChild(labelEl);
+          metrics.appendChild(cardEl);
+        });
+        item.appendChild(metrics);
 
-            <div class="platform-metrics ${singlePlatform ? 'single-platform-metrics' : ''}">
-              <div class="metric-card">
-                <span class="metric-value">¥${this.formatNumber(platform.current)}</span>
-                <span class="metric-label">当前金额</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-value">¥${this.formatNumber(platform.target)}</span>
-                <span class="metric-label">目标金额</span>
-              </div>
-              ${singlePlatform ? `
-              <div class="metric-card">
-                <span class="metric-value">¥${this.formatNumber(remaining)}</span>
-                <span class="metric-label">还需金额</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-value">${percentage}%</span>
-                <span class="metric-label">完成进度</span>
-              </div>
-              ` : ''}
-            </div>
-
-            <div class="platform-progress-section">
-              <div class="progress-header">
-                <span class="progress-label">完成进度</span>
-                <span class="progress-percentage">${percentage}%</span>
-              </div>
-              <div class="progress-bar-wrapper">
-                <div class="progress-bar-fill" style="width: ${Math.min(percentage, 100)}%"></div>
-              </div>
-            </div>
-          </div>
-        `;
+        const progressSection = document.createElement('div');
+        progressSection.className = 'platform-progress-section';
+        const progressHeader = document.createElement('div');
+        progressHeader.className = 'progress-header';
+        const progressLabel = document.createElement('span');
+        progressLabel.className = 'progress-label';
+        progressLabel.textContent = '完成进度';
+        const progressPercentage = document.createElement('span');
+        progressPercentage.className = 'progress-percentage';
+        progressPercentage.textContent = percentage + '%';
+        progressHeader.appendChild(progressLabel);
+        progressHeader.appendChild(progressPercentage);
+        const barWrapper = document.createElement('div');
+        barWrapper.className = 'progress-bar-wrapper';
+        const barFill = document.createElement('div');
+        barFill.className = 'progress-bar-fill';
+        barFill.style.width = Math.min(percentage, 100) + '%';
+        barWrapper.appendChild(barFill);
+        progressSection.appendChild(progressHeader);
+        progressSection.appendChild(barWrapper);
+        item.appendChild(progressSection);
       }
-    }).join('');
 
-    // 如果没有平台数据，显示空状态
-    if (this.platformData.length === 0) {
-      this.platformTargets.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📊</div>
-          <h3>暂无平台目标</h3>
-          <p>请在管理后台添加平台目标</p>
-        </div>
-      `;
-    } else {
-      this.platformTargets.innerHTML = html;
-    }
+      this.platformTargets.appendChild(item);
+    });
   }
 
   // 格式化数字

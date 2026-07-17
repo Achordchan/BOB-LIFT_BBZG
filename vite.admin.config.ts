@@ -8,7 +8,31 @@ export default defineConfig({
   build: {
     outDir: '../../public/admin-app',
     emptyOutDir: true,
-    sourcemap: false
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          // 只拆核心公共包，避免 rc-* / dayjs 与 antd 交叉进不同 chunk
+          if (
+            id.includes('node_modules/antd')
+            || id.includes('node_modules/@ant-design')
+            || id.includes('node_modules/rc-')
+            || id.includes('node_modules/@rc-component')
+            || id.includes('node_modules/dayjs')
+          ) {
+            return 'antd';
+          }
+          if (
+            id.includes('node_modules/react-dom')
+            || id.includes('node_modules/react/')
+            || id.includes('node_modules/scheduler')
+          ) {
+            return 'react-vendor';
+          }
+        }
+      }
+    }
   },
   server: {
     port: 5174,

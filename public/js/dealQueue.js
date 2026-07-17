@@ -173,25 +173,51 @@ function updateQueueUI() {
   // 清空列表
   queueList.innerHTML = '';
   
-  // 渲染队列项
+  // 渲染队列项（textContent，避免持久化 XSS）
   window.dealQueue.forEach((deal, index) => {
     const queueItem = document.createElement('div');
     queueItem.className = 'queue-item' + (index === 0 ? ' playing' : '');
-    
-    // 获取用户名首字母
+
     const userName = deal.musicToPlay ? deal.musicToPlay.userName : deal.person || '未知';
-    const userInitial = userName.charAt(0).toUpperCase();
-    
-    queueItem.innerHTML = `
-      <div class="queue-item-avatar">${userInitial}</div>
-      <div class="queue-item-info">
-        <div class="queue-item-name">${userName}</div>
-        <div class="queue-item-amount">¥${deal.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</div>
-        <div class="queue-item-platform">${deal.platform || '未知平台'}</div>
-      </div>
-      ${index === 0 ? '<div style="color: #4ade80; font-size: 11px; font-weight: 600;">播放中</div>' : ''}
-    `;
-    
+    const userInitial = String(userName).charAt(0).toUpperCase();
+
+    const avatar = document.createElement('div');
+    avatar.className = 'queue-item-avatar';
+    avatar.textContent = userInitial;
+
+    const info = document.createElement('div');
+    info.className = 'queue-item-info';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'queue-item-name';
+    nameEl.textContent = String(userName || '未知');
+
+    const amountEl = document.createElement('div');
+    amountEl.className = 'queue-item-amount';
+    const amountNumber = Number(deal.amount);
+    amountEl.textContent = '¥' + (Number.isFinite(amountNumber)
+      ? amountNumber.toLocaleString('zh-CN', { minimumFractionDigits: 2 })
+      : '0.00');
+
+    const platformEl = document.createElement('div');
+    platformEl.className = 'queue-item-platform';
+    platformEl.textContent = String(deal.platform || '未知平台');
+
+    info.appendChild(nameEl);
+    info.appendChild(amountEl);
+    info.appendChild(platformEl);
+    queueItem.appendChild(avatar);
+    queueItem.appendChild(info);
+
+    if (index === 0) {
+      const playing = document.createElement('div');
+      playing.style.color = '#4ade80';
+      playing.style.fontSize = '11px';
+      playing.style.fontWeight = '600';
+      playing.textContent = '播放中';
+      queueItem.appendChild(playing);
+    }
+
     queueList.appendChild(queueItem);
   });
 }
