@@ -1,9 +1,30 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
+const ts = require('typescript');
+
+function loadTypeScriptModule(filePath) {
+  const source = fs.readFileSync(filePath, 'utf8');
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020
+    }
+  }).outputText;
+  const loadedModule = { exports: {} };
+  new Function('module', 'exports', 'require', compiled)(
+    loadedModule,
+    loadedModule.exports,
+    require
+  );
+  return loadedModule.exports;
+}
+
 const {
   keepLyricsForReplay,
   keepLyricsWhenReloadHasNoContent
-} = require('../src/admin/lyrics-state.ts');
+} = loadTypeScriptModule(path.join(__dirname, '../src/admin/lyrics-state.ts'));
 
 const loadedLyrics = {
   title: 'Love Me Harder',
