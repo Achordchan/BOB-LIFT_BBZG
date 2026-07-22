@@ -75,7 +75,10 @@ function registerDealRoutes(app, deps) {
   // API: 添加成交记录（POST 主路径；GET 仅兼容开关）
   function handleDealAdd(req, res) {
     // 获取请求参数（公开入口，业务文本做长度/危险字符清洗）
-    const input = (req.method === 'POST' && req.body && typeof req.body === 'object') ? req.body : (req.query || {});
+    const input = {
+      ...(req.query && typeof req.query === 'object' ? req.query : {}),
+      ...(req.body && typeof req.body === 'object' ? req.body : {})
+    };
     const rawAmountInput = input.zongjine != null ? input.zongjine : input.amount;
     const amount = parseDealAmountInput(rawAmountInput);
     const person = sanitizeDealPerson(input.fuzeren != null ? input.fuzeren : input.person);

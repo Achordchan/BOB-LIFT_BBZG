@@ -185,3 +185,47 @@ test('通过绑定 Token 鉴权的 GET 成交请求可写入成交数据', async
   assert.equal(data.dealAmount, 1000);
   assert.equal(data.dealsLedger.length, 1);
 });
+
+test('钉钉 POST 请求将成交参数放在 Query 时仍可读取金额', async () => {
+  let data = {
+    dealAmount: 0,
+    dealsHistory: [],
+    dealsLedger: [],
+    users: [],
+    music: [],
+    platformTargets: [],
+    celebrationMessages: []
+  };
+  const app = express();
+  registerDealRoutes(app, {
+    getData: () => data,
+    saveData: (next) => {
+      data = next;
+      return true;
+    },
+    updateData: (mutator) => {
+      data = mutator(data) || data;
+      return { ok: true, data };
+    },
+    uuidv4: () => 'deal-query-post',
+    getUserMusicConfig: () => null,
+    parseDealAmountInput: (value) => Number(value),
+    formatDealAmountForTts: (_raw, value) => Number(value).toFixed(2)
+  });
+
+  const add = findRouteHandler(app, 'post', '/api/deals/add');
+  const result = await invokeJson(add, {
+    method: 'POST',
+    body: {},
+    query: {
+      zongjine: '2232',
+      fuzeren: '测试负责人',
+      laiyuanpingtai: '测试平台',
+      userName: '测试负责人'
+    }
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.success, true);
+  assert.equal(data.dealAmount, 2232);
+});
