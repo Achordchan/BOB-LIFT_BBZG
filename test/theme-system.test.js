@@ -69,6 +69,18 @@ test('深海指挥舱移除无意义品牌方块并提供经营脉冲区', () =>
   assert.equal(themeHtml.includes('经营脉冲'), true);
 });
 
+test('深海指挥舱为成交庆祝层提供独立样式', () => {
+  const panelsCss = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'themes', 'ocean-command', 'panels.css'),
+    'utf8'
+  );
+
+  assert.match(panelsCss, /body\.theme-ocean-command \.celebration-content\s*\{/);
+  assert.match(panelsCss, /DEAL CONFIRMED\s+\/\s+成交喜报/);
+  assert.match(panelsCss, /body\.theme-ocean-command \.celebration-person\s*\{/);
+  assert.match(panelsCss, /body\.theme-ocean-command\.celebration-mode \.lyrics-container\s*\{/);
+});
+
 test('TV 共享业务脚本不使用旧浏览器无法解析的空值合并语法', () => {
   const sharedScript = fs.readFileSync(
     path.join(__dirname, '..', 'public', 'js', 'leaderboard.js'),
