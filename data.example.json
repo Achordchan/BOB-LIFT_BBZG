@@ -18,6 +18,7 @@
   },
   "personalizedAudio": [],
   "personalizedFire": null,
+  "externalWriteAccess": null,
   "themeSettings": {
     "activeThemeId": "classic-red",
     "configurations": {},

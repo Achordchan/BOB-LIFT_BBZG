@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, Form, Input, Space, Typography } from 'antd';
+import { CopyOutlined, KeyOutlined } from '@ant-design/icons';
 import { apiGet, apiJson } from '../api';
 import { SectionCard } from '../components/SectionCard';
 
@@ -8,11 +9,23 @@ interface AdminProfile {
   mustChangePassword?: boolean;
 }
 
+interface ExternalTokenStatus {
+  configured: boolean;
+  preview?: string;
+  updatedAt?: string | null;
+  parameterName: string;
+  parameterLocation: string;
+  token?: string;
+}
+
 export default function SystemPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<AdminProfile>({});
+  const [tokenStatus, setTokenStatus] = useState<ExternalTokenStatus | null>(null);
+  const [generatedToken, setGeneratedToken] = useState('');
+  const [tokenLoading, setTokenLoading] = useState(false);
   const forcePassword = useMemo(() => {
     if (typeof window === 'undefined') return false;
     return new URLSearchParams(window.location.search).get('forcePassword') === '1';
@@ -28,9 +41,57 @@ export default function SystemPage() {
     }
   }
 
+  async function loadTokenStatus() {
+    try {
+      const res = await apiGet<ExternalTokenStatus>('/api/admin/external-write-token');
+      setTokenStatus(res);
+    } catch (e: any) {
+      message.error(e.message || '绑定 Token 状态加载失败');
+    }
+  }
+
   useEffect(() => {
     loadProfile();
+    loadTokenStatus();
   }, []);
+
+  async function regenerateToken() {
+    setTokenLoading(true);
+    try {
+      const res = await apiJson<ExternalTokenStatus>('/api/admin/external-write-token/regenerate', 'POST', {});
+      setGeneratedToken(res.token || '');
+      setTokenStatus(res);
+      message.success('绑定 Token 已生成');
+    } catch (e: any) {
+      message.error(e.message || '生成绑定 Token 失败');
+    } finally {
+      setTokenLoading(false);
+    }
+  }
+
+  function confirmRegenerate() {
+    if (!tokenStatus?.configured) {
+      regenerateToken();
+      return;
+    }
+    modal.confirm({
+      title: '重新生成绑定 Token？',
+      content: '重新生成后旧 Token 立即失效，钉钉连接器需要同步更新。',
+      okText: '重新生成',
+      cancelText: '取消',
+      onOk: regenerateToken
+    });
+  }
+
+  async function copyToken() {
+    if (!generatedToken) return;
+    try {
+      await navigator.clipboard.writeText(generatedToken);
+      message.success('Token 已复制');
+    } catch {
+      message.error('复制失败，请手动复制');
+    }
+  }
 
   async function savePassword(values: any) {
     setLoading(true);
@@ -106,6 +167,58 @@ export default function SystemPage() {
             保存新密码
           </Button>
         </Form>
+      </SectionCard>
+
+      <SectionCard
+        title="外部接口绑定"
+        description="生成钉钉连接器使用的 Query Token，无需配置服务器环境变量"
+        extra={tokenStatus?.configured ? <Typography.Text type="success">已绑定</Typography.Text> : <Typography.Text type="secondary">未生成</Typography.Text>}
+      >
+        <Space direction="vertical" size={14} style={{ width: '100%', maxWidth: 720 }}>
+          <Alert
+            type="info"
+            showIcon
+            message="钉钉连接器配置"
+            description="身份验证类型选择 API 密钥，参数名称填写 token，参数位置选择 Query。现有询盘增加、询盘减少和成交 GET 地址可以继续使用。"
+          />
+
+          {tokenStatus?.configured ? (
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              当前 Token：<Typography.Text code>{tokenStatus.preview || '已配置'}</Typography.Text>
+              {tokenStatus.updatedAt ? `，生成时间：${new Date(tokenStatus.updatedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}
+            </Typography.Paragraph>
+          ) : (
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              尚未生成绑定 Token，钉钉外部请求不会获得写入权限。
+            </Typography.Paragraph>
+          )}
+
+          {generatedToken ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="请立即复制并保存"
+              description="完整 Token 只在本次生成后显示，刷新页面后只能看到尾号。"
+            />
+          ) : null}
+
+          {generatedToken ? (
+            <Space.Compact style={{ width: '100%' }}>
+              <Input value={generatedToken} readOnly aria-label="新生成的外部接口绑定 Token" />
+              <Button icon={<CopyOutlined />} onClick={copyToken}>复制</Button>
+            </Space.Compact>
+          ) : null}
+
+          <Button
+            type="primary"
+            icon={<KeyOutlined />}
+            loading={tokenLoading}
+            disabled={mustChange}
+            onClick={confirmRegenerate}
+          >
+            {tokenStatus?.configured ? '重新生成 Token' : '生成绑定 Token'}
+          </Button>
+        </Space>
       </SectionCard>
 
       <SectionCard title="TTS 文件维护" description="清理超过保留周期的 TTS 临时音频">

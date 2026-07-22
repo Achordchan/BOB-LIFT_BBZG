@@ -3,6 +3,7 @@ const session = require('express-session');
 const path = require('path');
 const fs = require('fs');
 const { createFileSessionStore } = require('../lib/session-file-store');
+const { verifyExternalWriteToken } = require('../lib/external-write-token');
 const FileStore = createFileSessionStore(session);
 
 function configureApp(app) {
@@ -207,38 +208,36 @@ function configureApp(app) {
       return true;
     }
 
-    const allowLegacyGetWrite = String(process.env.BBZG_ALLOW_LEGACY_GET_WRITE || '').trim() === '1';
-    if (((req.method === 'POST') || (allowLegacyGetWrite && req.method === 'GET')) && publicWrite.has(p)) {
+    const getData = typeof app.get === 'function' ? app.get('bbzgGetData') : null;
+    const connectorToken = String(
+      (typeof req.get === 'function' ? req.get('x-bbzg-write-token') : '')
+      || (req.query && req.query.token)
+      || ''
+    ).trim();
+    let connectorAuthorized = false;
+    if (connectorToken && typeof getData === 'function') {
+      try {
+        connectorAuthorized = verifyExternalWriteToken(getData(), connectorToken);
+      } catch (_) {
+        connectorAuthorized = false;
+      }
+    }
+    const writeMethodAllowed = req.method === 'POST' || req.method === 'GET';
+    if (writeMethodAllowed && publicWrite.has(p)) {
       // 管理员在强制改密期间不能通过会话绕过写入口
       if (rejectIfMustChangePassword()) return;
-      const configuredToken = String(process.env.BBZG_PUBLIC_WRITE_TOKEN || '').trim();
       if (isAdmin) {
         next();
         return;
       }
-      if (configuredToken) {
-        // 只接受请求头，避免 token 进入 URL / 访问日志 / 浏览器历史
-        const provided = String(req.get('x-bbzg-write-token') || '').trim();
-        if (provided && provided === configuredToken) {
-          next();
-          return;
-        }
-        res.status(401).json({ success: false, message: '未授权访问：缺少有效写入凭证' });
-        return;
-      }
-      // 兼容开关：显式开启后才允许匿名写入（不推荐）
-      const allowOpen = String(process.env.BBZG_ALLOW_PUBLIC_WRITE || '').trim() === '1';
-      if (allowOpen) {
-        if (!app.__bbzgPublicWriteWarned) {
-          app.__bbzgPublicWriteWarned = true;
-          console.warn('警告: BBZG_ALLOW_PUBLIC_WRITE=1，成交/询盘写接口允许匿名访问');
-        }
+      if (connectorAuthorized) {
+        req.bbzgExternalWriteAuthorized = true;
         next();
         return;
       }
       res.status(401).json({
         success: false,
-        message: '未授权访问：请登录后台或配置 BBZG_PUBLIC_WRITE_TOKEN'
+        message: '未授权访问：请在后台生成并绑定外部接口 Token'
       });
       return;
     }

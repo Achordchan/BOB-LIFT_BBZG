@@ -21,17 +21,27 @@
 
 ## 环境要求
 
-- Node.js 14+（建议 18+）
+- Node.js 20 或 22（项目 Docker 环境使用 Node.js 20，本地已验证 Node.js 22）
 - npm
+
+当前项目的 `sharp` 原生模块在 Node.js 25 下会卡在加载阶段。`start.sh` 会自动从当前 `PATH` 中寻找 Node.js 20 或 22；也可通过 `NODE_BIN=/路径/node ./start.sh` 显式指定。
 
 ## 本地启动
 
 ```bash
 npm install
-npm start
+./start.sh
 ```
 
 启动后访问：`http://localhost:3000`
+
+- 自定义端口：`./start.sh 3100`
+- 也可通过环境变量指定：`PORT=3100 ./start.sh`
+- 参数端口优先级高于 `PORT` 环境变量。
+- 服务在当前终端前台运行，按 `Ctrl+C` 即可停止，因此不需要单独的关闭脚本。
+- 脚本不会自动安装依赖；缺少 `node_modules` 时会提示先执行 `npm install`。
+
+网易云搜索与在线播放依赖独立的 `music-api` 服务；该服务未运行时，主页面、后台和基础业务仍可启动，健康检查会将音乐服务标记为不可用。
 
 ### 首次登录
 
@@ -65,6 +75,14 @@ npm start
 
 以下接口通常用于外部系统触发（例如工作流、Webhook）。
 
+在管理后台“系统设置 → 外部接口绑定”生成 Token，然后在连接器中配置：
+
+- 身份验证类型：API 密钥
+- 参数名称：`token`
+- 参数位置：Query
+
+完整 Token 只在生成时显示，服务器仅保存摘要；重新生成后旧 Token 立即失效。
+
 ### 健康检查
 
 - `GET /api/ping`
@@ -72,25 +90,25 @@ npm start
 ### 询盘
 
 - `GET /api/inquiries` 获取询盘数
-- `GET /api/inquiries/add` 询盘 +1
-- `GET /api/inquiries/reduce` 询盘 -1
+- `GET /api/inquiries/add?token=绑定Token` 询盘 +1
+- `GET /api/inquiries/reduce?token=绑定Token` 询盘 -1
 
 示例：
 
 ```bash
-curl "http://localhost:3000/api/inquiries/add"
-curl "http://localhost:3000/api/inquiries/reduce"
+curl "http://localhost:3000/api/inquiries/add?token=绑定Token"
+curl "http://localhost:3000/api/inquiries/reduce?token=绑定Token"
 ```
 
 ### 成交
 
 - `GET /api/deals` 获取成交总额
-- `GET /api/deals/add?zongjine=金额&fuzeren=负责人&laiyuanpingtai=平台` 添加成交记录
+- `GET /api/deals/add?token=绑定Token&zongjine=金额&fuzeren=负责人&laiyuanpingtai=平台` 添加成交记录
 
 示例：
 
 ```bash
-curl "http://localhost:3000/api/deals/add?zongjine=1000&fuzeren=张三&laiyuanpingtai=阿里巴巴"
+curl "http://localhost:3000/api/deals/add?token=绑定Token&zongjine=1000&fuzeren=张三&laiyuanpingtai=阿里巴巴"
 ```
 
 ## TTS（语音播报）

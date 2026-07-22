@@ -1,0 +1,1 @@
+import{j as i}from"./react-vendor-DiU4pSXv.js";import{H as t,e as r}from"./antd-C7DT2CaN.js";function a(e){return i.jsx(t,{className:"admin-section-card",title:i.jsxs("div",{children:[i.jsx("div",{children:e.title}),e.description?i.jsx(r.Text,{type:"secondary",className:"section-desc",children:e.description}):null]}),extra:e.extra,children:e.children})}export{a as S};

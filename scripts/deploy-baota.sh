@@ -47,7 +47,6 @@ import sys
 project_name = os.environ["DEPLOY_PROJECT"]
 required_any = ["BBZG_SESSION_SECRET", "SESSION_SECRET"]
 required_proxy = ["BBZG_TRUST_PROXY"]
-recommended = ["BBZG_PUBLIC_WRITE_TOKEN"]
 found = {}
 found_sources = {}
 
@@ -76,7 +75,7 @@ def load_env_file(path):
 
 def absorb(source, mapping):
     for k, v in (mapping or {}).items():
-        if k in set(required_any + required_proxy + recommended) and str(v).strip() and k not in found:
+        if k in set(required_any + required_proxy) and str(v).strip() and k not in found:
             # 存实际值；来源单独记，避免把路径当配置值校验
             found[k] = str(v).strip()
             found_sources[k] = source
@@ -116,7 +115,7 @@ for path in candidates:
                         k, v = line.split("=", 1)
                         if k.strip() and v.strip():
                             env_map[k.strip()] = v.strip().strip('"').strip("'")
-            for k in set(required_any + required_proxy + recommended):
+            for k in set(required_any + required_proxy):
                 if data.get(k) is not None and str(data.get(k)).strip():
                     env_map[k] = str(data.get(k))
             # 宝塔 nodejsModel 常见字段 project_config / config
@@ -192,14 +191,12 @@ except Exception as e:
 
 has_secret = bool(found.get("BBZG_SESSION_SECRET") or found.get("SESSION_SECRET"))
 has_trust_proxy = bool(str(found.get("BBZG_TRUST_PROXY") or "").strip())
-missing_rec = [k for k in recommended if k not in found]
-
 print("宝塔注入环境变量来源（不含项目 .env）:")
 if found:
     for k in sorted(found.keys()):
         src = found_sources.get(k, "?")
         # 值只显示是否已配置，避免密钥进日志
-        shown = "已配置" if k in ("BBZG_SESSION_SECRET", "SESSION_SECRET", "BBZG_PUBLIC_WRITE_TOKEN") else found[k]
+        shown = "已配置" if k in ("BBZG_SESSION_SECRET", "SESSION_SECRET") else found[k]
         print(f"  - {k}: {shown} (from {src})")
 else:
     print("  （未发现）")
@@ -224,12 +221,6 @@ if not proxy_ok:
     print(f"错误: BBZG_TRUST_PROXY 当前值无效: {found.get('BBZG_TRUST_PROXY')!r}")
     print("宝塔 Nginx 反代请设为 1（不要设 0/false）。")
     sys.exit(1)
-
-if missing_rec:
-    print("警告: 建议配置但未在宝塔注入中发现: " + ", ".join(missing_rec))
-    print("  BBZG_PUBLIC_WRITE_TOKEN: 成交/询盘公开写入凭证")
-else:
-    print("推荐环境变量齐全。")
 
 print("rsync 前生产环境变量预检通过。")
 PYENV

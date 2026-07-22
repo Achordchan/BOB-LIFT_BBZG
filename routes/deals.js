@@ -275,10 +275,11 @@ function registerDealRoutes(app, deps) {
 
   app.post('/api/deals/add', handleDealAdd);
   app.get('/api/deals/add', (req, res) => {
-    if (String(process.env.BBZG_ALLOW_LEGACY_GET_WRITE || '').trim() !== '1') {
-      return res.status(405).json({
+    const authorizedConnector = req.bbzgExternalWriteAuthorized === true;
+    if (!authorizedConnector) {
+      return res.status(401).json({
         success: false,
-        message: '请使用 POST /api/deals/add；临时兼容可设置 BBZG_ALLOW_LEGACY_GET_WRITE=1'
+        message: 'GET 请求需要有效的外部接口绑定 Token'
       });
     }
     return handleDealAdd(req, res);

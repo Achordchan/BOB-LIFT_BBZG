@@ -32,6 +32,7 @@ const { registerMiscRoutes } = require('./routes/misc');
 const { registerPublicMusicRoutes } = require('./routes/public-music');
 const { registerEggRoutes } = require('./routes/egg');
 const { registerThemeRoutes } = require('./routes/themes');
+const { registerExternalAccessRoutes } = require('./routes/external-access');
 
 // 添加性能诊断日志
 console.time('启动总时间');
@@ -233,6 +234,13 @@ registerAuthRoutes(app, {
   saveData,
   updateData,
   baseDir: __dirname,
+  requireLogin
+});
+
+registerExternalAccessRoutes(app, {
+  getData,
+  saveData,
+  updateData,
   requireLogin
 });
 

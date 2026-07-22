@@ -10,6 +10,19 @@ const { getClientIp } = require('../lib/request-ip');
 const { registerDealRoutes } = require('../routes/deals');
 const { registerTargetsRoutes } = require('../routes/targets');
 const { configureApp } = require('../app/create-app');
+const { createExternalWriteToken } = require('../lib/external-write-token');
+
+function getCurrentIsoWeekKey() {
+  const now = new Date();
+  const date = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+const CURRENT_WEEK_KEY = getCurrentIsoWeekKey();
 
 function findRouteHandler(app, method, routePath) {
   const layer = app._router.stack.find((entry) => entry.route && entry.route.path === routePath && entry.route.methods[method]);
@@ -101,11 +114,6 @@ function invokeMiddleware(app, req) {
 }
 
 test('公开写接口默认拒绝匿名访问', async () => {
-  const prevToken = process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  const prevAllow = process.env.BBZG_ALLOW_PUBLIC_WRITE;
-  delete process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  delete process.env.BBZG_ALLOW_PUBLIC_WRITE;
-
   const app = express();
   configureApp(app);
   const layers = app._router.stack.filter((layer) => typeof layer.handle === 'function' && !layer.route);
@@ -129,20 +137,12 @@ test('公开写接口默认拒绝匿名访问', async () => {
   });
   assert.equal(result.statusCode, 401);
   assert.equal(result.body.success, false);
-
-  if (prevToken == null) delete process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  else process.env.BBZG_PUBLIC_WRITE_TOKEN = prevToken;
-  if (prevAllow == null) delete process.env.BBZG_ALLOW_PUBLIC_WRITE;
-  else process.env.BBZG_ALLOW_PUBLIC_WRITE = prevAllow;
 });
 
-test('公开写接口接受写入 token', async () => {
-  const prevToken = process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  const prevAllow = process.env.BBZG_ALLOW_PUBLIC_WRITE;
-  process.env.BBZG_PUBLIC_WRITE_TOKEN = 'secret-token';
-  delete process.env.BBZG_ALLOW_PUBLIC_WRITE;
-
+test('公开写接口接受后台生成的绑定 token', async () => {
+  const generated = createExternalWriteToken();
   const app = express();
+  app.set('bbzgGetData', () => ({ externalWriteAccess: generated.record }));
   configureApp(app);
   // append terminal handler after auth middleware
   app.get('/api/deals/add', (req, res) => res.json({ success: true }));
@@ -156,9 +156,9 @@ test('公开写接口接受写入 token', async () => {
       method: 'POST',
       path: '/deals/add',
       session: {},
-      query: {},
+      query: { token: generated.token },
       body: {},
-      get(name) { return name.toLowerCase() === 'x-bbzg-write-token' ? 'secret-token' : ''; }
+      get() { return ''; }
     };
     const res = {
       statusCode: 200,
@@ -172,16 +172,9 @@ test('公开写接口接受写入 token', async () => {
   }).then((result) => {
     assert.equal(result.nextCalled || nextCalled, true);
   });
-
-  if (prevToken == null) delete process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  else process.env.BBZG_PUBLIC_WRITE_TOKEN = prevToken;
-  if (prevAllow == null) delete process.env.BBZG_ALLOW_PUBLIC_WRITE;
-  else process.env.BBZG_ALLOW_PUBLIC_WRITE = prevAllow;
 });
 
 test('/api/health 在公开只读白名单中', async () => {
-  const prev = process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  delete process.env.BBZG_PUBLIC_WRITE_TOKEN;
   const app = express();
   configureApp(app);
   let nextCalled = false;
@@ -200,8 +193,6 @@ test('/api/health 在公开只读白名单中', async () => {
   }).then((result) => {
     assert.equal(result.nextCalled || nextCalled, true);
   });
-  if (prev == null) delete process.env.BBZG_PUBLIC_WRITE_TOKEN;
-  else process.env.BBZG_PUBLIC_WRITE_TOKEN = prev;
 });
 
 test('首笔新成交会迁移历史账本而不是覆盖', async () => {
@@ -304,7 +295,7 @@ test('管理员可写入本周期进度并反推基线', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 3904,
       periodBaselineDealAmount: 6031798.85,
       migrationPending: true
@@ -377,7 +368,7 @@ test('部署脚本包含生产环境变量预检', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy-baota.sh'), 'utf8');
   assert.equal(src.includes('生产环境变量预检'), true);
   assert.equal(src.includes('BBZG_SESSION_SECRET'), true);
-  assert.equal(src.includes('BBZG_PUBLIC_WRITE_TOKEN'), true);
+  assert.equal(src.includes('BBZG_PUBLIC_WRITE_TOKEN'), false);
 });
 
 test('updateDataSync 在锁内重读，避免旧快照覆盖', () => {
@@ -442,7 +433,7 @@ test('npm test 脚本关闭 TTS 维护任务', () => {
 });
 
 
-test('写入 token 只接受请求头，不接受 query.token', async () => {
+test('旧环境变量 token 不再作为外部写入凭证', async () => {
   const prevToken = process.env.BBZG_PUBLIC_WRITE_TOKEN;
   process.env.BBZG_PUBLIC_WRITE_TOKEN = 'secret-token';
   const app = express();
@@ -487,9 +478,7 @@ test('部署环境预检在 rsync 之前且不信任项目 .env', () => {
   assert.equal(src.includes('项目目录 .env 不会被自动加载'), true);
 });
 
-test('默认禁用 GET 写入成交接口', async () => {
-  const prev = process.env.BBZG_ALLOW_LEGACY_GET_WRITE;
-  delete process.env.BBZG_ALLOW_LEGACY_GET_WRITE;
+test('未通过绑定鉴权的 GET 写入成交接口被拒绝', async () => {
   let data = {
     dealAmount: 0,
     users: [],
@@ -511,10 +500,8 @@ test('默认禁用 GET 写入成交接口', async () => {
   const { statusCode, body } = await invoke(handler, {
     query: { zongjine: '50', fuzeren: '张三', laiyuanpingtai: '阿里巴巴' }
   });
-  assert.equal(statusCode, 405);
+  assert.equal(statusCode, 401);
   assert.equal(body.success, false);
-  if (prev == null) delete process.env.BBZG_ALLOW_LEGACY_GET_WRITE;
-  else process.env.BBZG_ALLOW_LEGACY_GET_WRITE = prev;
 });
 
 
@@ -627,7 +614,7 @@ test('过期校准表单会返回 409 且不修改基线', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 1,
       periodBaselineDealAmount: 0,
       periodInquiryCount: 201,
@@ -645,7 +632,7 @@ test('过期校准表单会返回 409 且不修改基线', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       periodInquiryCount: 202,
@@ -688,7 +675,7 @@ test('匹配快照的校准请求成功', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       migrationPending: false
@@ -733,7 +720,7 @@ test('不完整快照不能绕过成交冲突检查', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       periodInquiryCount: 202,
@@ -772,7 +759,7 @@ test('仅 expectedRevision 匹配时允许校准', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       migrationPending: false
@@ -807,7 +794,7 @@ test('校准在 updateData 锁内重检冲突，避免并发后假成功', async
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       periodInquiryCount: 202,
@@ -863,7 +850,7 @@ test('校准拒绝非数字进度且不清除迁移状态', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       periodInquiryCount: 202,
@@ -917,7 +904,7 @@ test('校准拒绝超过累计值的进度', async () => {
       inquiryTarget: 11000,
       dealTarget: 35000000,
       resetPeriod: 'weekly',
-      periodKey: '2026-W29',
+      periodKey: CURRENT_WEEK_KEY,
       periodBaselineInquiryCount: 0,
       periodBaselineDealAmount: 0,
       periodInquiryCount: 202,
