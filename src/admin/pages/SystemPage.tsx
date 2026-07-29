@@ -119,9 +119,10 @@ export default function SystemPage() {
   const mustChange = !!profile.mustChangePassword || forcePassword;
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <div className="system-settings-layout">
       {mustChange ? (
         <Alert
+          className="system-settings-notice"
           type="warning"
           showIcon
           message="需要先修改默认密码"
@@ -129,8 +130,9 @@ export default function SystemPage() {
         />
       ) : null}
 
-      <SectionCard title="修改登录密码" description="更新后台管理员账号和密码">
-        <Form form={form} layout="vertical" onFinish={savePassword} style={{ maxWidth: 480 }}>
+      <div className="system-settings-panel system-settings-account">
+        <SectionCard title="修改登录密码" description="更新后台管理员账号和密码">
+          <Form className="system-account-form" form={form} layout="vertical" onFinish={savePassword}>
           <Form.Item name="username" label="登录账号" rules={[{ required: true, message: '请输入登录账号' }]}>
             <Input autoComplete="username" />
           </Form.Item>
@@ -163,13 +165,17 @@ export default function SystemPage() {
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading}>
-            保存新密码
-          </Button>
-        </Form>
-      </SectionCard>
+          <Form.Item className="system-account-submit">
+            <Button type="primary" htmlType="submit" loading={loading}>
+              保存新密码
+            </Button>
+          </Form.Item>
+          </Form>
+        </SectionCard>
+      </div>
 
-      <SectionCard
+      <div className="system-settings-panel system-settings-token">
+        <SectionCard
         title="外部接口绑定"
         description="生成钉钉连接器使用的 Query Token，无需配置服务器环境变量"
         extra={tokenStatus?.configured ? <Typography.Text type="success">已绑定</Typography.Text> : <Typography.Text type="secondary">未生成</Typography.Text>}
@@ -218,27 +224,32 @@ export default function SystemPage() {
           >
             {tokenStatus?.configured ? '重新生成 Token' : '生成绑定 Token'}
           </Button>
-        </Space>
-      </SectionCard>
+          </Space>
+        </SectionCard>
+      </div>
 
-      <SectionCard title="TTS 文件维护" description="清理超过保留周期的 TTS 临时音频">
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          仅删除过期临时语音文件，不影响业务数据。
-        </Typography.Paragraph>
-        <Button
-          disabled={mustChange}
-          onClick={async () => {
-            try {
-              const res = await apiJson('/api/cleanup-tts-files', 'POST', {});
-              message.success((res as any).message || '清理完成');
-            } catch (e: any) {
-              message.error(e.message || '清理失败');
-            }
-          }}
-        >
-          清理过期 TTS 文件
-        </Button>
-      </SectionCard>
-    </Space>
+      <div className="system-settings-panel system-settings-maintenance">
+        <SectionCard title="TTS 文件维护" description="清理超过保留周期且未被业务引用的 TTS 音频">
+          <div className="system-maintenance-row">
+            <Typography.Paragraph type="secondary">
+              启动音频、音效库等业务配置正在使用的文件会永久保留，仅删除未引用的过期 TTS 文件。
+            </Typography.Paragraph>
+            <Button
+              disabled={mustChange}
+              onClick={async () => {
+                try {
+                  const res = await apiJson('/api/cleanup-tts-files', 'POST', {});
+                  message.success((res as any).message || '清理完成');
+                } catch (e: any) {
+                  message.error(e.message || '清理失败');
+                }
+              }}
+            >
+              清理过期 TTS 文件
+            </Button>
+          </div>
+        </SectionCard>
+      </div>
+    </div>
   );
 }

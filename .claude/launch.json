@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bbzg-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 3000
+    },
+    {
+      "name": "bbzg-admin-vite",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:admin"],
+      "port": 5174
+    },
+    {
+      "name": "bbzg-music-api",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["music-api/main.py"],
+      "port": 5000
+    }
+  ]
+}

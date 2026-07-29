@@ -1,5 +1,9 @@
 const fs = require('fs');
-const path = require('path');
+const {
+  collectReferencedAudioPaths,
+  resolveManagedAudioPath,
+  scanUnreferencedAudioFiles
+} = require('../lib/audio-assets');
 
 function registerAudioPlaybackRoutes(app, deps) {
   const { requireLogin, upload, getData, saveData, uuidv4, baseDir } = deps;
@@ -296,51 +300,7 @@ function registerAudioPlaybackRoutes(app, deps) {
   });
 
   function scanAudioCleanupItems() {
-    const data = getData();
-
-    const referenced = new Set();
-    try {
-      if (data.startupAudio && typeof data.startupAudio.audioPath === 'string') {
-        referenced.add(data.startupAudio.audioPath);
-      }
-    } catch (e) {}
-
-    try {
-      if (Array.isArray(data.personalizedAudio)) {
-        data.personalizedAudio.forEach(it => {
-          if (it && typeof it.audioPath === 'string') referenced.add(it.audioPath);
-        });
-      }
-    } catch (e) {}
-
-    const roots = [
-      { dir: path.join(baseDir, 'public', 'music', 'tts'), prefix: '/music/tts/' },
-      { dir: path.join(baseDir, 'public', 'music', 'custom'), prefix: '/music/custom/' }
-    ];
-
-    const items = [];
-    roots.forEach(r => {
-      try {
-        if (!fs.existsSync(r.dir)) return;
-        const files = fs.readdirSync(r.dir);
-        files.forEach(f => {
-          const full = path.join(r.dir, f);
-          let st;
-          try { st = fs.statSync(full); } catch (e) { return; }
-          if (!st.isFile()) return;
-          const audioPath = `${r.prefix}${f}`;
-          if (referenced.has(audioPath)) return;
-          items.push({
-            audioPath,
-            sizeKb: Math.round(st.size / 1024)
-          });
-        });
-      } catch (e) {
-        console.error('扫描目录失败:', r.dir, e);
-      }
-    });
-
-    return items.sort((a, b) => (b.sizeKb || 0) - (a.sizeKb || 0));
+    return scanUnreferencedAudioFiles(baseDir, getData());
   }
 
   // API: 音频清理 - 扫描（需要登录）
@@ -362,24 +322,21 @@ function registerAudioPlaybackRoutes(app, deps) {
         return res.status(400).json({ success: false, message: '缺少audioPath' });
       }
 
-      const allowedPrefixes = ['/music/tts/', '/music/custom/'];
-      const matchedPrefix = allowedPrefixes.find(p => audioPath.startsWith(p));
-      if (!matchedPrefix) {
+      const resolved = resolveManagedAudioPath(baseDir, audioPath);
+      if (!resolved) {
         return res.status(400).json({ success: false, message: '不允许删除该路径' });
       }
 
-      const rel = audioPath.replace('/music/', '');
-      const fullPath = path.join(baseDir, 'public', 'music', rel);
-
-      const safeRootTts = path.join(baseDir, 'public', 'music', 'tts') + path.sep;
-      const safeRootCustom = path.join(baseDir, 'public', 'music', 'custom') + path.sep;
-      const normalized = path.normalize(fullPath);
-      if (!normalized.startsWith(safeRootTts) && !normalized.startsWith(safeRootCustom)) {
-        return res.status(400).json({ success: false, message: '路径校验失败' });
+      const referenced = collectReferencedAudioPaths(getData());
+      if (referenced.has(resolved.audioPath)) {
+        return res.status(409).json({
+          success: false,
+          message: '该音频正在被业务配置使用，不能删除'
+        });
       }
 
-      if (fs.existsSync(normalized)) {
-        fs.unlinkSync(normalized);
+      if (fs.existsSync(resolved.filePath)) {
+        fs.unlinkSync(resolved.filePath);
       }
 
       const items = scanAudioCleanupItems();

@@ -18,7 +18,7 @@ const ThemesPage = lazy(() => import('./pages/ThemesPage'));
 const ApiDebugPage = lazy(() => import('./pages/ApiDebugPage'));
 const SystemPage = lazy(() => import('./pages/SystemPage'));
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
-import { apiGet, apiText } from './api';
+import { apiGet, apiText, isRedirectingToLogin } from './api';
 import { AdminAccountMenu } from './components/AdminAccountMenu';
 import { ADMIN_NAVIGATE_EVENT, buildMenuItems, buildSearchGroups, isVisiblePage, pages } from './navigation';
 import type { PageKey } from './navigation';
@@ -124,6 +124,38 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let checking = false;
+
+    async function checkSession() {
+      if (cancelled || checking || isRedirectingToLogin()) return;
+      checking = true;
+      try {
+        await apiGet('/api/admin/profile?sessionCheck=1', { cache: 'no-store' });
+      } catch {
+        // 401 由 apiGet 统一跳转，网络错误留待下一次检查。
+      } finally {
+        checking = false;
+      }
+    }
+
+    const timer = window.setInterval(checkSession, 15000);
+    const onFocus = () => { void checkSession(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkSession();
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
