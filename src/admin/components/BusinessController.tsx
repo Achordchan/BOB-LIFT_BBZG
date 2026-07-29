@@ -137,9 +137,8 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
             </div>
           </div>
 
-          <Space size="middle" style={{ width: '100%', justifyContent: 'center' }}>
+          <Space className="business-inquiry-actions" size="middle">
             <Button
-              size="large"
               icon={<MinusOutlined />}
               disabled={dashboard.inquiryCount <= 0}
               loading={pending === 'inquiry-reduce'}
@@ -149,7 +148,6 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
             </Button>
             <Button
               type="primary"
-              size="large"
               icon={<PlusOutlined />}
               loading={pending === 'inquiry-add'}
               onClick={() => changeInquiry('add')}
@@ -199,16 +197,16 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
 
           <Form form={dealForm} layout="inline" onFinish={addDeal} style={{ width: '100%' }}>
             <div className="business-deal-entry-compact">
-              <Form.Item name="amount" rules={[{ required: true, message: '金额' }]} style={{ flex: '0 0 120px' }}>
-                <InputNumber min={0.01} precision={2} placeholder="金额" style={{ width: '100%' }} />
+              <Form.Item name="amount" rules={[{ required: true, message: '金额' }]}>
+                <InputNumber min={0.01} precision={2} placeholder="金额" />
               </Form.Item>
-              <Form.Item name="person" rules={[{ required: true, message: '负责人' }]} style={{ flex: 1, minWidth: 100 }}>
+              <Form.Item name="person" rules={[{ required: true, message: '负责人' }]}>
                 <AutoComplete options={userOptions} placeholder="负责人" filterOption />
               </Form.Item>
-              <Form.Item name="platform" rules={[{ required: true, message: '平台' }]} style={{ flex: 1, minWidth: 100 }}>
+              <Form.Item name="platform" rules={[{ required: true, message: '平台' }]}>
                 <AutoComplete options={platformOptions} placeholder="来源平台" filterOption />
               </Form.Item>
-              <Form.Item style={{ flex: '0 0 auto' }}>
+              <Form.Item className="business-deal-submit">
                 <Button type="primary" htmlType="submit" loading={pending === 'deal-add'}>
                   录入
                 </Button>

@@ -5,12 +5,16 @@
 
 window.addEventListener('DOMContentLoaded', function () {
   var params = new URLSearchParams(window.location.search);
-  if (params.has('error')) {
+  if (params.has('error') || params.get('reason') === 'session-expired') {
     var box = document.getElementById('errorMessage');
     var text = document.getElementById('errorText');
-    text.textContent = params.get('error') === 'locked'
-      ? '登录尝试次数过多，账号已被临时锁定，请稍后再试。'
-      : '账号或密码错误，请重试。';
+    if (params.get('reason') === 'session-expired') {
+      text.textContent = '登录状态已失效，可能是会话到期或账号已被踢出，请重新登录。';
+    } else {
+      text.textContent = params.get('error') === 'locked'
+        ? '登录尝试次数过多，账号已被临时锁定，请稍后再试。'
+        : '账号或密码错误，请重试。';
+    }
     box.classList.add('show');
   }
 

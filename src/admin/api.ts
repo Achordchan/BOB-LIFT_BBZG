@@ -1,5 +1,18 @@
-import { message } from 'antd';
 import type { ApiResult } from './types';
+
+let sessionRedirectStarted = false;
+
+function redirectToLogin(): never {
+  if (!sessionRedirectStarted) {
+    sessionRedirectStarted = true;
+    window.location.replace('/login?reason=session-expired');
+  }
+  throw new Error('登录已过期');
+}
+
+export function isRedirectingToLogin() {
+  return sessionRedirectStarted;
+}
 
 async function parseResponse<T>(response: Response): Promise<ApiResult<T>> {
   const type = response.headers.get('content-type') || '';
@@ -8,9 +21,7 @@ async function parseResponse<T>(response: Response): Promise<ApiResult<T>> {
   const redirectedToLogin = response.redirected && response.url.includes('/login');
 
   if (response.status === 401 || redirectedToLogin || (!isJson && typeof payload === 'string' && payload.includes('<title') && payload.includes('登录'))) {
-    message.error('登录已过期，请重新登录');
-    window.location.href = '/login';
-    throw new Error('未授权访问');
+    redirectToLogin();
   }
 
   if (!response.ok) {
@@ -25,8 +36,8 @@ async function parseResponse<T>(response: Response): Promise<ApiResult<T>> {
   return payload as ApiResult<T>;
 }
 
-export async function apiGet<T>(url: string) {
-  return parseResponse<T>(await fetch(url, { credentials: 'same-origin' }));
+export async function apiGet<T>(url: string, options: RequestInit = {}) {
+  return parseResponse<T>(await fetch(url, { ...options, credentials: 'same-origin' }));
 }
 
 
@@ -36,9 +47,7 @@ export async function apiText(url: string) {
   const text = await response.text();
 
   if (response.status === 401 || (response.redirected && response.url.includes('/login')) || (text.includes('<title') && text.includes('登录'))) {
-    message.error('登录已过期，请重新登录');
-    window.location.href = '/login';
-    throw new Error('未授权访问');
+    redirectToLogin();
   }
 
   if (!response.ok) {

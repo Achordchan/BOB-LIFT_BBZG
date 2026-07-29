@@ -6,6 +6,7 @@ const cron = require('node-cron');
 const { createRateLimiter, createConcurrencyGate } = require('../lib/rate-limit');
 const { publicErrorPayload, logSafe } = require('../lib/safe-error');
 const { getClientIp } = require('../lib/request-ip');
+const { cleanupExpiredTtsFiles } = require('../lib/audio-assets');
 
 function ttsDebug(...args) {
   if (String(process.env.BBZG_TTS_DEBUG || process.env.BBZG_API_LOG || '').trim() === '1') {
@@ -599,99 +600,61 @@ function registerTtsRoutes(app, deps) {
     }
   });
 
-  /**
-   * 清理TTS文件夹中的旧文件
-   * @param {number} maxAgeInDays 保留的最大天数，默认为7天。设置为0时清理所有文件。
-   */
-  function cleanupTtsFiles(maxAgeInDays = 7) {
-    console.log(`开始清理TTS文件，保留最近${maxAgeInDays}天的文件...`);
-
-    const ttsDir = path.join(baseDir, 'public', 'music', 'tts');
-    if (!fs.existsSync(ttsDir)) {
-      console.log('TTS目录不存在，无需清理');
-      return;
-    }
-
-    // 读取目录中的所有文件
-    fs.readdir(ttsDir, (err, files) => {
-      if (err) {
-        console.error('读取TTS目录失败:', err);
-        return;
-      }
-
-      let deletedCount = 0;
-      let totalCount = 0;
-
-      // 如果maxAgeInDays为0，则清理所有文件
-      const cleanAll = maxAgeInDays === 0;
-
-      // 计算最早保留的时间点
-      const now = new Date();
-      const cutoffTime = now.getTime() - (maxAgeInDays * 24 * 60 * 60 * 1000);
-
-      files.forEach(file => {
-        // 只处理mp3文件
-        if (!file.endsWith('.mp3')) {
-          return;
-        }
-
-        totalCount++;
-        const filePath = path.join(ttsDir, file);
-
-        fs.stat(filePath, (statErr, stats) => {
-          if (statErr) {
-            console.error(`获取文件[${file}]状态失败:`, statErr);
-            return;
-          }
-
-          // 如果是清理所有文件模式，或者文件修改时间早于截止时间，则删除文件
-          if (cleanAll || stats.mtimeMs < cutoffTime) {
-            fs.unlink(filePath, (unlinkErr) => {
-              if (unlinkErr) {
-                console.error(`删除文件[${file}]失败:`, unlinkErr);
-              } else {
-                deletedCount++;
-                console.log(`已删除${cleanAll ? '' : '过期'}TTS文件: ${file}`);
-              }
-            });
-          }
-        });
-      });
-
-      const actionDesc = cleanAll ? '全部' : '过期';
-      console.log(`TTS文件清理统计: 总计${totalCount}个文件，删除${deletedCount}个${actionDesc}文件`);
-    });
+  async function cleanupTtsFiles(maxAgeInDays = 7) {
+    console.log(`开始清理 TTS 文件，保留最近 ${maxAgeInDays} 天且未被业务引用的文件...`);
+    const result = await cleanupExpiredTtsFiles({ baseDir, getData, maxAgeInDays });
+    console.log(
+      `TTS 文件清理完成：总计 ${result.totalCount}，删除 ${result.deletedCount}，` +
+      `业务引用保护 ${result.protectedCount}，未过期 ${result.unexpiredCount}，失败 ${result.failedCount}`
+    );
+    return result;
   }
+
+  const runScheduledTtsCleanup = () => {
+    cleanupTtsFiles().catch((error) => {
+      console.error('自动清理 TTS 文件失败:', error);
+    });
+  };
 
   // 定时清理TTS文件（测试环境可关闭，避免挂起测试进程）
   const enableTtsMaintenance = process.env.BBZG_DISABLE_TTS_MAINTENANCE !== '1';
   if (enableTtsMaintenance) {
     console.log('配置TTS文件定时清理任务...');
-    cron.schedule('0 3 * * *', () => {
-      cleanupTtsFiles();
-    }, {
+    cron.schedule('0 3 * * *', runScheduledTtsCleanup, {
       scheduled: true
     });
 
     console.log('服务器启动，执行一次TTS文件清理...');
-    setTimeout(() => {
-      cleanupTtsFiles();
-    }, 5000);
+    setTimeout(runScheduledTtsCleanup, 5000);
   }
 
   // 添加手动清理TTS文件的API
-  app.post('/api/cleanup-tts-files', requireLogin, (req, res) => {
-    const maxAgeInDays = req.body.maxAgeInDays || 7;
+  app.post('/api/cleanup-tts-files', requireLogin, async (req, res) => {
+    const rawMaxAge = req.body && req.body.maxAgeInDays;
+    const maxAgeInDays = rawMaxAge === undefined ? 7 : rawMaxAge;
+    if (
+      typeof maxAgeInDays !== 'number' ||
+      !Number.isFinite(maxAgeInDays) ||
+      !Number.isInteger(maxAgeInDays) ||
+      maxAgeInDays < 0 ||
+      maxAgeInDays > 3650
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'maxAgeInDays 必须是 0 到 3650 之间的整数'
+      });
+    }
 
     try {
-      cleanupTtsFiles(maxAgeInDays);
-      res.json({
+      const cleanup = await cleanupTtsFiles(maxAgeInDays);
+      return res.json({
         success: true,
-        message: `TTS文件清理任务已启动，将保留最近${maxAgeInDays}天的文件`
+        message: `清理完成：删除 ${cleanup.deletedCount} 个文件，保护 ${cleanup.protectedCount} 个业务引用文件`,
+        cleanup
       });
     } catch (error) {
       console.error('手动清理TTS文件失败:', error);
-      res.status(500).json(publicErrorPayload('清理TTS文件失败', error));
+      return res.status(500).json(publicErrorPayload('清理TTS文件失败', error));
     }
   });
 
