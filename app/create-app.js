@@ -34,28 +34,29 @@ function configureApp(app) {
   } catch (error) {
     console.warn('创建 session 目录失败，将继续尝试 FileStore:', sessionDir, error && error.message);
   }
+  const sessionStore = new FileStore({
+    path: sessionDir,
+    ttl: 3600,
+    retries: 1,
+    logFn: function () {}
+  });
+  // 跨重启清理过期 session，不阻塞启动
+  if (typeof sessionStore.purgeExpired === 'function') {
+    sessionStore.purgeExpired((err) => {
+      if (err && process.env.BBZG_API_LOG === '1') {
+        console.warn('清理过期 session 失败:', err.message || err);
+      }
+    });
+  }
+  app.set('bbzgSessionDir', sessionDir);
+  app.set('bbzgSessionStore', sessionStore);
+
   app.use(session({
     secret: sessionSecret || 'bbzg-dev-only-change-me',
     resave: false,
     saveUninitialized: false,
     name: 'bbzg.sid',
-    store: (() => {
-      const store = new FileStore({
-        path: sessionDir,
-        ttl: 3600,
-        retries: 1,
-        logFn: function () {}
-      });
-      // 跨重启清理过期 session，不阻塞启动
-      if (typeof store.purgeExpired === 'function') {
-        store.purgeExpired((err) => {
-          if (err && process.env.BBZG_API_LOG === '1') {
-            console.warn('清理过期 session 失败:', err.message || err);
-          }
-        });
-      }
-      return store;
-    })(),
+    store: sessionStore,
     cookie: {
       maxAge: 3600000, // 1小时过期
       httpOnly: true,

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, AutoComplete, Button, Form, InputNumber, Typography } from 'antd';
+import { App, AutoComplete, Button, Collapse, Form, InputNumber, Space, Typography } from 'antd';
 import {
   DollarOutlined,
   MinusOutlined,
   PlusOutlined,
-  TeamOutlined
+  TeamOutlined,
+  ToolOutlined
 } from '@ant-design/icons';
 import { apiGet, apiJson, money } from '../api';
 import type { DashboardData, PlatformTarget, UserItem } from '../types';
@@ -126,87 +127,122 @@ export function BusinessController({ dashboard, users, platforms, onChanged }: B
   return (
     <SectionCard title="业务控制器" description="手动记录询盘与成交，保存后立即同步首页">
       <div className="business-controller-layout">
+        {/* 询盘控制 - 紧凑视图 */}
         <section className="business-controller-section">
           <div className="business-controller-header">
             <div className="business-controller-icon"><TeamOutlined /></div>
             <div>
               <Typography.Text strong>询盘控制</Typography.Text>
-              <Typography.Text type="secondary">即时调整首页询盘数量</Typography.Text>
+              <Typography.Text type="secondary">当前 {dashboard.inquiryCount} 条</Typography.Text>
             </div>
           </div>
 
-          <div className="inquiry-control-row">
+          <Space size="middle" style={{ width: '100%', justifyContent: 'center' }}>
             <Button
               size="large"
               icon={<MinusOutlined />}
-              aria-label="减少一条询盘"
               disabled={dashboard.inquiryCount <= 0}
               loading={pending === 'inquiry-reduce'}
               onClick={() => changeInquiry('reduce')}
-            />
-            <div className="inquiry-control-value">
-              <span>当前询盘</span>
-              <strong>{dashboard.inquiryCount}</strong>
-              <em>条</em>
-            </div>
+            >
+              减少
+            </Button>
             <Button
               type="primary"
               size="large"
               icon={<PlusOutlined />}
-              aria-label="增加一条询盘"
               loading={pending === 'inquiry-add'}
               onClick={() => changeInquiry('add')}
-            />
-          </div>
+            >
+              增加
+            </Button>
+          </Space>
 
-          <div className="business-adjustment-row">
-            <Typography.Text type="secondary">数量校正</Typography.Text>
-            <InputNumber
-              min={0}
-              precision={0}
-              value={inquiryCorrection}
-              onChange={value => setInquiryCorrection(Number(value || 0))}
-              aria-label="校正询盘数量"
-            />
-            <Button loading={pending === 'inquiry-set'} onClick={confirmInquiryCorrection}>校正数量</Button>
-          </div>
+          {/* 高级功能：数量校正 */}
+          <Collapse
+            ghost
+            size="small"
+            items={[{
+              key: 'inquiry-correct',
+              label: <><ToolOutlined /> 数量校正</>,
+              children: (
+                <div className="business-adjustment-row">
+                  <Typography.Text type="secondary">直接设置询盘数量（不触发音效）</Typography.Text>
+                  <Space.Compact style={{ width: '100%' }}>
+                    <InputNumber
+                      style={{ flex: 1 }}
+                      min={0}
+                      precision={0}
+                      value={inquiryCorrection}
+                      onChange={value => setInquiryCorrection(Number(value || 0))}
+                      placeholder="输入目标数量"
+                    />
+                    <Button type="primary" loading={pending === 'inquiry-set'} onClick={confirmInquiryCorrection}>
+                      确认校正
+                    </Button>
+                  </Space.Compact>
+                </div>
+              )
+            }]}
+          />
         </section>
 
+        {/* 成交录入 - 紧凑视图 */}
         <section className="business-controller-section business-controller-deal-section">
           <div className="business-controller-header">
             <div className="business-controller-icon business-controller-icon-deal"><DollarOutlined /></div>
             <div>
               <Typography.Text strong>成交录入</Typography.Text>
-              <Typography.Text type="secondary">当前累计 {money(dashboard.dealAmount)}</Typography.Text>
+              <Typography.Text type="secondary">累计 {money(dashboard.dealAmount)}</Typography.Text>
             </div>
           </div>
 
-          <Form form={dealForm} layout="vertical" onFinish={addDeal}>
-            <div className="business-deal-entry-row">
-              <Form.Item name="amount" label="成交金额" rules={[{ required: true, message: '请输入成交金额' }]}>
-                <InputNumber min={0.01} precision={2} placeholder="0.00" />
+          <Form form={dealForm} layout="inline" onFinish={addDeal} style={{ width: '100%' }}>
+            <div className="business-deal-entry-compact">
+              <Form.Item name="amount" rules={[{ required: true, message: '金额' }]} style={{ flex: '0 0 120px' }}>
+                <InputNumber min={0.01} precision={2} placeholder="金额" style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="person" label="负责人" rules={[{ required: true, message: '请选择或输入负责人' }]}>
-                <AutoComplete options={userOptions} placeholder="请选择或输入负责人" filterOption />
+              <Form.Item name="person" rules={[{ required: true, message: '负责人' }]} style={{ flex: 1, minWidth: 100 }}>
+                <AutoComplete options={userOptions} placeholder="负责人" filterOption />
               </Form.Item>
-              <Form.Item name="platform" label="来源平台" rules={[{ required: true, message: '请选择或输入平台' }]}>
-                <AutoComplete options={platformOptions} placeholder="请选择或输入平台" filterOption />
+              <Form.Item name="platform" rules={[{ required: true, message: '平台' }]} style={{ flex: 1, minWidth: 100 }}>
+                <AutoComplete options={platformOptions} placeholder="来源平台" filterOption />
               </Form.Item>
-              <Button type="primary" htmlType="submit" className="business-deal-submit" loading={pending === 'deal-add'}>录入成交</Button>
+              <Form.Item style={{ flex: '0 0 auto' }}>
+                <Button type="primary" htmlType="submit" loading={pending === 'deal-add'}>
+                  录入
+                </Button>
+              </Form.Item>
             </div>
           </Form>
 
-          <div className="business-adjustment-row business-deal-adjustment-row">
-            <Typography.Text type="secondary">累计总额校正</Typography.Text>
-            <InputNumber
-              min={0}
-              precision={2}
-              value={dealCorrection}
-              onChange={value => setDealCorrection(Number(value || 0))}
-              aria-label="校正成交总额"
-            />
-            <Button loading={pending === 'deal-set'} onClick={confirmDealCorrection}>校正总额</Button>
-          </div>
+          {/* 高级功能：总额校正 */}
+          <Collapse
+            ghost
+            size="small"
+            items={[{
+              key: 'deal-correct',
+              label: <><ToolOutlined /> 总额校正</>,
+              children: (
+                <div className="business-adjustment-row">
+                  <Typography.Text type="secondary">直接修改累计总额（不生成成交记录）</Typography.Text>
+                  <Space.Compact style={{ width: '100%' }}>
+                    <InputNumber
+                      style={{ flex: 1 }}
+                      min={0}
+                      precision={2}
+                      value={dealCorrection}
+                      onChange={value => setDealCorrection(Number(value || 0))}
+                      placeholder="输入目标总额"
+                    />
+                    <Button type="primary" loading={pending === 'deal-set'} onClick={confirmDealCorrection}>
+                      确认校正
+                    </Button>
+                  </Space.Compact>
+                </div>
+              )
+            }]}
+          />
         </section>
       </div>
     </SectionCard>

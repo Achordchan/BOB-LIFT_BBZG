@@ -33,6 +33,7 @@ const { registerPublicMusicRoutes } = require('./routes/public-music');
 const { registerEggRoutes } = require('./routes/egg');
 const { registerThemeRoutes } = require('./routes/themes');
 const { registerExternalAccessRoutes } = require('./routes/external-access');
+const { registerSystemStatusRoutes } = require('./routes/system-status');
 
 // 添加性能诊断日志
 console.time('启动总时间');
@@ -242,6 +243,14 @@ registerExternalAccessRoutes(app, {
   saveData,
   updateData,
   requireLogin
+});
+
+registerSystemStatusRoutes(app, {
+  getData,
+  dataPath: DATA_PATH,
+  getMainStreamHub: () => mainStreamHub,
+  sessionDir: app.get('bbzgSessionDir'),
+  sessionStore: app.get('bbzgSessionStore')
 });
 
 registerPlatformDisplaySettingsRoutes(app, {

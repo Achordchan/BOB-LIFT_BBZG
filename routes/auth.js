@@ -79,6 +79,9 @@ function registerAuthRoutes(app, deps) {
         }
         req.session.loggedIn = true;
         req.session.adminUsername = adminUsername;
+        req.session.loginIp = getClientIp(req) || 'unknown';
+        req.session.loginUserAgent = String(req.headers['user-agent'] || '');
+        req.session.loginAt = new Date().toISOString();
         addOperationLog(latest, req, '登录后台', `账号 ${adminUsername} 登录成功`);
         saveData(latest);
         loginLimiter.success(rateKey);

@@ -449,11 +449,17 @@ function registerDealRoutes(app, deps) {
         });
       }
 
-      // 按时间排序，最新的在前
-      recentActivity.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      const requestedType = String(req.query.type || '').trim();
+      const filteredActivity = requestedType === 'deal' || requestedType === 'inquiry'
+        ? recentActivity.filter(item => item.type === requestedType)
+        : recentActivity;
 
-      // 只返回最近的20条记录
-      const recentItems = recentActivity.slice(0, 20);
+      // 按时间排序，最新的在前
+      filteredActivity.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      const requestedLimit = Number.parseInt(String(req.query.limit || ''), 10);
+      const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 20;
+      const recentItems = filteredActivity.slice(0, limit);
 
       res.json({
         success: true,

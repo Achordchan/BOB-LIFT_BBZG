@@ -1,19 +1,11 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Layout, Menu, Button, Typography, Space, Input, App as AntApp, Spin } from 'antd';
+import { Layout, Menu, Button, Typography, Space, Grid, AutoComplete, App as AntApp, Spin, Drawer, Breadcrumb, Tooltip } from 'antd';
 import {
-  ApiOutlined,
-  AudioOutlined,
-  BgColorsOutlined,
-  CustomerServiceOutlined,
-  DashboardOutlined,
-  HomeOutlined,
   LinkOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  SettingOutlined,
-  SoundOutlined,
-  TeamOutlined,
-  TrophyOutlined
+  MenuOutlined,
+  SearchOutlined
 } from '@ant-design/icons';
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -28,6 +20,8 @@ const SystemPage = lazy(() => import('./pages/SystemPage'));
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
 import { apiGet, apiText } from './api';
 import { AdminAccountMenu } from './components/AdminAccountMenu';
+import { ADMIN_NAVIGATE_EVENT, buildMenuItems, buildSearchGroups, isVisiblePage, pages } from './navigation';
+import type { PageKey } from './navigation';
 import {
   keepLyricsForReplay,
   keepLyricsWhenReloadHasNoContent
@@ -72,24 +66,13 @@ function parseLrc(content: string): LyricLine[] {
   return result.sort((a, b) => a.time - b.time);
 }
 
-type PageKey = 'dashboard' | 'users' | 'music' | 'playback' | 'celebration' | 'platforms' | 'settings' | 'themes' | 'apis' | 'system';
-
-const pages: Record<PageKey, { title: string; sub: string }> = {
-  dashboard: { title: '工作台', sub: '成交、询盘、音乐配置和系统状态' },
-  users: { title: '用户管理', sub: '维护团队成员、登录账号、照片和专属战歌' },
-  music: { title: '音乐管理', sub: '管理成交音乐、音效库、歌词和网易云导入' },
-  playback: { title: '播放配置', sub: '配置默认战歌、询盘音效、TTS、启动音频和个性化音频' },
-  celebration: { title: '庆祝语管理', sub: '维护成交播报模板和变量占位符' },
-  platforms: { title: '平台目标', sub: '维护平台销售目标、当前进度和首页展示方式' },
-  settings: { title: '首页设置', sub: '管理所有首页主题共同使用的经营目标' },
-  themes: { title: '主题中心', sub: '预览并切换不同时期和场景的首页主题' },
-  apis: { title: 'API 调试', sub: '集中测试成交、询盘、TTS 和系统诊断接口' },
-  system: { title: '系统设置', sub: '系统维护' }
-};
-
 export default function App() {
   const { message } = AntApp.useApp();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.lg;
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
   const [debugEnabled] = useState(() => new URLSearchParams(window.location.search).get('debug') === '1' || window.localStorage.getItem('bbzg-admin-debug') === '1');
   const [page, setPage] = useState<PageKey>('dashboard');
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -98,29 +81,27 @@ export default function App() {
   const [lyricsPanel, setLyricsPanel] = useState<AdminLyricsPanelState | null>(null);
   const lyricsRequestRef = useRef(0);
   const current = pages[page];
-  const menuItems = useMemo(() => [
-    { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
-    { key: 'users', icon: <TeamOutlined />, label: '用户管理' },
-    { key: 'music', icon: <CustomerServiceOutlined />, label: '音乐管理' },
-    { key: 'playback', icon: <SoundOutlined />, label: '播放配置' },
-    { key: 'celebration', icon: <TrophyOutlined />, label: '庆祝语' },
-    { key: 'platforms', icon: <AudioOutlined />, label: '平台目标' },
-    { key: 'settings', icon: <HomeOutlined />, label: '首页设置' },
-    { key: 'themes', icon: <BgColorsOutlined />, label: '主题中心' },
-    ...(debugEnabled ? [{ key: 'apis', icon: <ApiOutlined />, label: 'API 调试' }] : []),
-    { key: 'system', icon: <SettingOutlined />, label: '系统设置' }
-  ], [debugEnabled]);
+  const menuItems = useMemo(() => buildMenuItems(debugEnabled, !collapsed || isMobile), [collapsed, debugEnabled, isMobile]);
+  const searchGroups = useMemo(() => buildSearchGroups(debugEnabled), [debugEnabled]);
+  const searchOptions = useMemo(() => {
+    const keyword = searchValue.trim().toLowerCase();
+    return searchGroups
+      .map(group => ({
+        label: group.label,
+        options: group.options.filter(option => !keyword || option.keyword.toLowerCase().includes(keyword))
+      }))
+      .filter(group => group.options.length > 0);
+  }, [searchGroups, searchValue]);
 
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get('page') as PageKey | null;
-    if (raw && pages[raw] && (raw !== 'apis' || debugEnabled)) setPage(raw);
+    if (raw && pages[raw] && isVisiblePage(raw, debugEnabled)) setPage(raw);
     if (raw === 'apis' && !debugEnabled) switchPage('dashboard');
-    const media = window.matchMedia('(max-width: 720px)');
-    const sync = () => setCollapsed(media.matches);
-    sync();
-    media.addEventListener('change', sync);
-    return () => media.removeEventListener('change', sync);
   }, [debugEnabled]);
+
+  useEffect(() => {
+    if (!isMobile) setMobileNavOpen(false);
+  }, [isMobile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,6 +125,15 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    function onNavigate(event: Event) {
+      const key = (event as CustomEvent<PageKey>).detail;
+      if (key && pages[key] && isVisiblePage(key, debugEnabled)) switchPage(key);
+    }
+    window.addEventListener(ADMIN_NAVIGATE_EVENT, onNavigate);
+    return () => window.removeEventListener(ADMIN_NAVIGATE_EVENT, onNavigate);
+  }, [debugEnabled, mustChangePassword]);
 
   useEffect(() => {
     function onPasswordChanged() {
@@ -214,6 +204,7 @@ export default function App() {
       key = 'system';
     }
     setPage(key);
+    setMobileNavOpen(false);
     const url = new URL(window.location.href);
     url.searchParams.set('page', key);
     window.history.replaceState({}, '', url.toString());
@@ -265,35 +256,94 @@ export default function App() {
     }
   }
 
+  const brand = (
+    <div className="brand">
+      <div className="brand-mark">B</div>
+      {(!collapsed || isMobile) && <div className="brand-text"><strong>巴布之光</strong><span>管理后台</span></div>}
+    </div>
+  );
+
+  const navMenu = (
+    <Menu
+      theme="dark"
+      mode="inline"
+      className="admin-menu"
+      selectedKeys={[page]}
+      items={menuItems}
+      onClick={(e) => switchPage(e.key as PageKey)}
+    />
+  );
+
+  const shellClassName = [
+    'admin-shell',
+    collapsed && !isMobile ? 'admin-shell-collapsed' : '',
+    isMobile ? 'admin-shell-mobile' : ''
+  ].filter(Boolean).join(' ');
+
   return (
-    <Layout className={collapsed ? 'admin-shell admin-shell-collapsed' : 'admin-shell'}>
-      <Sider collapsible collapsed={collapsed} trigger={null} width={244} className="admin-sider">
-        <div className="brand">
-          <div className="brand-mark">B</div>
-          {!collapsed && <div><strong>巴布之光</strong><span>管理后台</span></div>}
-        </div>
-        <Menu theme="dark" mode="inline" selectedKeys={[page]} items={menuItems} onClick={(e) => switchPage(e.key as PageKey)} />
-      </Sider>
+    <Layout className={shellClassName}>
+      {!isMobile && (
+        <Sider collapsible collapsed={collapsed} trigger={null} width={228} collapsedWidth={72} className="admin-sider">
+          {brand}
+          <div className="admin-sider-nav">{navMenu}</div>
+        </Sider>
+      )}
+      {isMobile && (
+        <Drawer
+          placement="left"
+          width={252}
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          closable={false}
+          styles={{ body: { padding: 0, background: '#08111f' } }}
+          className="admin-nav-drawer"
+        >
+          {brand}
+          <div className="admin-sider-nav">{navMenu}</div>
+        </Drawer>
+      )}
       <Layout>
         <Header className="admin-header">
-          <Space size={16} className="header-left">
-            <Button type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} />
-            <div>
+          <div className="header-left">
+            <Button
+              type="text"
+              className="admin-nav-toggle"
+              aria-label={isMobile ? '打开导航' : (collapsed ? '展开导航' : '收起导航')}
+              icon={isMobile ? <MenuOutlined /> : (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />)}
+              onClick={() => (isMobile ? setMobileNavOpen(true) : setCollapsed(!collapsed))}
+            />
+            <div className="header-title">
+              <Breadcrumb
+                className="header-breadcrumb"
+                items={[{ title: current.group }, { title: current.title }]}
+              />
               <Typography.Title level={4} className="page-title">{current.title}</Typography.Title>
-              <Typography.Text type="secondary">{current.sub}</Typography.Text>
             </div>
-          </Space>
-          <Space className="header-right">
-            <Input.Search className="global-search" placeholder="搜索后台功能" allowClear onSearch={(v) => {
-              const hit = Object.entries(pages).filter(([key]) => key !== 'apis' || debugEnabled).find(([, item]) => item.title.includes(v) || item.sub.includes(v));
-              if (hit) switchPage(hit[0] as PageKey);
-            }} />
-            <Button icon={<LinkOutlined />} href="/" target="_blank">访问主页</Button>
+          </div>
+          <Space className="header-right" size={8}>
+            <AutoComplete
+              className="global-search"
+              value={searchValue}
+              options={searchOptions}
+              onChange={setSearchValue}
+              onSelect={(value) => { switchPage(value as PageKey); setSearchValue(''); }}
+              placeholder="搜索后台功能"
+              allowClear
+              filterOption={false}
+              notFoundContent="未匹配到功能"
+              suffixIcon={<SearchOutlined />}
+            />
+            <Tooltip title="在新标签打开首页大屏">
+              <Button icon={<LinkOutlined />} href="/" target="_blank" className="header-home-link">访问主页</Button>
+            </Tooltip>
             <AdminAccountMenu />
           </Space>
         </Header>
         <Content className={playerTrack ? 'admin-content admin-content-with-player' : 'admin-content'}>
-          <Suspense fallback={<div style={{ padding: 48, textAlign: 'center' }}><Spin tip="页面加载中" /></div>}>
+          <div className="admin-page-intro">
+            <Typography.Text type="secondary">{current.sub}</Typography.Text>
+          </div>
+          <Suspense fallback={<div className="admin-page-loading"><Spin tip="页面加载中" /></div>}>
             {renderPage()}
           </Suspense>
         </Content>

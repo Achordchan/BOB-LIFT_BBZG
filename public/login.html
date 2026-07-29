@@ -4,36 +4,79 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>成交音乐管理系统 - 登录</title>
-  <!-- 引入登录页面样式 -->
   <link rel="stylesheet" href="/css/login.css">
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-header">
-      <h1>成交音乐管理系统</h1>
-      <p>请登录以访问管理页面</p>
+  <main class="auth">
+    <div class="auth-card">
+      <!-- 左侧品牌区：宽屏展示，窄屏隐藏 -->
+      <aside class="auth-brand">
+        <div class="auth-brand-top">
+          <div class="brand-mark">B</div>
+          <div class="brand-title">
+            <strong>巴布之光</strong>
+            <span>成交音乐管理系统</span>
+          </div>
+        </div>
+
+        <div class="auth-brand-body">
+          <h2>让每一笔成交<br>都被听见</h2>
+          <ul class="brand-points">
+            <li>成交播报与庆祝画面实时联动</li>
+            <li>业绩看板、平台目标一处掌控</li>
+            <li>音乐库与主题按团队自由配置</li>
+          </ul>
+        </div>
+
+        <p class="auth-brand-foot">内部系统 · 仅限授权人员使用</p>
+      </aside>
+
+      <!-- 右侧表单区 -->
+      <section class="auth-form">
+        <header class="auth-form-head">
+          <div class="brand-mark brand-mark-sm">B</div>
+          <h1>登录后台</h1>
+          <p>请使用管理员账号继续</p>
+        </header>
+
+        <div id="errorMessage" class="alert" role="alert">
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-11a.75.75 0 00-1.5 0v4a.75.75 0 001.5 0V7zm-.75 7.25a.9.9 0 100-1.8.9.9 0 000 1.8z" clip-rule="evenodd"/></svg>
+          <span id="errorText">账号或密码错误，请重试。</span>
+        </div>
+
+        <form id="loginForm" action="/login" method="POST" novalidate>
+          <div class="field">
+            <label for="username">账号</label>
+            <div class="control">
+              <svg class="control-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM3 17.5c0-3.038 3.13-5.5 7-5.5s7 2.462 7 5.5v.25a.75.75 0 01-.75.75H3.75a.75.75 0 01-.75-.75V17.5z"/></svg>
+              <input type="text" id="username" name="username" placeholder="请输入账号" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password">密码</label>
+            <div class="control">
+              <svg class="control-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 2a4.5 4.5 0 00-4.5 4.5V8h-.25A2.25 2.25 0 003 10.25v6.5A2.25 2.25 0 005.25 19h9.5A2.25 2.25 0 0017 16.75v-6.5A2.25 2.25 0 0014.75 8h-.25V6.5A4.5 4.5 0 0010 2zm3 6V6.5a3 3 0 10-6 0V8h6z" clip-rule="evenodd"/></svg>
+              <input type="password" id="password" name="password" placeholder="请输入密码" autocomplete="current-password" required>
+              <button type="button" class="toggle-password" id="togglePassword" aria-label="显示密码" aria-pressed="false">
+                <svg class="icon-eye" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 10S4.9 4.5 10 4.5 18.5 10 18.5 10 15.1 15.5 10 15.5 1.5 10 1.5 10z"/><circle cx="10" cy="10" r="2.6"/></svg>
+                <svg class="icon-eye-off" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.2 5c.58-.1 1.18-.15 1.8-.15 5.1 0 8.5 5.5 8.5 5.5s-.86 1.4-2.35 2.79M4.9 6.3C2.85 7.9 1.5 10 1.5 10S4.9 15.5 10 15.5c1.36 0 2.58-.39 3.63-.98"/><path d="M8.3 8.4a2.6 2.6 0 003.5 3.5M3 3l14 14"/></svg>
+              </button>
+            </div>
+            <p class="caps-hint" id="capsHint" hidden>已开启 Caps Lock</p>
+          </div>
+
+          <button type="submit" id="submitBtn" class="submit-btn">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-text">登录</span>
+          </button>
+        </form>
+
+        <p class="auth-form-foot">忘记密码请联系系统管理员重置</p>
+      </section>
     </div>
-    
-    <div id="errorMessage" class="error-message">
-      账号或密码错误，请重试。
-    </div>
-    
-    <form action="/login" method="POST">
-      <div class="form-group">
-        <label for="username">账号</label>
-        <input type="text" id="username" name="username" placeholder="请输入账号" required>
-      </div>
-      
-      <div class="form-group">
-        <label for="password">密码</label>
-        <input type="password" id="password" name="password" placeholder="请输入密码" required>
-      </div>
-      
-      <button type="submit">登录</button>
-    </form>
-  </div>
-  
-  <!-- 引入登录页面脚本 -->
+  </main>
+
   <script src="/js/login.js"></script>
 </body>
-</html> 
+</html>
