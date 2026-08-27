@@ -133,7 +133,6 @@ function configureApp(app) {
     // 公开只读接口（不含任何写操作路径）
     const publicReadonly = new Set([
       '/text-to-speech',
-      '/aliyun-tts-config',
       '/ping',
       '/health',
       '/dashboard',
