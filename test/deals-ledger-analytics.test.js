@@ -175,6 +175,43 @@ test('export 输出带 BOM 的 CSV 并正确转义', async () => {
   assert.ok(out.body.includes('"王""五"", Jr"'));
 });
 
+test('CSV 导出中和以 = + - @ 开头的公式注入', async () => {
+  const data = buildTestData();
+  data.dealsLedger.push(
+    { id: 'evil1', amount: 1, person: '=HYPERLINK("http://evil")', userId: null, platform: '@SUM(A1)', timestamp: isoDaysAgo(0) },
+    { id: 'evil2', amount: 1, person: '+1+1', userId: null, platform: '-2+3', timestamp: isoDaysAgo(0) }
+  );
+  const app = buildApp(data);
+  const handler = findRouteHandler(app, 'get', '/api/deals/export');
+  const out = await invokeJson(handler, { query: { period: 'all' } });
+  assert.ok(out.body.includes(`'=HYPERLINK`), '= 开头应被前置单引号中和');
+  assert.ok(out.body.includes(`'@SUM`), '@ 开头应被中和');
+  assert.ok(out.body.includes(`'+1+1`), '+ 开头应被中和');
+  assert.ok(out.body.includes(`'-2+3`), '- 开头应被中和');
+  assert.ok(!/(^|\r\n)=/.test(out.body), '不应存在裸 = 开头的单元格');
+});
+
+test('数据缓存：同尺寸同 mtime 的 rename 改写仍能读到新内容', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { getData } = require('../lib/data-store');
+  const p = path.join(os.tmpdir(), `cache-ino-test-${Date.now()}.json`);
+  fs.writeFileSync(p, JSON.stringify({ v: 'AAAA' }));
+  const first = getData(p);
+  assert.equal(first.v, 'AAAA');
+  const stat = fs.statSync(p);
+
+  // 模拟外部写：新 inode（tmp+rename），尺寸相同，mtime 强制回拨到与旧文件一致
+  const tmp = `${p}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ v: 'BBBB' }));
+  fs.renameSync(tmp, p);
+  fs.utimesSync(p, stat.atime, stat.mtime);
+
+  assert.equal(getData(p).v, 'BBBB', 'inode 变化必须使缓存失效');
+  fs.unlinkSync(p);
+});
+
 test('stats 与 export 不在公开白名单（需管理员会话）', () => {
   const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'app', 'create-app.js'), 'utf8');
   assert.ok(!source.includes("'/deals/stats'"), 'stats 不应加入公开白名单');
