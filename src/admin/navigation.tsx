@@ -1,5 +1,6 @@
 import {
   ApiOutlined,
+  BarChartOutlined,
   BgColorsOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
@@ -15,6 +16,7 @@ import type { ReactNode } from 'react';
 
 export type PageKey =
   | 'dashboard'
+  | 'stats'
   | 'settings'
   | 'platforms'
   | 'celebration'
@@ -48,6 +50,7 @@ export const navGroups: NavGroup[] = [
     key: 'business',
     label: '业务运营',
     items: [
+      { key: 'stats', label: '成交分析', icon: <BarChartOutlined /> },
       { key: 'settings', label: '经营目标', icon: <FlagOutlined /> },
       { key: 'platforms', label: '平台目标', icon: <ShopOutlined /> },
       { key: 'celebration', label: '庆祝语', icon: <TrophyOutlined /> }
@@ -85,6 +88,12 @@ export const pages: Record<PageKey, PageMeta> = {
     sub: '业务数据、手动录入和配置状态检查',
     group: '概览',
     keywords: '首页 数据 成交 询盘 录入 校正'
+  },
+  stats: {
+    title: '成交分析',
+    sub: '按今日/本周/本月/今年聚合成交流水，支持导出 CSV',
+    group: '业务运营',
+    keywords: '统计 报表 分析 平台 负责人 导出 csv 走势'
   },
   settings: {
     title: '经营目标',

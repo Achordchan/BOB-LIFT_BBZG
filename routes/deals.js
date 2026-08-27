@@ -1,4 +1,5 @@
 const { sanitizeDealPerson, sanitizeDealPlatform } = require('../lib/sanitize-text');
+const ledgerLib = require('../lib/deals-ledger');
 
 function registerDealRoutes(app, deps) {
   const {
@@ -334,72 +335,83 @@ function registerDealRoutes(app, deps) {
   });
 
   // API: 获取成交排行榜
+  // 从请求解析周期并返回过滤后的流水；period 无效时返回 null 并已响应 400
+  function resolveLedgerRequest(req, res) {
+    const period = ledgerLib.normalizePeriod(req.query && req.query.period);
+    if (!period) {
+      res.status(400).json({
+        success: false,
+        message: 'period 参数无效，可选: daily / weekly / monthly / yearly / all'
+      });
+      return null;
+    }
+    const data = getData();
+    if (!data.users) data.users = [];
+    ensureDealsLedger(data);
+    const allEntries = ledgerLib.getLedgerEntries(data);
+    const range = ledgerLib.resolvePeriodRange(period);
+    return {
+      data,
+      period,
+      entries: ledgerLib.filterByRange(allEntries, range),
+      coverage: ledgerLib.ledgerCoverage(allEntries, range)
+    };
+  }
+
   app.get('/api/deals/leaderboard', (req, res) => {
     try {
-      const data = getData();
-
-      // 确保用户数组存在
-      if (!data.users) {
-        data.users = [];
-      }
-
-      // 排行榜优先用长期账本；读取时也做一次显式迁移
-      ensureDealsLedger(data);
-      if (!Array.isArray(data.dealsHistory)) {
-        data.dealsHistory = [];
-      }
-
-      const userTotals = {};
-      data.users.forEach(user => {
-        userTotals[user.id] = {
-          id: user.id,
-          name: user.name,
-          position: user.position,
-          amount: 0
-        };
-      });
-
-      const ledger = Array.isArray(data.dealsLedger) && data.dealsLedger.length
-        ? data.dealsLedger
-        : data.dealsHistory;
-
-      ledger.forEach(deal => {
-        if (!deal) return;
-        let targetId = deal.userId && userTotals[deal.userId] ? deal.userId : null;
-        if (!targetId) {
-          const matchingUser = data.users.find(user => user.name === deal.person);
-          if (matchingUser) targetId = matchingUser.id;
-        }
-        if (targetId) {
-          userTotals[targetId].amount += Number(deal.amount) || 0;
-          return;
-        }
-        const tempId = `temp_${String(deal.person || 'unknown').replace(/\s+/g, '_')}`;
-        if (!userTotals[tempId]) {
-          userTotals[tempId] = {
-            id: tempId,
-            name: deal.person || '未知',
-            position: '',
-            amount: 0
-          };
-        }
-        userTotals[tempId].amount += Number(deal.amount) || 0;
-      });
-
-      // 转换为数组并按金额排序
-      const leaderboard = Object.values(userTotals)
-        .filter(item => item.amount > 0)
-        .sort((a, b) => b.amount - a.amount);
-
+      const resolved = resolveLedgerRequest(req, res);
+      if (!resolved) return;
       res.json({
         success: true,
-        leaderboard
+        period: resolved.period,
+        leaderboard: ledgerLib.aggregateLeaderboard(resolved.data, resolved.entries)
       });
     } catch (error) {
       console.error('获取排行榜失败:', error);
       res.status(500).json({
         success: false,
         message: '获取排行榜数据失败',
+        error: error.message
+      });
+    }
+  });
+
+  // API: 成交统计（管理端）：按平台/负责人/日聚合
+  app.get('/api/deals/stats', (req, res) => {
+    try {
+      const resolved = resolveLedgerRequest(req, res);
+      if (!resolved) return;
+      res.json({
+        success: true,
+        period: resolved.period,
+        coverage: resolved.coverage,
+        stats: ledgerLib.aggregateStats(resolved.entries)
+      });
+    } catch (error) {
+      console.error('获取成交统计失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '获取成交统计失败',
+        error: error.message
+      });
+    }
+  });
+
+  // API: 成交流水导出 CSV（管理端）
+  app.get('/api/deals/export', (req, res) => {
+    try {
+      const resolved = resolveLedgerRequest(req, res);
+      if (!resolved) return;
+      const filename = `deals-${resolved.period}-${new Date().toISOString().slice(0, 10)}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(ledgerLib.ledgerToCsv(resolved.entries));
+    } catch (error) {
+      console.error('导出成交流水失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '导出成交流水失败',
         error: error.message
       });
     }

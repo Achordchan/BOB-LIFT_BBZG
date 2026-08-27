@@ -8,6 +8,7 @@ import {
   SearchOutlined
 } from '@ant-design/icons';
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const StatsPage = lazy(() => import('./pages/StatsPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const MusicPage = lazy(() => import('./pages/MusicPage'));
 const PlaybackPage = lazy(() => import('./pages/PlaybackPage'));
@@ -266,6 +267,7 @@ export default function App() {
   function renderPage() {
     const playerProps = { playTrack, activeTrackId: playerTrack?.id };
     switch (page) {
+      case 'stats': return <StatsPage />;
       case 'users': return <UsersPage {...playerProps} />;
       case 'music': return <MusicPage
         {...playerProps}

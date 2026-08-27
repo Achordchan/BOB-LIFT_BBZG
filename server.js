@@ -34,6 +34,7 @@ const { registerEggRoutes } = require('./routes/egg');
 const { registerThemeRoutes } = require('./routes/themes');
 const { registerExternalAccessRoutes } = require('./routes/external-access');
 const { registerSystemStatusRoutes } = require('./routes/system-status');
+const { logSafe, publicErrorPayload } = require('./lib/safe-error');
 
 // 添加性能诊断日志
 console.time('启动总时间');
@@ -451,8 +452,42 @@ app.use('/api/*', (req, res) => {
   });
 });
 
+// 全局错误处理：multer 报文错误返回 400，其余统一 500；生产环境不回传细节
+app.use((err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+  logSafe('error', `请求处理异常: ${req.method} ${req.originalUrl}`, err);
+  const isClientError = !!(err && (err.name === 'MulterError' || err.type === 'entity.parse.failed' || err.status === 400));
+  const status = isClientError ? 400 : (Number(err && err.status) >= 400 ? Number(err.status) : 500);
+  res.status(status).json(publicErrorPayload(isClientError ? '请求内容无效' : '服务器内部错误', err));
+});
+
 // 启动服务器
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.timeEnd('启动总时间');
   console.log(`服务器运行在 http://localhost:${PORT}`);
 });
+
+// 优雅关闭：先断开 SSE 长连接再停止监听，避免客户端等到心跳超时才重连
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`收到 ${signal}，开始优雅关闭...`);
+  try {
+    mainStreamHub.shutdown();
+  } catch (error) {
+    console.error('关闭 SSE 连接失败:', error);
+  }
+  server.close(() => {
+    console.log('服务器已关闭');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('优雅关闭超时，强制退出');
+    process.exit(1);
+  }, 5000).unref();
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

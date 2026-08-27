@@ -21,10 +21,10 @@
 
 ## 环境要求
 
-- Node.js 20 或 22（项目 Docker 环境使用 Node.js 20，本地已验证 Node.js 22）
+- Node.js 20+（项目 Docker 环境使用 Node.js 20；本地已验证 Node.js 22 / 26）
 - npm
 
-当前项目的 `sharp` 原生模块在 Node.js 25 下会卡在加载阶段。`start.sh` 会自动从当前 `PATH` 中寻找 Node.js 20 或 22；也可通过 `NODE_BIN=/路径/node ./start.sh` 显式指定。
+历史上 `sharp` 0.34 在 Node.js 25 下会卡在加载阶段；升级到 `sharp` 0.35 后在 Node.js 26 实测正常。`start.sh` 仍会优先从 `PATH` 中寻找 Node.js 20 或 22，也可通过 `NODE_BIN=/路径/node ./start.sh` 显式指定其他版本。
 
 ## 本地启动
 
@@ -104,6 +104,14 @@ curl "http://localhost:3000/api/inquiries/reduce?token=绑定Token"
 
 - `GET /api/deals` 获取成交总额
 - `GET /api/deals/add?token=绑定Token&zongjine=金额&fuzeren=负责人&laiyuanpingtai=平台` 添加成交记录
+- `GET /api/deals/leaderboard?period=weekly` 成交排行榜（公开只读；`period` 可选 `daily` / `weekly` / `monthly` / `yearly` / `all`，默认 `all`）
+
+### 成交统计与导出（需管理员会话）
+
+后台「业务运营 → 成交分析」页面对应的接口：
+
+- `GET /api/deals/stats?period=monthly` 按平台 / 负责人 / 日聚合成交流水，响应中的 `coverage.mayBeIncomplete` 表示所选区间早于流水最早记录（迁移前的历史成交不在流水中）
+- `GET /api/deals/export?period=monthly` 导出该区间成交流水 CSV（UTF-8 带 BOM，Excel 可直接打开）
 
 示例：
 
