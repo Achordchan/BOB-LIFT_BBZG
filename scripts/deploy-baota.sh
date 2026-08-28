@@ -17,6 +17,9 @@ MUSIC_API_COOKIE_FILE="${MUSIC_API_COOKIE_FILE:-${MUSIC_API_PATH}/cookie.txt}"
 # 留空表示不启用请求鉴权（仅 loopback 保护）；启用时须与 Node 项目的
 # BBZG_NETEASE_ADMIN_TOKEN 保持一致。仅在“首次创建” Python 项目时写入 env。
 MUSIC_API_ADMIN_TOKEN="${MUSIC_API_ADMIN_TOKEN:-}"
+# 每个项目在 /root/*.github-backups 保留的部署备份份数（含本次）。
+# 每次部署都会打一份 tar.gz，超出则删最旧的，避免长期堆积占满磁盘。
+BACKUP_KEEP="${BACKUP_KEEP:-7}"
 SSH_OPTS="${SSH_OPTS:-}"
 
 NODE_BIN="/www/server/nodejs/${DEPLOY_NODE_VERSION}/bin"
@@ -234,8 +237,22 @@ ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   DEPLOY_PATH="${DEPLOY_PATH}" \
   DEPLOY_PROJECT="${DEPLOY_PROJECT}" \
   MUSIC_API_PATH="${MUSIC_API_PATH}" \
+  BACKUP_KEEP="${BACKUP_KEEP}" \
   'bash -s' <<'REMOTE_BACKUP'
 set -euo pipefail
+
+# 保留份数校验：非正整数则回退到 7
+KEEP="${BACKUP_KEEP:-7}"
+case "${KEEP}" in ''|*[!0-9]*) KEEP=7 ;; esac
+[ "${KEEP}" -lt 1 ] && KEEP=7
+
+# 删除某目录下匹配 glob 的备份，仅保留最新 KEEP 份（含本次刚打的）
+prune_backups() {
+  dir="$1"; pattern="$2"
+  ls -1t "${dir}"/${pattern} 2>/dev/null | tail -n +"$((KEEP + 1))" | while IFS= read -r old; do
+    rm -f "${old}" && echo "已清理旧备份：${old}"
+  done
+}
 
 if [ ! -d "${DEPLOY_PATH}" ]; then
   echo "目标目录不存在：${DEPLOY_PATH}"
@@ -258,6 +275,7 @@ tar \
   -C "$(dirname "${DEPLOY_PATH}")" \
   "$(basename "${DEPLOY_PATH}")"
 echo "已创建远端备份：${backup_file}"
+prune_backups "${backup_root}" "${DEPLOY_PROJECT}.before-github-*.tar.gz"
 
 if [ -d "${MUSIC_API_PATH}" ]; then
   music_backup_root="/root/bbzg-netease-api.github-backups"
@@ -271,6 +289,7 @@ if [ -d "${MUSIC_API_PATH}" ]; then
     -C "$(dirname "${MUSIC_API_PATH}")" \
     "$(basename "${MUSIC_API_PATH}")"
   echo "已创建音乐 API 备份：${music_backup_file}"
+  prune_backups "${music_backup_root}" "netease_music_api.before-github-*.tar.gz"
 fi
 REMOTE_BACKUP
 
