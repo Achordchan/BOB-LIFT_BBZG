@@ -105,8 +105,9 @@ export function NeteaseAuthCard() {
         loadStatus();
         return;
       }
-      if (state === 'expired') {
+      if (state === 'expired' || state === 'superseded') {
         stopPolling();
+        if (state === 'superseded') setQr(null);
         return;
       }
     } catch (e: any) {
@@ -155,6 +156,9 @@ export function NeteaseAuthCard() {
     setManualLoading(true);
     try {
       await apiJson('/api/netease/cookie', 'POST', { cookie });
+      // 手动保存即为最新授权，停止任何进行中的扫码轮询并清除二维码
+      stopPolling();
+      setQr(null);
       message.success('Cookie 已保存');
       setManualOpen(false);
       setManualValue('');

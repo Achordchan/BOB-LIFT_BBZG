@@ -91,6 +91,7 @@ class MusicAPIService:
         # _auth_lock 串行化 active_qr_key 的变更与 Cookie 读写/清除，
         # 避免线程化 Flask 下“检查-写入”之间的竞态。
         self.active_qr_key = None
+        self.qr_seq = 0
         self._auth_lock = threading.Lock()
         self.downloader = MusicDownloader()
         
@@ -758,12 +759,21 @@ def _build_cookie_status(verify: bool = True) -> Dict[str, Any]:
 def qrlogin_create():
     """创建扫码登录二维码，返回 unikey 与二维码图片(data URI)。"""
     try:
+        # 先在锁内预留一个递增序号，再发起网络请求：
+        # 只有“最新一次 create”能最终激活自己的 key，避免慢速的旧 create
+        # 在新 create 之后才回来改写 active_qr_key，把新二维码误判为已取代
+        with api_service._auth_lock:
+            api_service.qr_seq += 1
+            my_seq = api_service.qr_seq
+
         unikey = api_service.qr_manager.generate_qr_key()
         if not unikey:
             return APIResponse.error("生成二维码失败，请稍后重试", 502)
 
-        # 记录为当前活跃 key，取代之前任何未完成的扫码会话（与写入互斥）
         with api_service._auth_lock:
+            if my_seq != api_service.qr_seq:
+                # 已有更晚的 create 发起，本次作废，让前端用最新的二维码
+                return APIResponse.error("二维码已被新的请求取代，请重试", 409)
             api_service.active_qr_key = unikey
 
         login_url = f'https://music.163.com/login?codekey={unikey}'
@@ -893,8 +903,11 @@ def cookie_clear():
                 api_service.backup_existing_cookie('logout')
             except CookieException as e:
                 return APIResponse.error(f"备份现有 Cookie 失败，已中止清除: {str(e)}", 500)
+            # 先失效扫码会话（无论清除是否成功都不让旧扫码写回），再清除
             api_service.active_qr_key = None
-            api_service.cookie_manager.clear_cookie()
+            cleared = api_service.cookie_manager.clear_cookie()
+            if not cleared:
+                return APIResponse.error("清除 Cookie 失败，请检查文件权限", 500)
         # 已清除，无需再向网易云校验
         return APIResponse.success(_build_cookie_status(verify=False), "已清除登录")
     except Exception as e:

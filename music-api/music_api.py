@@ -126,7 +126,7 @@ class HTTPClient:
             raise APIException(f"HTTP请求失败: {e}")
     
     @staticmethod
-    def post_request_full(url: str, params: str, cookies: Dict[str, str], timeout: int = 30) -> requests.Response:
+    def post_request_full(url: str, params: str, cookies: Dict[str, str], timeout=30) -> requests.Response:
         """发送POST请求并返回完整响应对象"""
         headers = {
             'User-Agent': APIConstants.USER_AGENT,
@@ -246,9 +246,9 @@ class NeteaseAPI:
                 APIConstants.LOGIN_STATUS_API,
                 headers=headers,
                 cookies=request_cookies,
-                # 校验超时须明显低于 Node 代理超时，否则代理先超时返回 502，
-                # 而 Cookie 可能已写入，UI 却报失败
-                timeout=8,
+                # (connect, read) 组合最坏 ~10s；须明显低于 Node 代理超时，
+                # 否则代理先超时返回 502 而 Cookie 可能已写入，UI 却报失败
+                timeout=(4, 6),
             )
             response.raise_for_status()
             result = response.json()
@@ -542,8 +542,8 @@ class QRLoginManager:
             }
             
             params = self.crypto_utils.encrypt_params(APIConstants.QR_UNIKEY_API, payload)
-            # 限制在代理超时内，避免 Node 侧先超时返回 502
-            response = self.http_client.post_request_full(APIConstants.QR_UNIKEY_API, params, {}, timeout=10)
+            # (connect, read) 元组限时，整体最坏 ~10s，稳低于 Node 代理超时
+            response = self.http_client.post_request_full(APIConstants.QR_UNIKEY_API, params, {}, timeout=(4, 6))
             
             result = json.loads(response.text)
             if result.get('code') == 200:
@@ -606,8 +606,8 @@ class QRLoginManager:
             }
             
             params = self.crypto_utils.encrypt_params(APIConstants.QR_LOGIN_API, payload)
-            # 限制在代理超时内：QR(10s) + 成功后登录校验(8s) < 代理 20s
-            response = self.http_client.post_request_full(APIConstants.QR_LOGIN_API, params, {}, timeout=10)
+            # (connect, read) 元组限时，QR(~10s) + 成功后登录校验(~10s) < 代理 30s
+            response = self.http_client.post_request_full(APIConstants.QR_LOGIN_API, params, {}, timeout=(4, 6))
             
             result = json.loads(response.text)
             cookie_dict = {}
