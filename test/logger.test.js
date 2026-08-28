@@ -110,3 +110,21 @@ test('文件日志写入失败时停用该输出而非崩溃', async () => {
   // 后续写日志不应抛出
   assert.doesNotThrow(() => logger.info('transport 移除后仍可记录'));
 });
+
+test('fileTransportsOk 反映运行期状态而非初始化快照', async () => {
+  const winston = require('winston');
+  const loggerModule = require('../lib/logger');
+  const fileTransports = loggerModule.logger.transports.filter((t) => t instanceof winston.transports.DailyRotateFile);
+
+  if (fileTransports.length === 0) {
+    // 前序用例可能已摘除文件 transport，此时应如实报告为 false
+    assert.equal(loggerModule.fileTransportsOk, false);
+    return;
+  }
+
+  assert.equal(loggerModule.fileTransportsOk, true, '仍有文件 transport 时应为 true');
+  for (const t of fileTransports) t.emit('error', new Error('ENOSPC: no space left'));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  assert.equal(loggerModule.fileTransportsOk, false, '全部文件 transport 故障后应为 false');
+});
