@@ -8,6 +8,19 @@ Cookie 文件：`/www/wwwroot/netease_music_api/cookie.txt`（由后台自动读
 
 服务只监听 `127.0.0.1:5000`，由 `bbzg_app` 后端内部调用，不直接对公网开放。
 
+## 安全：管理令牌（推荐启用）
+
+仅监听 loopback 并不等于“管理员”——同机其他账号/进程也能访问 loopback。
+授权与 Cookie 管理端点（`/qrlogin/*`、`/cookie/*`）支持共享令牌鉴权：
+
+1. 生成令牌：`openssl rand -hex 32`
+2. 音乐服务（Python 项目环境变量）设 `NETEASE_ADMIN_TOKEN=<令牌>`
+   （或部署时用 `MUSIC_API_ADMIN_TOKEN` 注入；已存在的项目需在宝塔面板手动加）
+3. Node 后端（宝塔 Node 项目环境变量）设 `BBZG_NETEASE_ADMIN_TOKEN=<同一令牌>`
+
+两侧一致后，Node 代理会带上 `X-Netease-Admin-Token`，音乐服务校验通过才放行；
+未配置时保持向后兼容（仅 loopback 保护，并在启动日志给出告警）。
+
 ## 授权方式（推荐：后台扫码）
 
 进入后台「音频中心 → 音乐管理 → 网易云授权」卡片：

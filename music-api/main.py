@@ -9,6 +9,7 @@
 """
 
 import base64
+import hmac
 import io
 import logging
 import os
@@ -17,6 +18,7 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from urllib.parse import quote
@@ -280,6 +282,31 @@ class MusicAPIService:
 config = APIConfig()
 app = Flask(__name__)
 api_service = MusicAPIService(config)
+
+# 授权/凭证管理端点的共享令牌：由 Node 后端在代理请求时携带。
+# 服务仅监听 127.0.0.1，但 loopback 不等于“管理员”——同机其他账号/进程
+# 也能访问；配置该令牌后，这些敏感端点要求匹配请求头，才允许操作。
+NETEASE_ADMIN_TOKEN = os.environ.get('NETEASE_ADMIN_TOKEN', '').strip()
+if not NETEASE_ADMIN_TOKEN:
+    api_service.logger.warning(
+        "未配置 NETEASE_ADMIN_TOKEN：授权/Cookie 管理端点仅靠 loopback 保护，"
+        "建议在音乐服务与 Node 后端同时配置相同令牌以启用请求鉴权。"
+    )
+
+
+def require_admin_token(f):
+    """保护敏感端点：配置了 NETEASE_ADMIN_TOKEN 时，校验请求头令牌。
+
+    未配置时保持向后兼容（仅 loopback 保护），已在启动时告警。
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if NETEASE_ADMIN_TOKEN:
+            provided = request.headers.get('X-Netease-Admin-Token', '')
+            if not hmac.compare_digest(str(provided), NETEASE_ADMIN_TOKEN):
+                return APIResponse.error("未授权：缺少或错误的管理令牌", 403)
+        return f(*args, **kwargs)
+    return wrapper
 
 
 @app.before_request
@@ -756,6 +783,7 @@ def _build_cookie_status(verify: bool = True) -> Dict[str, Any]:
 
 
 @app.route('/qrlogin/create', methods=['GET', 'POST'])
+@require_admin_token
 def qrlogin_create():
     """创建扫码登录二维码，返回 unikey 与二维码图片(data URI)。"""
     try:
@@ -794,6 +822,7 @@ def qrlogin_create():
 
 
 @app.route('/qrlogin/check', methods=['GET', 'POST'])
+@require_admin_token
 def qrlogin_check():
     """轮询扫码登录状态。登录成功(803)时写入 cookie。
 
@@ -850,6 +879,7 @@ def qrlogin_check():
 
 
 @app.route('/cookie/status', methods=['GET'])
+@require_admin_token
 def cookie_status():
     """查询当前 cookie/登录状态。"""
     try:
@@ -860,6 +890,7 @@ def cookie_status():
 
 
 @app.route('/cookie/set', methods=['POST'])
+@require_admin_token
 def cookie_set():
     """手动录入 cookie（粘贴方式），写入前自动备份。"""
     try:
@@ -895,6 +926,7 @@ def cookie_set():
 
 
 @app.route('/cookie/clear', methods=['POST'])
+@require_admin_token
 def cookie_clear():
     """清除当前 cookie（登出），清除前自动备份。"""
     try:

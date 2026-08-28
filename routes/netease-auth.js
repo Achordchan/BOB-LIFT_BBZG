@@ -22,11 +22,21 @@ function registerNeteaseAuthRoutes(app, deps) {
     10
   );
 
+  // 与 Flask 共享的管理令牌：随代理请求发送，供音乐服务校验，
+  // 防止同机其他账号/进程绕过后台登录直接调用授权/Cookie 管理端点
+  const adminToken = String(
+    (deps && deps.adminToken) ||
+    process.env.BBZG_NETEASE_ADMIN_TOKEN ||
+    process.env.NETEASE_ADMIN_TOKEN ||
+    ''
+  );
+
   const client = axios.create({
     baseURL: baseUrl,
     timeout: timeoutMs,
     // 只要拿到 HTTP 响应就交给业务层处理，避免 4xx/5xx 直接抛异常丢失 Flask 的错误信息
-    validateStatus: () => true
+    validateStatus: () => true,
+    headers: adminToken ? { 'X-Netease-Admin-Token': adminToken } : {}
   });
 
   function isUpstreamDown(error) {

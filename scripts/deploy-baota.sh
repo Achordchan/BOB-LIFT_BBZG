@@ -13,6 +13,10 @@ MUSIC_API_PATH="${MUSIC_API_PATH:-/www/wwwroot/netease_music_api}"
 MUSIC_API_PROJECT="${MUSIC_API_PROJECT:-bbzg_netease_api}"
 MUSIC_API_PORT="${MUSIC_API_PORT:-5000}"
 MUSIC_API_COOKIE_FILE="${MUSIC_API_COOKIE_FILE:-${MUSIC_API_PATH}/cookie.txt}"
+# 与 Node 后端共享的管理令牌（供音乐服务校验授权/Cookie 管理请求）。
+# 留空表示不启用请求鉴权（仅 loopback 保护）；启用时须与 Node 项目的
+# BBZG_NETEASE_ADMIN_TOKEN 保持一致。仅在“首次创建” Python 项目时写入 env。
+MUSIC_API_ADMIN_TOKEN="${MUSIC_API_ADMIN_TOKEN:-}"
 SSH_OPTS="${SSH_OPTS:-}"
 
 NODE_BIN="/www/server/nodejs/${DEPLOY_NODE_VERSION}/bin"
@@ -337,6 +341,7 @@ ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   MUSIC_API_PROJECT="${MUSIC_API_PROJECT}" \
   MUSIC_API_PORT="${MUSIC_API_PORT}" \
   MUSIC_API_COOKIE_FILE="${MUSIC_API_COOKIE_FILE}" \
+  MUSIC_API_ADMIN_TOKEN="${MUSIC_API_ADMIN_TOKEN}" \
   NODE_BIN="${NODE_BIN}" \
   PANEL_PY="${PANEL_PY}" \
   'bash -s' <<'REMOTE'
@@ -386,6 +391,7 @@ project_name = os.environ["MUSIC_API_PROJECT"]
 project_path = os.environ["MUSIC_API_PATH"]
 project_port = os.environ["MUSIC_API_PORT"]
 cookie_file = os.environ["MUSIC_API_COOKIE_FILE"]
+admin_token = os.environ.get("MUSIC_API_ADMIN_TOKEN", "")
 python_bin = f"/www/server/pyporject_evn/{project_name}/bin/python"
 
 em = EnvironmentManager()
@@ -417,7 +423,7 @@ if not exists:
             {"k": "NETEASE_API_HOST", "v": "127.0.0.1"},
             {"k": "NETEASE_API_PORT", "v": project_port},
             {"k": "NETEASE_COOKIE_FILE", "v": cookie_file},
-        ],
+        ] + ([{"k": "NETEASE_ADMIN_TOKEN", "v": admin_token}] if admin_token else []),
     })
     result = model.CreateProject(create_args)
 else:

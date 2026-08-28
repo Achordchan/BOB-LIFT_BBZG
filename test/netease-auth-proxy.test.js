@@ -108,6 +108,32 @@ test('清除授权代理到上游的 /cookie/clear', async () => {
   upstream.close();
 });
 
+test('配置管理令牌时，代理请求携带 X-Netease-Admin-Token 头', async () => {
+  let seenToken = null;
+  const upstream = await startFakeUpstream({
+    'GET /cookie/status': (req, res) => {
+      seenToken = req.headers['x-netease-admin-token'] || null;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, data: { logged_in: false, cookie_present: false } }));
+    }
+  });
+  const { port } = upstream.address();
+
+  const app = express();
+  registerNeteaseAuthRoutes(app, {
+    requireLogin: (_req, _res, next) => next(),
+    musicApiBase: `http://127.0.0.1:${port}`,
+    adminToken: 'secret-token-123'
+  });
+
+  const handler = findRouteHandler(app, 'get', '/api/netease/cookie');
+  const result = await invoke(handler);
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(seenToken, 'secret-token-123');
+  upstream.close();
+});
+
 test('上游不可达时返回 502 可读提示', async () => {
   const app = express();
   registerNeteaseAuthRoutes(app, {
