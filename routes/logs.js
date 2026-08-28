@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { logDir } = require('../lib/logger');
 
 /**
@@ -11,8 +12,9 @@ const { logDir } = require('../lib/logger');
 function registerLogRoutes(app, deps) {
   const { requireLogin } = deps || {};
   const dir = String((deps && deps.logDir) || logDir || path.join(process.cwd(), 'logs'));
-  const FILE_RE = /^(app|error)-\d{4}-\d{2}-\d{2}\.log$/;
-  const MAX_TAIL_BYTES = 1024 * 1024; // 每次最多读取尾部 1MB
+  // 覆盖 DailyRotateFile 实际产物：按天文件、按大小切割的 .N 分片、以及 zippedArchive 的 .gz
+  const FILE_RE = /^(app|error)-\d{4}-\d{2}-\d{2}\.log(\.\d+)?(\.gz)?$/;
+  const MAX_TAIL_BYTES = 1024 * 1024; // 每次最多读取尾部 1MB（解压亦按此上限保留尾部）
 
   function listFiles() {
     let names = [];
@@ -27,10 +29,21 @@ function registerLogRoutes(app, deps) {
           size = s.size;
           mtime = s.mtime.toISOString();
         } catch (_) { /* ignore */ }
-        return { name: n, size, mtime, kind: n.startsWith('error-') ? 'error' : 'app' };
+        return {
+          name: n,
+          size,
+          mtime,
+          kind: n.startsWith('error-') ? 'error' : 'app',
+          compressed: n.endsWith('.gz')
+        };
       })
-      // 文件名内含日期，倒序即最新在前
-      .sort((a, b) => (a.name < b.name ? 1 : (a.name > b.name ? -1 : 0)));
+      // 先按修改时间倒序（最新写入的分片在前），时间相同再按文件名倒序
+      .sort((a, b) => {
+        const ta = a.mtime ? Date.parse(a.mtime) : 0;
+        const tb = b.mtime ? Date.parse(b.mtime) : 0;
+        if (ta !== tb) return tb - ta;
+        return a.name < b.name ? 1 : (a.name > b.name ? -1 : 0);
+      });
   }
 
   function safeResolve(name) {
@@ -39,6 +52,28 @@ function registerLogRoutes(app, deps) {
     const rel = path.relative(dir, full);
     if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
     return full;
+  }
+
+  // 流式解压 .gz，仅保留尾部 maxBytes，避免整份解压占用内存
+  function readGzipTail(full, maxBytes) {
+    return new Promise((resolve, reject) => {
+      let tail = '';
+      let truncated = false; // 仅当确实丢弃过前部内容时，首行才可能不完整
+      const stream = fs.createReadStream(full).pipe(zlib.createGunzip());
+      stream.on('data', (chunk) => {
+        tail += chunk.toString('utf8');
+        if (tail.length > maxBytes) {
+          tail = tail.slice(tail.length - maxBytes);
+          truncated = true;
+        }
+      });
+      stream.on('end', () => {
+        if (!truncated) return resolve(tail);
+        const nl = tail.indexOf('\n');
+        resolve(nl >= 0 ? tail.slice(nl + 1) : tail); // 丢弃被截断的首行
+      });
+      stream.on('error', reject);
+    });
   }
 
   function readTail(full, maxBytes) {
@@ -65,7 +100,7 @@ function registerLogRoutes(app, deps) {
     res.json({ success: true, dir, files: listFiles() });
   });
 
-  app.get('/api/logs/tail', requireLogin, (req, res) => {
+  app.get('/api/logs/tail', requireLogin, async (req, res) => {
     const files = listFiles();
     let name = String(req.query.file || '').trim();
     if (!name) {
@@ -83,7 +118,9 @@ function registerLogRoutes(app, deps) {
 
     let raw = '';
     try {
-      raw = readTail(full, MAX_TAIL_BYTES);
+      raw = name.endsWith('.gz')
+        ? await readGzipTail(full, MAX_TAIL_BYTES)
+        : readTail(full, MAX_TAIL_BYTES);
     } catch (_) {
       return res.status(500).json({ success: false, message: '读取日志失败' });
     }

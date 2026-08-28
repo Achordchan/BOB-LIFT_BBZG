@@ -75,8 +75,35 @@ test('tail 拒绝目录穿越 / 非法文件名', async () => {
   fs.writeFileSync(path.join(dir, 'app-2026-08-28.log'), '{}\n');
   const app = setupApp(dir);
 
-  for (const bad of ['../../etc/passwd', 'app-2026-08-28.log.gz', '..%2f..%2fpasswd', 'app-2026-08-28.txt']) {
+  for (const bad of ['../../etc/passwd', '..%2f..%2fpasswd', 'app-2026-08-28.txt', 'app-2026-08-28.log.x', 'audit.jsonl']) {
     const res = await invoke(findRouteHandler(app, 'get', '/api/logs/tail'), { query: { file: bad } });
     assert.equal(res.statusCode, 404, `非法文件名应 404: ${bad}`);
   }
+});
+
+test('白名单覆盖按大小切割的分片与 .gz 归档', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bbzg-logs-'));
+  fs.writeFileSync(path.join(dir, 'app-2026-08-28.log'), '{}\n');
+  fs.writeFileSync(path.join(dir, 'app-2026-08-28.log.1'), '{}\n');
+  fs.writeFileSync(path.join(dir, 'error-2026-08-28.log.12'), '{}\n');
+  fs.writeFileSync(path.join(dir, 'app-2026-08-27.log.gz'), '');
+
+  const app = setupApp(dir);
+  const res = await invoke(findRouteHandler(app, 'get', '/api/logs/files'));
+  const names = res.body.files.map((f) => f.name).sort();
+  assert.deepEqual(names, ['app-2026-08-27.log.gz', 'app-2026-08-28.log', 'app-2026-08-28.log.1', 'error-2026-08-28.log.12']);
+  assert.equal(res.body.files.find((f) => f.name.endsWith('.gz')).compressed, true);
+});
+
+test('可读取 .gz 归档中的日志内容', async () => {
+  const zlib = require('node:zlib');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bbzg-logs-'));
+  const payload = JSON.stringify({ level: 'error', message: '归档里的错误', timestamp: 't1' }) + '\n';
+  fs.writeFileSync(path.join(dir, 'app-2026-08-27.log.gz'), zlib.gzipSync(Buffer.from(payload, 'utf8')));
+
+  const app = setupApp(dir);
+  const res = await invoke(findRouteHandler(app, 'get', '/api/logs/tail'), { query: { file: 'app-2026-08-27.log.gz' } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.entries.length, 1);
+  assert.equal(res.body.entries[0].message, '归档里的错误');
 });

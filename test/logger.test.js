@@ -57,3 +57,16 @@ test('日志写入文件并对敏感信息脱敏', async () => {
   assert.ok(content.includes('token'), '字段名应保留便于排查');
   assert.ok(content.includes('***'), '敏感值应被替换为 ***');
 });
+
+test('元数据中的敏感字段按键名打码', async () => {
+  logger.error('元数据脱敏检查', { password: 'hunter2', token: 'TOKENVALUE', nested: { apiKey: 'AKID999', keep: '保留' } });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  const errFiles = fs.readdirSync(tmpDir).filter((f) => f.startsWith('error-') && f.endsWith('.log'));
+  const content = fs.readFileSync(path.join(tmpDir, errFiles[0]), 'utf8');
+
+  for (const secret of ['hunter2', 'TOKENVALUE', 'AKID999']) {
+    assert.ok(!content.includes(secret), `${secret} 不应出现在日志`);
+  }
+  assert.ok(content.includes('保留'), '非敏感字段应保留');
+});

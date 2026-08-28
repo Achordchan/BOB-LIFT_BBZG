@@ -65,3 +65,42 @@ test('登录成功记录管理员', () => {
   assert.equal(latest.action, '登录后台');
   assert.equal(latest.actor, 'boss');
 });
+
+test('审计不落明文 Token：路径查询串被脱敏', () => {
+  const mw = auditMiddleware();
+  runMiddleware(mw, {
+    method: 'GET',
+    url: '/api/deals/add?token=bbzg_SUPERSECRET&amount=500',
+    session: {},
+    status: 200,
+    body: {}
+  });
+  const latest = readAudit({ limit: 5 }).entries[0];
+  assert.ok(!JSON.stringify(latest).includes('bbzg_SUPERSECRET'), '明文 Token 不得写入审计');
+  assert.ok(String(latest.path).includes('***'), '路径中的 token 应被打码');
+});
+
+test('外部连接器的 GET 写入口被审计', () => {
+  const mw = auditMiddleware();
+  const before = readAudit({ limit: 1000 }).scanned;
+  runMiddleware(mw, { method: 'GET', url: '/api/inquiries/add', session: {}, status: 200 });
+  const after = readAudit({ limit: 1000 });
+  assert.equal(after.scanned, before + 1);
+  assert.equal(after.entries[0].action, '新增询盘');
+});
+
+test('管理员退出后台被审计且归属登出前的操作人', () => {
+  const mw = auditMiddleware();
+  // 进入时是管理员，处理器销毁会话后 finish 时已无身份
+  let finishCb = null;
+  const req = { method: 'GET', path: '/logout', originalUrl: '/logout', session: { loggedIn: true, adminUsername: 'boss' }, body: {}, headers: {}, id: 'r1', socket: {} };
+  const res = { statusCode: 302, on: (e, cb) => { if (e === 'finish') finishCb = cb; } };
+  mw(req, res, () => {});
+  req.session = {}; // 模拟登出销毁会话
+  finishCb();
+
+  const latest = readAudit({ limit: 5 }).entries[0];
+  assert.equal(latest.action, '退出后台');
+  assert.equal(latest.actor, 'boss');
+  assert.equal(latest.actorType, 'admin');
+});
