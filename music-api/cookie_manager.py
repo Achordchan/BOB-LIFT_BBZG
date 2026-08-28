@@ -83,13 +83,20 @@ class CookieManager:
         """以 0600 打开并写入文本：写入前即收紧权限，
         杜绝明文凭证短暂以 0644 存在的窗口（O_CREAT 对已存在文件不改权限，
         故再用 fchmod 强制收紧后再写入数据）。
+
+        若无法将权限收紧到 0600，则中止写入并抛出 CookieException——
+        绝不以宽松权限落盘凭证；且此时不 truncate，原文件内容保持不变。
         """
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # 注意：不带 O_TRUNC，确保收紧权限失败时不破坏原有内容
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT, 0o600)
         try:
             os.fchmod(fd, 0o600)
-        except OSError:
-            pass
+        except OSError as e:
+            os.close(fd)
+            raise CookieException(f"无法将凭证文件权限收紧到 0600，已中止写入: {e}")
+        # 权限已确保 0600，fd 交由 fdopen 管理，再清空并写入
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.truncate(0)
             f.write(content)
     
     def read_cookie(self) -> str:
