@@ -28,6 +28,7 @@ const STATUS_TEXT: Record<string, string> = {
   scanned: '已扫码，请在手机上确认登录',
   success: '登录成功',
   expired: '二维码已过期，请重新获取',
+  superseded: '二维码已被新的扫码会话取代',
   error: '与音乐服务通信失败，请稍后重试',
   unknown: '状态未知，请重试'
 };

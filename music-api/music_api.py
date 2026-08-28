@@ -246,7 +246,9 @@ class NeteaseAPI:
                 APIConstants.LOGIN_STATUS_API,
                 headers=headers,
                 cookies=request_cookies,
-                timeout=15,
+                # 校验超时须明显低于 Node 代理超时，否则代理先超时返回 502，
+                # 而 Cookie 可能已写入，UI 却报失败
+                timeout=8,
             )
             response.raise_for_status()
             result = response.json()

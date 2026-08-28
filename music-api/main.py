@@ -85,6 +85,9 @@ class MusicAPIService:
         self.cookie_manager = CookieManager(os.environ.get('NETEASE_COOKIE_FILE', 'cookie.txt'))
         self.netease_api = NeteaseAPI()
         self.qr_manager = QRLoginManager()
+        # 最近一次下发的扫码 key；仅允许它写入 Cookie，
+        # 防止“重新扫码”后旧二维码达成登录再覆盖新授权
+        self.active_qr_key = None
         self.downloader = MusicDownloader()
         
         # 创建下载目录
@@ -755,6 +758,9 @@ def qrlogin_create():
         if not unikey:
             return APIResponse.error("生成二维码失败，请稍后重试", 502)
 
+        # 记录为当前活跃 key，取代之前任何未完成的扫码会话
+        api_service.active_qr_key = unikey
+
         login_url = f'https://music.163.com/login?codekey={unikey}'
         data = {
             'key': unikey,
@@ -794,6 +800,12 @@ def qrlogin_check():
 
         cookie_saved = False
         if code == 803:
+            # 仅当前活跃 key 才允许写入，避免被取代的旧二维码覆盖新授权
+            if unikey != api_service.active_qr_key:
+                return APIResponse.success(
+                    {'code': code, 'status': 'superseded', 'cookie_saved': False},
+                    "二维码已被新的扫码会话取代"
+                )
             cookie_saved, save_error = api_service.save_login_cookie(cookie_dict)
             if not cookie_saved:
                 return APIResponse.error(save_error or "登录成功但未能保存 Cookie，请重试", 502)
@@ -834,6 +846,12 @@ def cookie_set():
 
         if not api_service.cookie_manager.validate_cookie_format(cookie_content):
             return APIResponse.error("cookie 格式无效", 400)
+
+        # 必须包含有效 MUSIC_U，否则会用无效凭证覆盖掉可用登录态
+        parsed = api_service.cookie_manager.parse_cookie_string(cookie_content)
+        music_u = parsed.get('MUSIC_U', '')
+        if not music_u or len(music_u) < 10:
+            return APIResponse.error("cookie 缺少有效的 MUSIC_U 字段", 400)
 
         # 覆盖前备份现有 cookie；备份失败则中止，不销毁原副本
         try:

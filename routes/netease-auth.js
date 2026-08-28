@@ -14,8 +14,10 @@ function registerNeteaseAuthRoutes(app, deps) {
     process.env.BBZG_MUSIC_API_BASE ||
     'http://127.0.0.1:5000'
   ).replace(/\/+$/, '');
+  // 授权类接口涉及向网易云实时校验登录态，需给足余量，
+  // 且必须大于 Flask 侧整个操作耗时（校验超时 8s + 其它开销），避免代理先超时
   const timeoutMs = Number.parseInt(
-    String((deps && deps.timeoutMs) || process.env.BBZG_MUSIC_API_TIMEOUT_MS || '12000'),
+    String((deps && deps.timeoutMs) || process.env.BBZG_NETEASE_AUTH_TIMEOUT_MS || '20000'),
     10
   );
 
