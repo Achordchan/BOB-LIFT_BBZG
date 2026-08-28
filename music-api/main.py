@@ -13,6 +13,7 @@ import io
 import logging
 import os
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass
@@ -86,8 +87,11 @@ class MusicAPIService:
         self.netease_api = NeteaseAPI()
         self.qr_manager = QRLoginManager()
         # 最近一次下发的扫码 key；仅允许它写入 Cookie，
-        # 防止“重新扫码”后旧二维码达成登录再覆盖新授权
+        # 防止“重新扫码”后旧二维码达成登录再覆盖新授权。
+        # _auth_lock 串行化 active_qr_key 的变更与 Cookie 读写/清除，
+        # 避免线程化 Flask 下“检查-写入”之间的竞态。
         self.active_qr_key = None
+        self._auth_lock = threading.Lock()
         self.downloader = MusicDownloader()
         
         # 创建下载目录
@@ -758,8 +762,9 @@ def qrlogin_create():
         if not unikey:
             return APIResponse.error("生成二维码失败，请稍后重试", 502)
 
-        # 记录为当前活跃 key，取代之前任何未完成的扫码会话
-        api_service.active_qr_key = unikey
+        # 记录为当前活跃 key，取代之前任何未完成的扫码会话（与写入互斥）
+        with api_service._auth_lock:
+            api_service.active_qr_key = unikey
 
         login_url = f'https://music.163.com/login?codekey={unikey}'
         data = {
@@ -800,13 +805,20 @@ def qrlogin_check():
 
         cookie_saved = False
         if code == 803:
-            # 仅当前活跃 key 才允许写入，避免被取代的旧二维码覆盖新授权
-            if unikey != api_service.active_qr_key:
+            # 「检查活跃 key + 写入」在同一把锁内完成，避免与并发的
+            # /qrlogin/create（改写 active_qr_key）或 /cookie/clear 交错
+            save_error = ''
+            superseded = False
+            with api_service._auth_lock:
+                if unikey != api_service.active_qr_key:
+                    superseded = True
+                else:
+                    cookie_saved, save_error = api_service.save_login_cookie(cookie_dict)
+            if superseded:
                 return APIResponse.success(
                     {'code': code, 'status': 'superseded', 'cookie_saved': False},
                     "二维码已被新的扫码会话取代"
                 )
-            cookie_saved, save_error = api_service.save_login_cookie(cookie_dict)
             if not cookie_saved:
                 return APIResponse.error(save_error or "登录成功但未能保存 Cookie，请重试", 502)
 
@@ -853,13 +865,15 @@ def cookie_set():
         if not music_u or len(music_u) < 10:
             return APIResponse.error("cookie 缺少有效的 MUSIC_U 字段", 400)
 
-        # 覆盖前备份现有 cookie；备份失败则中止，不销毁原副本
-        try:
-            api_service.backup_existing_cookie()
-        except CookieException as e:
-            return APIResponse.error(f"备份现有 Cookie 失败，已中止覆盖: {str(e)}", 500)
-
-        api_service.cookie_manager.write_cookie(cookie_content)
+        # 手动录入即视为最新授权：使任何进行中的扫码会话失效，
+        # 备份+写入与 key 失效在同一把锁内完成
+        with api_service._auth_lock:
+            try:
+                api_service.backup_existing_cookie()
+            except CookieException as e:
+                return APIResponse.error(f"备份现有 Cookie 失败，已中止覆盖: {str(e)}", 500)
+            api_service.active_qr_key = None
+            api_service.cookie_manager.write_cookie(cookie_content)
         return APIResponse.success(_build_cookie_status(), "cookie 已保存")
     except CookieException as e:
         return APIResponse.error(f"保存 cookie 失败: {str(e)}", 400)
@@ -872,13 +886,15 @@ def cookie_set():
 def cookie_clear():
     """清除当前 cookie（登出），清除前自动备份。"""
     try:
-        # 清除前备份现有 cookie；备份失败则中止，不销毁唯一副本
-        try:
-            api_service.backup_existing_cookie('logout')
-        except CookieException as e:
-            return APIResponse.error(f"备份现有 Cookie 失败，已中止清除: {str(e)}", 500)
-
-        api_service.cookie_manager.clear_cookie()
+        # 失效进行中的扫码会话 + 备份 + 清除，须原子完成，
+        # 否则在途的旧扫码 803 可能在登出后又把 Cookie 写回来
+        with api_service._auth_lock:
+            try:
+                api_service.backup_existing_cookie('logout')
+            except CookieException as e:
+                return APIResponse.error(f"备份现有 Cookie 失败，已中止清除: {str(e)}", 500)
+            api_service.active_qr_key = None
+            api_service.cookie_manager.clear_cookie()
         # 已清除，无需再向网易云校验
         return APIResponse.success(_build_cookie_status(verify=False), "已清除登录")
     except Exception as e:

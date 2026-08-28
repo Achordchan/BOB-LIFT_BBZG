@@ -126,19 +126,19 @@ class HTTPClient:
             raise APIException(f"HTTP请求失败: {e}")
     
     @staticmethod
-    def post_request_full(url: str, params: str, cookies: Dict[str, str]) -> requests.Response:
+    def post_request_full(url: str, params: str, cookies: Dict[str, str], timeout: int = 30) -> requests.Response:
         """发送POST请求并返回完整响应对象"""
         headers = {
             'User-Agent': APIConstants.USER_AGENT,
             'Referer': APIConstants.REFERER,
         }
-        
+
         request_cookies = APIConstants.DEFAULT_COOKIES.copy()
         request_cookies.update(cookies)
-        
+
         try:
-            response = requests.post(url, headers=headers, cookies=request_cookies, 
-                                   data={"params": params}, timeout=30)
+            response = requests.post(url, headers=headers, cookies=request_cookies,
+                                   data={"params": params}, timeout=timeout)
             response.raise_for_status()
             return response
         except requests.RequestException as e:
@@ -542,7 +542,8 @@ class QRLoginManager:
             }
             
             params = self.crypto_utils.encrypt_params(APIConstants.QR_UNIKEY_API, payload)
-            response = self.http_client.post_request_full(APIConstants.QR_UNIKEY_API, params, {})
+            # 限制在代理超时内，避免 Node 侧先超时返回 502
+            response = self.http_client.post_request_full(APIConstants.QR_UNIKEY_API, params, {}, timeout=10)
             
             result = json.loads(response.text)
             if result.get('code') == 200:
@@ -605,7 +606,8 @@ class QRLoginManager:
             }
             
             params = self.crypto_utils.encrypt_params(APIConstants.QR_LOGIN_API, payload)
-            response = self.http_client.post_request_full(APIConstants.QR_LOGIN_API, params, {})
+            # 限制在代理超时内：QR(10s) + 成功后登录校验(8s) < 代理 20s
+            response = self.http_client.post_request_full(APIConstants.QR_LOGIN_API, params, {}, timeout=10)
             
             result = json.loads(response.text)
             cookie_dict = {}
