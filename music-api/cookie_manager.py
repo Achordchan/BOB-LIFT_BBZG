@@ -68,10 +68,29 @@ class CookieManager:
         self._ensure_cookie_file_exists()
     
     def _ensure_cookie_file_exists(self) -> None:
-        """确保Cookie文件存在"""
+        """确保Cookie文件存在（以 0600 创建，避免出现可被他人读取的空占位文件）"""
         if not self.cookie_file.exists():
-            self.cookie_file.touch()
+            fd = os.open(str(self.cookie_file), os.O_CREAT | os.O_WRONLY, 0o600)
+            os.close(fd)
+            try:
+                os.chmod(self.cookie_file, 0o600)
+            except OSError:
+                pass
             self.logger.info(f"创建Cookie文件: {self.cookie_file}")
+
+    @staticmethod
+    def _write_secure_text(path, content: str) -> None:
+        """以 0600 打开并写入文本：写入前即收紧权限，
+        杜绝明文凭证短暂以 0644 存在的窗口（O_CREAT 对已存在文件不改权限，
+        故再用 fchmod 强制收紧后再写入数据）。
+        """
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+        except OSError:
+            pass
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(content)
     
     def read_cookie(self) -> str:
         """读取Cookie文件内容
@@ -123,13 +142,8 @@ class CookieManager:
             if not self.validate_cookie_format(cookie_content):
                 raise CookieException("Cookie格式无效")
             
-            # 写入文件
-            self.cookie_file.write_text(cookie_content.strip(), encoding='utf-8')
-            # 收紧权限至 0600（新建文件默认 0644 会泄露 MUSIC_U）
-            try:
-                os.chmod(self.cookie_file, 0o600)
-            except OSError as e:
-                self.logger.warning(f"设置 Cookie 文件权限失败: {e}")
+            # 以 0600 写入（写入前即收紧权限，避免明文凭证短暂以 0644 存在）
+            self._write_secure_text(self.cookie_file, cookie_content.strip())
 
             self.logger.info(f"成功写入Cookie到文件: {self.cookie_file}")
             return True
@@ -328,14 +342,9 @@ class CookieManager:
             
             backup_path = self.cookie_file.with_suffix(f".{backup_suffix}.bak")
             
-            # 复制文件内容
+            # 复制文件内容（备份含 MUSIC_U 凭证，以 0600 写入，避免同机其他账号读取）
             content = self.cookie_file.read_text(encoding='utf-8')
-            backup_path.write_text(content, encoding='utf-8')
-            # 备份含 MUSIC_U 凭证，收紧权限至 0600，避免同机其他账号读取
-            try:
-                os.chmod(backup_path, 0o600)
-            except OSError as e:
-                self.logger.warning(f"设置备份文件权限失败: {e}")
+            self._write_secure_text(backup_path, content)
 
             self.logger.info(f"Cookie备份成功: {backup_path}")
             return str(backup_path)
