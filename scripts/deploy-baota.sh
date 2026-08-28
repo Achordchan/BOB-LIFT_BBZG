@@ -17,6 +17,25 @@ MUSIC_API_COOKIE_FILE="${MUSIC_API_COOKIE_FILE:-${MUSIC_API_PATH}/cookie.txt}"
 # 留空表示不启用请求鉴权（仅 loopback 保护）；启用时须与 Node 项目的
 # BBZG_NETEASE_ADMIN_TOKEN 保持一致。仅在“首次创建” Python 项目时写入 env。
 MUSIC_API_ADMIN_TOKEN="${MUSIC_API_ADMIN_TOKEN:-}"
+# 每个项目在 /root/*.github-backups 保留的部署备份份数（含本次）。
+# 每次部署都会打一份 tar.gz，超出则删最旧的，避免长期堆积占满磁盘。
+# 本地即规整为 1..1000 的十进制整数（非法/超范围回退 7），确保只把
+# 一个干净的整数经 ssh 传到远端，避免八进制解析、空白/元字符注入等问题。
+BACKUP_KEEP="${BACKUP_KEEP:-7}"
+case "${BACKUP_KEEP}" in
+  ''|*[!0-9]*) BACKUP_KEEP=7 ;;                         # 空 / 含非数字
+  *)
+    # 先按字符串长度卡上界（最大 1000 仅需 4 位），再做算术，
+    # 避免超大数字在 $(()) 里溢出回绕后反而落入合法区间（如 2^64+1 → 1）
+    if [ "${#BACKUP_KEEP}" -le 4 ] \
+       && [ "$((10#${BACKUP_KEEP}))" -ge 1 ] \
+       && [ "$((10#${BACKUP_KEEP}))" -le 1000 ]; then
+      BACKUP_KEEP=$((10#${BACKUP_KEEP}))
+    else
+      BACKUP_KEEP=7
+    fi
+    ;;
+esac
 SSH_OPTS="${SSH_OPTS:-}"
 
 NODE_BIN="/www/server/nodejs/${DEPLOY_NODE_VERSION}/bin"
@@ -234,8 +253,33 @@ ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   DEPLOY_PATH="${DEPLOY_PATH}" \
   DEPLOY_PROJECT="${DEPLOY_PROJECT}" \
   MUSIC_API_PATH="${MUSIC_API_PATH}" \
+  BACKUP_KEEP="${BACKUP_KEEP}" \
   'bash -s' <<'REMOTE_BACKUP'
 set -euo pipefail
+
+# 保留份数：本地已规整为干净整数，这里再兜底一次
+# （先卡长度再算术，避免超大值在 $(()) 溢出回绕后落入合法区间）
+KEEP="${BACKUP_KEEP:-7}"
+case "${KEEP}" in
+  ''|*[!0-9]*) KEEP=7 ;;
+  *)
+    if [ "${#KEEP}" -le 4 ] && [ "$((10#${KEEP}))" -ge 1 ] && [ "$((10#${KEEP}))" -le 1000 ]; then
+      KEEP=$((10#${KEEP}))
+    else
+      KEEP=7
+    fi
+    ;;
+esac
+
+# 删除某备份目录下的旧备份，仅保留最新 KEEP 份（含本次刚打的）。
+# 每个目录只存放单一项目的备份，故用固定字面后缀匹配（不含变量），
+# 目录路径用引号包住按字面处理——避免项目名中的通配符被 glob 误伤。
+prune_backups() {
+  dir="$1"
+  ls -1t "${dir}"/*.before-github-*.tar.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | while IFS= read -r old; do
+    rm -f "${old}" && echo "已清理旧备份：${old}"
+  done
+}
 
 if [ ! -d "${DEPLOY_PATH}" ]; then
   echo "目标目录不存在：${DEPLOY_PATH}"
@@ -258,6 +302,7 @@ tar \
   -C "$(dirname "${DEPLOY_PATH}")" \
   "$(basename "${DEPLOY_PATH}")"
 echo "已创建远端备份：${backup_file}"
+prune_backups "${backup_root}"
 
 if [ -d "${MUSIC_API_PATH}" ]; then
   music_backup_root="/root/bbzg-netease-api.github-backups"
@@ -271,6 +316,7 @@ if [ -d "${MUSIC_API_PATH}" ]; then
     -C "$(dirname "${MUSIC_API_PATH}")" \
     "$(basename "${MUSIC_API_PATH}")"
   echo "已创建音乐 API 备份：${music_backup_file}"
+  prune_backups "${music_backup_root}"
 fi
 REMOTE_BACKUP
 
