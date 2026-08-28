@@ -47,7 +47,7 @@ class CookieManager:
         self.cookie_file = Path(cookie_file)
         self.logger = logging.getLogger(__name__)
         
-        # 网易云音乐相关的重要Cookie字段
+        # 网易云音乐相关的重要Cookie字段（用于信息展示）
         self.important_cookies = {
             'MUSIC_U',      # 用户标识
             'MUSIC_A',      # 用户认证
@@ -55,6 +55,13 @@ class CookieManager:
             'NMTID',        # 设备标识
             'WEVNSM',       # 会话管理
             'WNMCID',       # 客户端标识
+        }
+
+        # 真正决定登录有效性的必需Cookie。
+        # 网易云鉴权只依赖 MUSIC_U，扫码登录也仅产出该字段，
+        # 因此有效性判定只以 MUSIC_U 为准，避免误报“未授权”。
+        self.required_cookies = {
+            'MUSIC_U',      # 用户标识（登录态核心）
         }
         
         # 确保cookie文件存在
@@ -241,10 +248,10 @@ class CookieManager:
                 self.logger.warning("Cookie为空")
                 return False
             
-            # 检查重要Cookie是否存在
-            missing_cookies = self.important_cookies - set(cookies.keys())
+            # 检查必需Cookie是否存在（仅 MUSIC_U）
+            missing_cookies = self.required_cookies - set(cookies.keys())
             if missing_cookies:
-                self.logger.warning(f"缺少重要Cookie: {missing_cookies}")
+                self.logger.warning(f"缺少必需Cookie: {missing_cookies}")
                 return False
             
             # 检查MUSIC_U是否有效（基本验证）

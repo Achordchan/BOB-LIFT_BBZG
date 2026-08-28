@@ -567,14 +567,24 @@ class QRLoginManager:
             
             result = json.loads(response.text)
             cookie_dict = {}
-            
+
             if result.get('code') == 803:
                 # 登录成功，提取cookie
-                all_cookies = response.headers.get('Set-Cookie', '').split(', ')
-                for cookie_str in all_cookies:
-                    if 'MUSIC_U=' in cookie_str:
-                        cookie_dict['MUSIC_U'] = cookie_str.split('MUSIC_U=')[1].split(';')[0]
-            
+                # 优先从 requests 的 CookieJar 读取（能正确处理含逗号的 expires 等字段）
+                try:
+                    for name in ('MUSIC_U', 'MUSIC_A', '__csrf', 'NMTID'):
+                        value = response.cookies.get(name)
+                        if value:
+                            cookie_dict[name] = value
+                except Exception:
+                    pass
+                # 回退到原始 Set-Cookie 头解析（兜底 MUSIC_U）
+                if 'MUSIC_U' not in cookie_dict:
+                    all_cookies = response.headers.get('Set-Cookie', '').split(', ')
+                    for cookie_str in all_cookies:
+                        if 'MUSIC_U=' in cookie_str:
+                            cookie_dict['MUSIC_U'] = cookie_str.split('MUSIC_U=')[1].split(';')[0]
+
             return result.get('code', -1), cookie_dict
         except (json.JSONDecodeError, KeyError) as e:
             raise APIException(f"解析登录状态响应失败: {e}")

@@ -8,6 +8,8 @@
 - 健康检查
 """
 
+import base64
+import io
 import logging
 import os
 import sys
@@ -21,8 +23,8 @@ from flask import Flask, request, send_file, render_template, Response
 
 try:
     from music_api import (
-        NeteaseAPI, APIException, QualityLevel,
-        url_v1, name_v1, lyric_v1, search_music, 
+        NeteaseAPI, APIException, QualityLevel, QRLoginManager,
+        url_v1, name_v1, lyric_v1, search_music,
         playlist_detail, album_detail
     )
     from cookie_manager import CookieManager, CookieException
@@ -82,6 +84,7 @@ class MusicAPIService:
         self.logger = self._setup_logger()
         self.cookie_manager = CookieManager(os.environ.get('NETEASE_COOKIE_FILE', 'cookie.txt'))
         self.netease_api = NeteaseAPI()
+        self.qr_manager = QRLoginManager()
         self.downloader = MusicDownloader()
         
         # 创建下载目录
@@ -201,6 +204,46 @@ class MusicAPIService:
         except Exception as e:
             self.logger.error(f"获取请求数据失败: {e}")
             return {}
+
+    def build_qr_data_uri(self, login_url: str) -> str:
+        """将登录链接生成二维码，返回 data:image/svg+xml 的 base64 data URI。
+
+        使用 qrcode 的 SVG 工厂，无需 Pillow 依赖。
+        """
+        import qrcode
+        import qrcode.image.svg
+
+        factory = qrcode.image.svg.SvgPathImage
+        img = qrcode.make(login_url, image_factory=factory)
+        buf = io.BytesIO()
+        img.save(buf)
+        svg_bytes = buf.getvalue()
+        b64 = base64.b64encode(svg_bytes).decode('ascii')
+        return f"data:image/svg+xml;base64,{b64}"
+
+    def save_login_cookie(self, cookie_dict: Dict[str, str]) -> bool:
+        """将扫码得到的 cookie 字典写入 cookie 文件（写入前自动备份）。"""
+        music_u = (cookie_dict or {}).get('MUSIC_U', '')
+        if not music_u:
+            return False
+
+        # 组装 cookie 字符串，补充网易云客户端常用字段
+        parts = [f"MUSIC_U={music_u}"]
+        for name in ('MUSIC_A', '__csrf', 'NMTID'):
+            value = cookie_dict.get(name)
+            if value:
+                parts.append(f"{name}={value}")
+        parts.extend(['os=pc', 'appver=8.9.70'])
+        cookie_string = '; '.join(parts)
+
+        # 备份现有 cookie（若存在且非空）
+        try:
+            if self.cookie_manager.cookie_file.exists() and self.cookie_manager.read_cookie():
+                self.cookie_manager.backup_cookie()
+        except Exception as e:
+            self.logger.warning(f"备份 cookie 失败（忽略）: {e}")
+
+        return self.cookie_manager.write_cookie(cookie_string)
 
 
 # 创建Flask应用和服务实例
@@ -639,6 +682,138 @@ def api_info():
     except Exception as e:
         api_service.logger.error(f"获取API信息异常: {e}")
         return APIResponse.error(f"获取API信息失败: {str(e)}", 500)
+
+
+def _build_cookie_status() -> Dict[str, Any]:
+    """构造 cookie/登录状态信息（不含敏感明文）。"""
+    info = api_service.cookie_manager.get_cookie_info()
+    return {
+        'logged_in': bool(info.get('is_valid')),
+        'cookie_present': bool(info.get('cookie_count')),
+        'important_cookies_present': info.get('important_cookies_present', []),
+        'missing_important_cookies': info.get('missing_important_cookies', []),
+        'last_modified': info.get('last_modified'),
+    }
+
+
+@app.route('/qrlogin/create', methods=['GET', 'POST'])
+def qrlogin_create():
+    """创建扫码登录二维码，返回 unikey 与二维码图片(data URI)。"""
+    try:
+        unikey = api_service.qr_manager.generate_qr_key()
+        if not unikey:
+            return APIResponse.error("生成二维码失败，请稍后重试", 502)
+
+        login_url = f'https://music.163.com/login?codekey={unikey}'
+        data = {
+            'key': unikey,
+            'login_url': login_url,
+            'qr_image': api_service.build_qr_data_uri(login_url),
+            'expires_in': 180,
+        }
+        return APIResponse.success(data, "二维码创建成功")
+    except APIException as e:
+        return APIResponse.error(f"生成二维码失败: {str(e)}", 502)
+    except Exception as e:
+        api_service.logger.error(f"创建二维码异常: {e}\n{traceback.format_exc()}")
+        return APIResponse.error(f"创建二维码失败: {str(e)}", 500)
+
+
+@app.route('/qrlogin/check', methods=['GET', 'POST'])
+def qrlogin_check():
+    """轮询扫码登录状态。登录成功(803)时写入 cookie。
+
+    状态码含义：801 等待扫码 / 802 已扫码待确认 / 803 登录成功 / 800 二维码过期。
+    """
+    try:
+        data = api_service._safe_get_request_data()
+        unikey = data.get('key') or data.get('unikey')
+        if not unikey:
+            return APIResponse.error("缺少 key 参数", 400)
+
+        code, cookie_dict = api_service.qr_manager.check_qr_login(unikey)
+
+        status_map = {
+            800: 'expired',
+            801: 'waiting',
+            802: 'scanned',
+            803: 'success',
+        }
+        status = status_map.get(code, 'unknown')
+
+        cookie_saved = False
+        if code == 803:
+            cookie_saved = api_service.save_login_cookie(cookie_dict)
+            if not cookie_saved:
+                return APIResponse.error("登录成功但未能获取/保存 Cookie，请重试", 502)
+
+        payload = {
+            'code': code,
+            'status': status,
+            'cookie_saved': cookie_saved,
+        }
+        if code == 803:
+            payload['cookie_status'] = _build_cookie_status()
+        return APIResponse.success(payload, "查询成功")
+    except APIException as e:
+        return APIResponse.error(f"查询登录状态失败: {str(e)}", 502)
+    except Exception as e:
+        api_service.logger.error(f"查询登录状态异常: {e}\n{traceback.format_exc()}")
+        return APIResponse.error(f"查询登录状态失败: {str(e)}", 500)
+
+
+@app.route('/cookie/status', methods=['GET'])
+def cookie_status():
+    """查询当前 cookie/登录状态。"""
+    try:
+        return APIResponse.success(_build_cookie_status(), "获取成功")
+    except Exception as e:
+        api_service.logger.error(f"获取 cookie 状态异常: {e}")
+        return APIResponse.error(f"获取 cookie 状态失败: {str(e)}", 500)
+
+
+@app.route('/cookie/set', methods=['POST'])
+def cookie_set():
+    """手动录入 cookie（粘贴方式），写入前自动备份。"""
+    try:
+        data = api_service._safe_get_request_data()
+        cookie_content = str(data.get('cookie') or data.get('content') or '').strip()
+        if not cookie_content:
+            return APIResponse.error("cookie 内容不能为空", 400)
+
+        if not api_service.cookie_manager.validate_cookie_format(cookie_content):
+            return APIResponse.error("cookie 格式无效", 400)
+
+        try:
+            if api_service.cookie_manager.cookie_file.exists() and api_service.cookie_manager.read_cookie():
+                api_service.cookie_manager.backup_cookie()
+        except Exception as e:
+            api_service.logger.warning(f"备份 cookie 失败（忽略）: {e}")
+
+        api_service.cookie_manager.write_cookie(cookie_content)
+        return APIResponse.success(_build_cookie_status(), "cookie 已保存")
+    except CookieException as e:
+        return APIResponse.error(f"保存 cookie 失败: {str(e)}", 400)
+    except Exception as e:
+        api_service.logger.error(f"保存 cookie 异常: {e}")
+        return APIResponse.error(f"保存 cookie 失败: {str(e)}", 500)
+
+
+@app.route('/cookie/clear', methods=['POST'])
+def cookie_clear():
+    """清除当前 cookie（登出），清除前自动备份。"""
+    try:
+        try:
+            if api_service.cookie_manager.cookie_file.exists() and api_service.cookie_manager.read_cookie():
+                api_service.cookie_manager.backup_cookie('logout')
+        except Exception as e:
+            api_service.logger.warning(f"备份 cookie 失败（忽略）: {e}")
+
+        api_service.cookie_manager.clear_cookie()
+        return APIResponse.success(_build_cookie_status(), "已清除登录")
+    except Exception as e:
+        api_service.logger.error(f"清除 cookie 异常: {e}")
+        return APIResponse.error(f"清除 cookie 失败: {str(e)}", 500)
 
 
 def start_api_server():
