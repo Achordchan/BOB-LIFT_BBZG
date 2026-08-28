@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { createNeteaseClient } = require('../lib/netease-client');
+const { recordAudit } = require('../lib/audit');
 
 function registerMusicRoutes(app, deps) {
   const netease = createNeteaseClient();
@@ -472,8 +473,20 @@ function registerMusicRoutes(app, deps) {
         artist,
         description: description || '',
         lrcContent: lrcContent || ''
+      }).then(() => {
+        // 接口立即返回 jobId，下载与写库是异步的：
+        // 只有任务真正完成才记审计，避免把随后失败的导入记成已导入
+        try {
+          recordAudit(req, '导入网易云音乐', { detail: `name=${nameStr} neteaseId=${idStr}`, status: 200 });
+        } catch (_) { /* 审计失败不影响导入 */ }
       }).catch(err => {
         console.error('导入网易云音乐失败:', err);
+        try {
+          recordAudit(req, '导入网易云音乐（失败）', {
+            detail: `name=${nameStr} neteaseId=${idStr} error=${err && err.message ? String(err.message).slice(0, 120) : '未知错误'}`,
+            status: 500
+          });
+        } catch (_) { /* 审计失败不影响错误处理 */ }
         updateImportJob(job, {
           status: 'error',
           phase: 'error',

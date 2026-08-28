@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { recordAudit } = require('../lib/audit');
 
 /**
  * 网易云音乐授权（扫码登录 / Cookie 管理）代理路由。
@@ -77,12 +78,32 @@ function registerNeteaseAuthRoutes(app, deps) {
   });
 
   // 轮询扫码登录状态（成功时 Flask 侧会写入 Cookie）
-  app.get('/api/netease/qr/check', requireLogin, (req, res) => {
+  app.get('/api/netease/qr/check', requireLogin, async (req, res) => {
     const key = String(req.query.key || '').trim();
     if (!key) {
       return res.status(400).json({ success: false, message: '缺少 key 参数' });
     }
-    return proxy(res, () => client.get('/qrlogin/check', { params: { key } }));
+    try {
+      const upstream = await client.get('/qrlogin/check', { params: { key } });
+      const payload = upstream.data;
+      // 仅在扫码真正成功、Cookie 落库那一刻记一条审计（避免每次轮询都记）
+      try {
+        const data = payload && payload.data;
+        if (data && data.status === 'success' && data.cookie_saved) {
+          const nick = data.cookie_status && data.cookie_status.nickname;
+          recordAudit(req, '网易云扫码授权成功', { detail: nick ? `账号=${nick}` : '', status: upstream.status });
+        }
+      } catch (_) { /* 审计失败不影响主流程 */ }
+      if (payload && typeof payload === 'object') {
+        return res.status(upstream.status || 502).json(payload);
+      }
+      return res.status(upstream.status || 502).json({ success: false, message: '音乐服务返回了非预期的响应' });
+    } catch (error) {
+      if (isUpstreamDown(error)) {
+        return res.status(502).json({ success: false, message: '音乐服务未启动或不可达，请检查 netease_music_api 服务' });
+      }
+      return res.status(502).json({ success: false, message: `音乐服务请求失败: ${error && error.message ? error.message : '未知错误'}` });
+    }
   });
 
   // 查询当前授权状态

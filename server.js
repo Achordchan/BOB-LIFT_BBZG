@@ -35,7 +35,20 @@ const { registerThemeRoutes } = require('./routes/themes');
 const { registerExternalAccessRoutes } = require('./routes/external-access');
 const { registerSystemStatusRoutes } = require('./routes/system-status');
 const { registerNeteaseAuthRoutes } = require('./routes/netease-auth');
-const { logSafe, publicErrorPayload } = require('./lib/safe-error');
+const { registerLogRoutes } = require('./routes/logs');
+const { registerAuditRoutes } = require('./routes/audit');
+const { auditMiddleware } = require('./lib/audit');
+const { publicErrorPayload } = require('./lib/safe-error');
+const { logger, httpLogger, installConsoleBridge, installProcessHandlers, logDir } = require('./lib/logger');
+
+// 尽早接管 console.* 与进程级异常，确保后续所有日志统一落盘/脱敏。
+// 致命异常记录后以非零状态退出，交由进程管理器重启；退出前尽力断开 SSE 长连接。
+installProcessHandlers({
+  onFatal: () => {
+    try { mainStreamHub.shutdown(); } catch (_) { /* 尚未初始化或已关闭 */ }
+  }
+});
+installConsoleBridge();
 
 // 添加性能诊断日志
 console.time('启动总时间');
@@ -43,6 +56,9 @@ console.log('开始加载服务器...');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// 请求级访问日志 + requestId（尽早挂载，覆盖全部请求与静态资源）
+app.use(httpLogger());
 
 function parseDealAmountInput(input) {
   const raw = (input == null ? '' : String(input)).trim();
@@ -65,6 +81,9 @@ console.timeLog('启动总时间', 'Express实例化完成');
 
 // 配置session
 configureApp(app);
+
+// 操作/审计日志：在 session/解析器之后、业务路由之前挂载，按白名单记录“谁做了什么”
+app.use(auditMiddleware());
 
 // 数据存储路径
 const DATA_PATH = path.join(__dirname, 'data.json');
@@ -203,6 +222,14 @@ registerMusicRoutes(app, {
 });
 
 registerNeteaseAuthRoutes(app, {
+  requireLogin
+});
+
+registerLogRoutes(app, {
+  requireLogin
+});
+
+registerAuditRoutes(app, {
   requireLogin
 });
 
@@ -462,16 +489,35 @@ app.use((err, req, res, next) => {
   if (res.headersSent) {
     return next(err);
   }
-  logSafe('error', `请求处理异常: ${req.method} ${req.originalUrl}`, err);
   const isClientError = !!(err && (err.name === 'MulterError' || err.type === 'entity.parse.failed' || err.status === 400));
   const status = isClientError ? 400 : (Number(err && err.status) >= 400 ? Number(err.status) : 500);
-  res.status(status).json(publicErrorPayload(isClientError ? '请求内容无效' : '服务器内部错误', err));
+  const payload = publicErrorPayload(isClientError ? '请求内容无效' : '服务器内部错误', err);
+  // 记录与前端一致的 errorId，便于按 ID 定位；含请求上下文与堆栈
+  logger.error(`请求处理异常: ${req.method} ${req.originalUrl}`, {
+    tag: 'error',
+    requestId: req.id,
+    errorId: payload.errorId,
+    status,
+    method: req.method,
+    url: req.originalUrl,
+    name: err && err.name,
+    message: err && err.message,
+    stack: err && err.stack
+  });
+  res.status(status).json(payload);
 });
 
 // 启动服务器
 const server = app.listen(PORT, () => {
   console.timeEnd('启动总时间');
-  console.log(`服务器运行在 http://localhost:${PORT}`);
+  logger.info(`服务器运行在 http://localhost:${PORT}`, {
+    tag: 'startup',
+    port: PORT,
+    pid: process.pid,
+    node: process.version,
+    env: process.env.NODE_ENV || 'development',
+    logDir
+  });
 });
 
 // 优雅关闭：先断开 SSE 长连接再停止监听，避免客户端等到心跳超时才重连

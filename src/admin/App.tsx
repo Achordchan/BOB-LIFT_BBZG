@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Layout, Menu, Button, Typography, Space, Grid, AutoComplete, App as AntApp, Spin, Drawer, Breadcrumb, Tooltip } from 'antd';
+import { Layout, Menu, Button, Typography, Space, Grid, AutoComplete, App as AntApp, Spin, Drawer, Tooltip } from 'antd';
 import {
   LinkOutlined,
   MenuFoldOutlined,
@@ -18,6 +18,8 @@ const HomeSettingsPage = lazy(() => import('./pages/HomeSettingsPage'));
 const ThemesPage = lazy(() => import('./pages/ThemesPage'));
 const ApiDebugPage = lazy(() => import('./pages/ApiDebugPage'));
 const SystemPage = lazy(() => import('./pages/SystemPage'));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
+const LogsPage = lazy(() => import('./pages/LogsPage'));
 import { GlobalAudioPlayer } from './components/GlobalAudioPlayer';
 import { apiGet, apiText, isRedirectingToLogin } from './api';
 import { AdminAccountMenu } from './components/AdminAccountMenu';
@@ -286,6 +288,8 @@ export default function App() {
       case 'themes': return <ThemesPage />;
       case 'apis': return <ApiDebugPage />;
       case 'system': return <SystemPage />;
+      case 'audit': return <AuditPage />;
+      case 'logs': return <LogsPage />;
       default: return <DashboardPage />;
     }
   }
@@ -347,10 +351,6 @@ export default function App() {
               onClick={() => (isMobile ? setMobileNavOpen(true) : setCollapsed(!collapsed))}
             />
             <div className="header-title">
-              <Breadcrumb
-                className="header-breadcrumb"
-                items={[{ title: current.group }, { title: current.title }]}
-              />
               <Typography.Title level={4} className="page-title">{current.title}</Typography.Title>
             </div>
           </div>
@@ -374,9 +374,6 @@ export default function App() {
           </Space>
         </Header>
         <Content className={playerTrack ? 'admin-content admin-content-with-player' : 'admin-content'}>
-          <div className="admin-page-intro">
-            <Typography.Text type="secondary">{current.sub}</Typography.Text>
-          </div>
           <Suspense fallback={<div className="admin-page-loading"><Spin tip="页面加载中" /></div>}>
             {renderPage()}
           </Suspense>

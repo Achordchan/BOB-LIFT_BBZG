@@ -7,6 +7,9 @@ bbzg_production_snapshot_*/
 .DS_Store
 *.log
 
+# 运行时日志目录（winston 按天切割，含 .log/.gz/.audit.json）
+logs/
+
 # 依赖与临时目录
 node_modules/
 .tmp/

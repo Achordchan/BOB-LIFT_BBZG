@@ -43,6 +43,8 @@ export function NeteaseAuthCard() {
   const [manualOpen, setManualOpen] = useState(false);
   const [manualValue, setManualValue] = useState('');
   const [manualLoading, setManualLoading] = useState(false);
+  // 已授权时默认收起操作区，仅显示状态；点“管理授权”再展开
+  const [expanded, setExpanded] = useState(false);
 
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 每次发起扫码自增一代；只有当代号仍为当前代时，轮询回调才生效，
@@ -195,14 +197,20 @@ export function NeteaseAuthCard() {
     return <Tag>未授权</Tag>;
   }
 
+  const loggedIn = !!status?.logged_in;
+  // 已授权且未展开时，收起说明与操作区，保持卡片精简
+  const showControls = !loggedIn || expanded;
+
   return (
     <div>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Alert
-          type="info"
-          showIcon
-          message="扫码登录后，网易云的搜索、试听、歌词与导入将使用你的账号授权，无需再手工提取 Cookie 或配置环境变量。授权实时可换，随时可清除。"
-        />
+        {!loggedIn ? (
+          <Alert
+            type="info"
+            showIcon
+            message="扫码登录后，网易云的搜索、试听、歌词与导入将使用你的账号授权，无需再手工提取 Cookie 或配置环境变量。授权实时可换，随时可清除。"
+          />
+        ) : null}
 
         <Spin spinning={statusLoading}>
           <Space size={16} wrap align="center">
@@ -216,21 +224,28 @@ export function NeteaseAuthCard() {
             {status?.last_modified
               ? <Typography.Text type="secondary">更新时间：{dateTime(status.last_modified)}</Typography.Text>
               : null}
+            {loggedIn ? (
+              <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setExpanded(v => !v)}>
+                {expanded ? '收起' : '管理授权'}
+              </Button>
+            ) : null}
           </Space>
         </Spin>
 
-        <Space wrap>
-          <Button type="primary" icon={<LoginOutlined />} loading={qrLoading} onClick={startQrLogin}>
-            {status?.logged_in ? '重新扫码登录' : '扫码登录'}
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={loadStatus}>刷新状态</Button>
-          <Button onClick={() => { setManualValue(''); setManualOpen(true); }}>手动粘贴 Cookie</Button>
-          {status?.cookie_present ? (
-            <Popconfirm title="确认清除当前授权？" onConfirm={clearAuth}>
-              <Button danger>清除授权</Button>
-            </Popconfirm>
-          ) : null}
-        </Space>
+        {showControls ? (
+          <Space wrap>
+            <Button type="primary" icon={<LoginOutlined />} loading={qrLoading} onClick={startQrLogin}>
+              {loggedIn ? '重新扫码登录' : '扫码登录'}
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={loadStatus}>刷新状态</Button>
+            <Button onClick={() => { setManualValue(''); setManualOpen(true); }}>手动粘贴 Cookie</Button>
+            {status?.cookie_present ? (
+              <Popconfirm title="确认清除当前授权？" onConfirm={clearAuth}>
+                <Button danger>清除授权</Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        ) : null}
 
         {qr ? (
           <Space direction="vertical" align="center" style={{ width: '100%', padding: '8px 0' }}>

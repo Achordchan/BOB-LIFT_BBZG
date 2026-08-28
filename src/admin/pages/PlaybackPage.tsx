@@ -226,99 +226,119 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
   async function saveTts(values: any) { try { await apiJson('/api/aliyun-tts-config', 'POST', values); message.success('TTS 配置已保存'); load(); } catch (e: any) { message.error(e.message || '保存失败'); } }
   async function scanCleanup() { try { const res = await apiJson<{ items: any[] }>('/api/audio-cleanup/scan', 'POST', {}); setCleanup((res as any).items || []); setCleanupScanned(true); } catch (e: any) { message.error(e.message || '扫描失败'); } }
 
+  const startupBlock = (
+    <div className="startup-block">
+      <div className="pb-current">
+        <div className="pb-current-info">
+          <Typography.Text type="secondary">当前</Typography.Text>
+          <Typography.Text strong ellipsis>{startupAudioMeta.title}</Typography.Text>
+          <Tag color={startupAudioMeta.color}>{startupAudioMeta.type}</Tag>
+        </div>
+        <Button size="small" type={isTrackActive(`startup-audio-${startupAudioPath}`) ? 'primary' : 'default'} icon={<PlayCircleOutlined />} onClick={playStartupAudio}>
+          {isTrackActive(`startup-audio-${startupAudioPath}`) ? '播放中' : '试听'}
+        </Button>
+      </div>
+      <Form form={startupForm} layout="vertical" onFinish={saveStartup} className="pb-form">
+        <div className="pb-inline-row">
+          <Form.Item name="mode" label="播放策略">
+            <Radio.Group optionType="button" buttonStyle="solid" className="startup-mode-group" options={[{ label: '系统默认', value: 'default' }, { label: '语音播报', value: 'tts' }, { label: '音频文件', value: 'file' }]} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">保存启动配置</Button>
+        </div>
+        <Form.Item name="audioPath" hidden><Input /></Form.Item>
+        {startupMode === 'file' && (
+          <div className="pb-inline-row">
+            <Form.Item label="从音乐库选择">
+              <Select showSearch allowClear optionFilterProp="label" placeholder="选择一首已有音乐" options={startupMusicOptions} onChange={selectStartupMusic} />
+            </Form.Item>
+            <Form.Item name="upload" label="或上传音频" valuePropName="fileList" getValueFromEvent={norm}>
+              <Upload beforeUpload={() => false} maxCount={1} accept="audio/*" className="pb-upload"><Button icon={<UploadOutlined />} block>选择音频文件</Button></Upload>
+            </Form.Item>
+            <Button icon={<CloudUploadOutlined />} onClick={() => uploadStartup(startupForm.getFieldsValue())}>上传并启用</Button>
+          </div>
+        )}
+        {startupMode === 'tts' && (
+          <div className="pb-inline-row pb-inline-row-top">
+            <Form.Item name="ttsText" label="播报文案">
+              <Input.TextArea rows={2} placeholder="输入首页打开时要播报的内容" />
+            </Form.Item>
+            <Button icon={<SoundOutlined />} onClick={generateStartupTts}>生成并启用</Button>
+          </div>
+        )}
+        {startupMode === 'default' && <Typography.Text type="secondary">使用系统内置启动声，无需额外配置。</Typography.Text>}
+      </Form>
+    </div>
+  );
+
   return <Tabs items={[
     {
-      key: 'battle',
-      label: '默认战歌',
+      key: 'playback',
+      label: '播放设置',
       children: (
-        <SectionCard title="默认战歌" description="用户未配置专属音乐时自动使用">
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Card size="small" className="playback-current-card">
-              {defaultSong ? (
-                <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                  <Typography.Text strong>{defaultSong.name || '默认战歌'}</Typography.Text>
-                <Button
-                  type={isTrackActive(`default-song-${defaultSong.id || defaultSong.filename}`) ? 'primary' : 'default'}
-                  icon={<PlayCircleOutlined />}
-                  disabled={!defaultSong.filename}
-                  onClick={playDefaultSong}
-                >
-                  {isTrackActive(`default-song-${defaultSong.id || defaultSong.filename}`) ? '正在播放' : (defaultSong.filename ? '试听' : '暂无音频')}
-                </Button>
-                  <Popconfirm title="确认移除默认战歌？" onConfirm={async () => { await apiJson('/api/defaultBattleSong/delete', 'DELETE'); message.success('已移除'); load(); }}>
-                    <Button danger>移除默认战歌</Button>
-                  </Popconfirm>
-                </Space>
-              ) : (
-                <Typography.Text type="secondary">当前未设置默认战歌</Typography.Text>
-              )}
-            </Card>
-            <Form form={defaultSelectForm} className="playback-inline-form" layout="inline" onFinish={selectDefault}>
-              <Form.Item name="musicId" label="从音乐库选择" className="playback-default-select-item" rules={[{ required: true, message: '请选择音乐库中的战歌' }]}>
-                <Select showSearch optionFilterProp="label" placeholder="选择一首已有音乐" options={battleSongOptions} />
-              </Form.Item>
-              <Button type="primary" htmlType="submit">保存默认战歌</Button>
-            </Form>
-            <Form form={defaultForm} className="playback-inline-form" layout="inline" onFinish={uploadDefault}>
-              <Form.Item name="file" label="上传新文件" valuePropName="fileList" getValueFromEvent={norm}>
-                <Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload>
-              </Form.Item>
-              <Button htmlType="submit">上传并设为默认</Button>
-            </Form>
-          </Space>
-        </SectionCard>
-      )
-    },
-    { key: 'inquiry', label: '询盘音效', children: <SectionCard title="询盘音效配置" description="新增或减少询盘时触发不同音效"><Form form={inquiryForm} layout="vertical" onFinish={saveInquiry}><Form.Item name="addInquiryMusicId" label="新增询盘音效"><Select allowClear options={soundOptions} /></Form.Item><Form.Item name="reduceInquiryMusicId" label="减少询盘音效"><Select allowClear options={soundOptions} /></Form.Item><Button type="primary" htmlType="submit">保存配置</Button></Form></SectionCard> },
-    { key: 'tts', label: '语音播报', children: <SectionCard title="阿里云 TTS 配置" description="AccessKey Secret 已脱敏，保留 ****** 时不会覆盖原密钥"><Form form={ttsForm} layout="vertical" onFinish={saveTts}><div className="form-grid"><Form.Item name="url" label="服务地址"><Input /></Form.Item><Form.Item name="appKey" label="AppKey"><Input /></Form.Item><Form.Item name="accessKeyId" label="AccessKey ID"><Input /></Form.Item><Form.Item name="accessKeySecret" label="AccessKey Secret"><Input.Password /></Form.Item><Form.Item name="voice" label="音色"><Input /></Form.Item><Form.Item name="format" label="格式"><Select options={[{ value: 'mp3' }, { value: 'wav' }]} /></Form.Item><Form.Item name="sampleRate" label="采样率"><Input type="number" /></Form.Item><Form.Item name="volume" label="音量"><Input type="number" /></Form.Item><Form.Item name="speechRate" label="语速"><Input type="number" /></Form.Item><Form.Item name="pitchRate" label="音调"><Input type="number" /></Form.Item></div><Space><Button type="primary" htmlType="submit">保存 TTS 配置</Button><Button onClick={async () => { try { await apiJson('/api/test-aliyun-tts', 'POST', {}); message.success('Token 测试通过'); } catch (e: any) { message.error(e.message || '测试失败'); } }}>测试 Token</Button></Space></Form></SectionCard> },
-    {
-      key: 'startup',
-      label: '启动音频',
-      children: (
-        <SectionCard title="启动音频" description="管理首页打开时的启动声">
-          <div className="startup-config-layout">
-            <Card className="startup-preview-card" bordered={false}>
-              <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                <div className="startup-preview-icon"><SoundOutlined /></div>
-                <div>
-                  <Typography.Text type="secondary">当前启动音频</Typography.Text>
-                  <Typography.Title level={4} style={{ margin: '4px 0 0' }}>{startupAudioMeta.title}</Typography.Title>
-                </div>
-                <Tag color={startupAudioMeta.color}>{startupAudioMeta.type}</Tag>
-                <Button type={isTrackActive(`startup-audio-${startupAudioPath}`) ? 'primary' : 'default'} icon={<PlayCircleOutlined />} onClick={playStartupAudio}>
-                  {isTrackActive(`startup-audio-${startupAudioPath}`) ? '正在播放' : '试听'}
-                </Button>
-              </Space>
-            </Card>
-            <Form form={startupForm} layout="vertical" onFinish={saveStartup} className="startup-config-form">
-              <Form.Item name="mode" label="播放策略">
-                <Radio.Group optionType="button" buttonStyle="solid" className="startup-mode-group" options={[{ label: '系统默认', value: 'default' }, { label: '语音播报', value: 'tts' }, { label: '音频文件', value: 'file' }]} />
-              </Form.Item>
-              <Form.Item name="audioPath" hidden><Input /></Form.Item>
-              {startupMode === 'file' && (
-                <div className="startup-option-panel">
-                  <Form.Item label="从音乐库选择">
-                    <Select showSearch allowClear optionFilterProp="label" placeholder="选择一首已有音乐" options={startupMusicOptions} onChange={selectStartupMusic} />
+        <div className="playback-grid">
+          <section className="pb-card">
+            <header className="pb-card-head">
+              <span className="pb-card-title">默认战歌</span>
+              <span className="pb-card-sub">用户未配置专属音乐时自动使用</span>
+            </header>
+            <div className="pb-card-body">
+              <div className="pb-current">
+                {defaultSong ? (
+                  <>
+                    <div className="pb-current-info">
+                      <Typography.Text strong ellipsis>{defaultSong.name || '默认战歌'}</Typography.Text>
+                      <Tag color="blue">当前</Tag>
+                    </div>
+                    <Space size={6}>
+                      <Button size="small" type={isTrackActive(`default-song-${defaultSong.id || defaultSong.filename}`) ? 'primary' : 'default'} icon={<PlayCircleOutlined />} disabled={!defaultSong.filename} onClick={playDefaultSong}>{isTrackActive(`default-song-${defaultSong.id || defaultSong.filename}`) ? '播放中' : (defaultSong.filename ? '试听' : '无音频')}</Button>
+                      <Popconfirm title="确认移除默认战歌？" onConfirm={async () => { await apiJson('/api/defaultBattleSong/delete', 'DELETE'); message.success('已移除'); load(); }}><Button size="small" danger>移除</Button></Popconfirm>
+                    </Space>
+                  </>
+                ) : <Typography.Text type="secondary">当前未设置默认战歌</Typography.Text>}
+              </div>
+              <Form form={defaultSelectForm} layout="vertical" onFinish={selectDefault} className="pb-form">
+                <div className="pb-inline-row">
+                  <Form.Item name="musicId" label="从音乐库选择" rules={[{ required: true, message: '请选择音乐库中的战歌' }]}>
+                    <Select showSearch optionFilterProp="label" placeholder="选择一首已有音乐" options={battleSongOptions} />
                   </Form.Item>
-                  <Form.Item name="upload" label="上传启动音频" valuePropName="fileList" getValueFromEvent={norm}>
-                    <Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择音频文件</Button></Upload>
-                  </Form.Item>
-                  <Button icon={<CloudUploadOutlined />} onClick={() => uploadStartup(startupForm.getFieldsValue())}>上传并设为启动音频</Button>
+                  <Button type="primary" htmlType="submit">保存</Button>
                 </div>
-              )}
-              {startupMode === 'tts' && (
-                <div className="startup-option-panel">
-                  <Form.Item name="ttsText" label="播报文案">
-                    <Input.TextArea rows={4} placeholder="输入首页打开时要播报的内容" />
+              </Form>
+              <Form form={defaultForm} layout="vertical" onFinish={uploadDefault} className="pb-form">
+                <div className="pb-inline-row">
+                  <Form.Item name="file" label="上传新文件" valuePropName="fileList" getValueFromEvent={norm}>
+                    <Upload beforeUpload={() => false} maxCount={1} accept="audio/*" className="pb-upload"><Button icon={<UploadOutlined />} block>选择文件</Button></Upload>
                   </Form.Item>
-                  <Button icon={<SoundOutlined />} onClick={generateStartupTts}>生成并设为启动音频</Button>
+                  <Button htmlType="submit">上传并设为默认</Button>
                 </div>
-              )}
-              {startupMode === 'default' && <div className="startup-option-panel"><Typography.Text type="secondary">使用系统内置启动声，无需填写文件地址。</Typography.Text></div>}
-              <Button type="primary" htmlType="submit">保存启动配置</Button>
-            </Form>
-          </div>
-        </SectionCard>
+              </Form>
+            </div>
+          </section>
+
+          <section className="pb-card">
+            <header className="pb-card-head">
+              <span className="pb-card-title">询盘音效</span>
+              <span className="pb-card-sub">新增或减少询盘时触发不同音效</span>
+            </header>
+            <div className="pb-card-body">
+              <Form form={inquiryForm} layout="vertical" onFinish={saveInquiry} className="pb-form">
+                <div className="pb-field-grid">
+                  <Form.Item name="addInquiryMusicId" label="新增询盘音效"><Select allowClear options={soundOptions} placeholder="选择触发音效" /></Form.Item>
+                  <Form.Item name="reduceInquiryMusicId" label="减少询盘音效"><Select allowClear options={soundOptions} placeholder="选择触发音效" /></Form.Item>
+                </div>
+                <div className="pb-form-foot"><Button type="primary" htmlType="submit">保存配置</Button></div>
+              </Form>
+            </div>
+          </section>
+
+          <section className="pb-card pb-span-2">
+            <header className="pb-card-head">
+              <span className="pb-card-title">启动音频</span>
+              <span className="pb-card-sub">首页打开时的启动声</span>
+            </header>
+            <div className="pb-card-body">{startupBlock}</div>
+          </section>
+        </div>
       )
     },
     {
@@ -433,35 +453,61 @@ export default function PlaybackPage({ playTrack, activeTrackId }: PlaybackPageP
       )
     },
     {
-      key: 'cleanup',
-      label: '音频清理',
-      children: <SectionCard title="音频清理" description="只允许清理未被引用的 TTS 和 custom 音频">
-        <Button onClick={scanCleanup}>扫描可清理文件</Button>
-        {cleanupScanned ? <List
-          style={{ marginTop: 16 }}
-          dataSource={cleanup}
-          locale={{ emptyText: '暂无可清理文件' }}
-          renderItem={(item) => <List.Item actions={[
-            <Popconfirm title="确认删除该音频？" onConfirm={async () => { const res = await apiJson('/api/audio-cleanup/delete', 'POST', { audioPath: item.audioPath }); setCleanup((res as any).items || []); setCleanupScanned(true); message.success('已删除'); }}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
-          ]}>
-            <List.Item.Meta
-              title={<Typography.Text strong>{item.audioPath}</Typography.Text>}
-              description={<Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Typography.Text type="secondary">{item.sizeKb || 0} KB</Typography.Text>
-                <Button
-                  size="small"
-                  type={isTrackActive(`cleanup-${item.id || item.audioPath}`) ? 'primary' : 'default'}
-                  icon={<PlayCircleOutlined />}
-                  disabled={!item.audioPath}
-                  onClick={() => playCleanupItem(item)}
-                >
-                  {isTrackActive(`cleanup-${item.id || item.audioPath}`) ? '正在播放' : (item.audioPath ? '试听' : '无音频')}
-                </Button>
-              </Space>}
-            />
-          </List.Item>}
-        /> : null}
-      </SectionCard>
+      key: 'tts-maintenance',
+      label: '语音与维护',
+      children: (
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <SectionCard title="阿里云 TTS 配置">
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>AccessKey Secret 已脱敏，保留 ****** 时不会覆盖原密钥</Typography.Text>
+            <Form form={ttsForm} layout="vertical" onFinish={saveTts}>
+              <div className="form-grid">
+                <Form.Item name="url" label="服务地址"><Input /></Form.Item>
+                <Form.Item name="appKey" label="AppKey"><Input /></Form.Item>
+                <Form.Item name="accessKeyId" label="AccessKey ID"><Input /></Form.Item>
+                <Form.Item name="accessKeySecret" label="AccessKey Secret"><Input.Password /></Form.Item>
+                <Form.Item name="voice" label="音色"><Input /></Form.Item>
+                <Form.Item name="format" label="格式"><Select options={[{ value: 'mp3' }, { value: 'wav' }]} /></Form.Item>
+                <Form.Item name="sampleRate" label="采样率"><Input type="number" /></Form.Item>
+                <Form.Item name="volume" label="音量"><Input type="number" /></Form.Item>
+                <Form.Item name="speechRate" label="语速"><Input type="number" /></Form.Item>
+                <Form.Item name="pitchRate" label="音调"><Input type="number" /></Form.Item>
+              </div>
+              <Space>
+                <Button type="primary" htmlType="submit">保存 TTS 配置</Button>
+                <Button onClick={async () => { try { await apiJson('/api/test-aliyun-tts', 'POST', {}); message.success('Token 测试通过'); } catch (e: any) { message.error(e.message || '测试失败'); } }}>测试 Token</Button>
+              </Space>
+            </Form>
+          </SectionCard>
+          <SectionCard title="音频清理">
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>只允许清理未被引用的 TTS 和 custom 音频</Typography.Text>
+            <Button onClick={scanCleanup}>扫描可清理文件</Button>
+            {cleanupScanned ? <List
+              style={{ marginTop: 16 }}
+              dataSource={cleanup}
+              locale={{ emptyText: '暂无可清理文件' }}
+              renderItem={(item) => <List.Item actions={[
+                <Popconfirm title="确认删除该音频？" onConfirm={async () => { const res = await apiJson('/api/audio-cleanup/delete', 'POST', { audioPath: item.audioPath }); setCleanup((res as any).items || []); setCleanupScanned(true); message.success('已删除'); }}><Button danger icon={<DeleteOutlined />}>删除</Button></Popconfirm>
+              ]}>
+                <List.Item.Meta
+                  title={<Typography.Text strong>{item.audioPath}</Typography.Text>}
+                  description={<Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Typography.Text type="secondary">{item.sizeKb || 0} KB</Typography.Text>
+                    <Button
+                      size="small"
+                      type={isTrackActive(`cleanup-${item.id || item.audioPath}`) ? 'primary' : 'default'}
+                      icon={<PlayCircleOutlined />}
+                      disabled={!item.audioPath}
+                      onClick={() => playCleanupItem(item)}
+                    >
+                      {isTrackActive(`cleanup-${item.id || item.audioPath}`) ? '正在播放' : (item.audioPath ? '试听' : '无音频')}
+                    </Button>
+                  </Space>}
+                />
+              </List.Item>}
+            /> : null}
+          </SectionCard>
+        </Space>
+      )
     }
   ]} />;
 }

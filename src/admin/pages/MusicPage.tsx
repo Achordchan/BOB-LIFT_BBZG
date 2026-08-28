@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, Card, Drawer, Form, Input, Modal, Popconfirm, Progress, Space, Spin, Table, Tabs, Tag, Typography, Upload } from 'antd';
+import { App, Button, Drawer, Form, Input, Modal, Popconfirm, Progress, Space, Spin, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, apiText, audioUrl, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
@@ -60,7 +60,7 @@ export default function MusicPage({
   const [lyricsSearchTarget, setLyricsSearchTarget] = useState<LyricsSearchTarget>('upload');
   const [applyLyricsId, setApplyLyricsId] = useState('');
   const [importing, setImporting] = useState<any>(null);
-  const [assetView, setAssetView] = useState<'songs' | 'sounds' | null>(null);
+  const [assetView, setAssetView] = useState<'songs' | 'sounds'>('songs');
   const importSourceRef = useRef<EventSource | null>(null);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -606,21 +606,7 @@ export default function MusicPage({
     </SectionCard>
     <SectionCard title="音乐资产" description="音乐库、音效库和网易云导入统一管理" extra={<Space><Button icon={<SearchOutlined />} onClick={openSearchModal}>网易云导入</Button><Button icon={<PlusOutlined />} onClick={() => setOpen('sound')}>上传音效</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen('music')}>上传音乐</Button></Space>}>
       {importing && <Progress percent={Number(importing.percent || 0)} status={importing.status === 'error' ? 'exception' : importing.status === 'done' ? 'success' : 'active'} />}
-      {!assetView ? <div className="music-asset-entry-grid">
-        <Card size="small" hoverable onClick={() => setAssetView('songs')}>
-          <Typography.Text type="secondary">音乐库</Typography.Text>
-          <Typography.Title level={3} style={{ margin: '6px 0 0' }}>{songs.length}</Typography.Title>
-          <Typography.Text type="secondary">点击查看音乐列表</Typography.Text>
-        </Card>
-        <Card size="small" hoverable onClick={() => setAssetView('sounds')}>
-          <Typography.Text type="secondary">音效库</Typography.Text>
-          <Typography.Title level={3} style={{ margin: '6px 0 0' }}>{sounds.length}</Typography.Title>
-          <Typography.Text type="secondary">点击查看音效列表</Typography.Text>
-        </Card>
-      </div> : <>
-        <Button style={{ marginBottom: 12 }} onClick={() => setAssetView(null)}>返回资产概览</Button>
-        <Tabs activeKey={assetView} onChange={(key) => setAssetView(key as 'songs' | 'sounds')} items={[{ key: 'songs', label: `音乐库 ${songs.length}`, children: <Table className="music-admin-table" rowKey="id" loading={loading} dataSource={songs} columns={songColumns as any} scroll={{ x: 1010 }} /> }, { key: 'sounds', label: `音效库 ${sounds.length}`, children: <Table className="music-admin-table" rowKey="id" loading={loading} dataSource={sounds} columns={soundColumns as any} scroll={{ x: 860 }} /> }]} />
-      </>}
+      <Tabs activeKey={assetView} onChange={(key) => setAssetView(key as 'songs' | 'sounds')} items={[{ key: 'songs', label: `音乐库 ${songs.length}`, children: <Table className="music-admin-table" rowKey="id" loading={loading} dataSource={songs} columns={songColumns as any} scroll={{ x: 1010 }} /> }, { key: 'sounds', label: `音效库 ${sounds.length}`, children: <Table className="music-admin-table" rowKey="id" loading={loading} dataSource={sounds} columns={soundColumns as any} scroll={{ x: 860 }} /> }]} />
     </SectionCard>
 
     <Drawer title={open === 'sound' ? '上传音效' : '上传音乐'} open={!!open} onClose={() => { setOpen(null); setUploadLoading(false); }} width={560} destroyOnClose>
