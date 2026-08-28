@@ -50,6 +50,7 @@ class APIConstants:
     ALBUM_DETAIL_API = 'https://music.163.com/api/v1/album/'
     QR_UNIKEY_API = 'https://interface3.music.163.com/eapi/login/qrcode/unikey'
     QR_LOGIN_API = 'https://interface3.music.163.com/eapi/login/qrcode/client/login'
+    LOGIN_STATUS_API = 'https://music.163.com/api/nuser/account/get'
     
     # 默认配置
     DEFAULT_CONFIG = {
@@ -221,7 +222,46 @@ class NeteaseAPI:
             raise APIException(f"获取歌曲详情请求失败: {e}")
         except json.JSONDecodeError as e:
             raise APIException(f"解析歌曲详情响应失败: {e}")
-    
+
+    def get_login_status(self, cookies: Dict[str, str]) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """向网易云校验 cookie 是否为有效登录态。
+
+        Returns:
+            (verified, profile)
+            verified: 'valid'  - 已确认登录有效
+                      'invalid'- 已确认登录无效/过期
+                      'unknown'- 无法校验（网络异常等，不应据此判为未登录）
+            profile:  登录有效时返回 {'userId', 'nickname'}，否则 None
+        """
+        if not cookies or not cookies.get('MUSIC_U'):
+            return 'invalid', None
+        try:
+            headers = {
+                'User-Agent': APIConstants.USER_AGENT,
+                'Referer': APIConstants.REFERER,
+            }
+            request_cookies = APIConstants.DEFAULT_COOKIES.copy()
+            request_cookies.update(cookies)
+            response = requests.post(
+                APIConstants.LOGIN_STATUS_API,
+                headers=headers,
+                cookies=request_cookies,
+                timeout=15,
+            )
+            response.raise_for_status()
+            result = response.json()
+            profile = result.get('profile')
+            if result.get('code') == 200 and profile and profile.get('userId'):
+                return 'valid', {
+                    'userId': profile.get('userId'),
+                    'nickname': profile.get('nickname'),
+                }
+            # 接口正常返回但无有效 profile，说明登录态已失效
+            return 'invalid', None
+        except (requests.RequestException, json.JSONDecodeError, ValueError):
+            # 网络/解析异常无法确认，交由上层按“未知”处理，避免误判为未登录
+            return 'unknown', None
+
     def get_lyric(self, song_id: int, cookies: Dict[str, str]) -> Dict[str, Any]:
         """获取歌词信息
         

@@ -221,11 +221,33 @@ class MusicAPIService:
         b64 = base64.b64encode(svg_bytes).decode('ascii')
         return f"data:image/svg+xml;base64,{b64}"
 
-    def save_login_cookie(self, cookie_dict: Dict[str, str]) -> bool:
-        """将扫码得到的 cookie 字典写入 cookie 文件（写入前自动备份）。"""
+    def backup_existing_cookie(self, suffix: Optional[str] = None) -> None:
+        """备份当前 cookie（若存在且非空）。
+
+        备份失败时抛出 CookieException，用于在覆盖/清除前中止破坏性操作，
+        兑现“覆盖前自动备份”的保证，避免在无法备份时丢失唯一副本。
+        """
+        try:
+            has_existing = self.cookie_manager.cookie_file.exists() and bool(self.cookie_manager.read_cookie())
+        except Exception:
+            # 读取失败按“存在”处理，强制走备份逻辑（备份失败则中止）
+            has_existing = self.cookie_manager.cookie_file.exists()
+        if not has_existing:
+            return
+        if suffix:
+            self.cookie_manager.backup_cookie(suffix)
+        else:
+            self.cookie_manager.backup_cookie()
+
+    def save_login_cookie(self, cookie_dict: Dict[str, str]) -> Tuple[bool, str]:
+        """将扫码得到的 cookie 字典写入 cookie 文件（写入前自动备份）。
+
+        Returns:
+            (是否成功, 错误信息)
+        """
         music_u = (cookie_dict or {}).get('MUSIC_U', '')
         if not music_u:
-            return False
+            return False, '未获取到 MUSIC_U'
 
         # 组装 cookie 字符串，补充网易云客户端常用字段
         parts = [f"MUSIC_U={music_u}"]
@@ -236,14 +258,14 @@ class MusicAPIService:
         parts.extend(['os=pc', 'appver=8.9.70'])
         cookie_string = '; '.join(parts)
 
-        # 备份现有 cookie（若存在且非空）
+        # 覆盖前备份现有 cookie；备份失败则中止，不销毁原副本
         try:
-            if self.cookie_manager.cookie_file.exists() and self.cookie_manager.read_cookie():
-                self.cookie_manager.backup_cookie()
-        except Exception as e:
-            self.logger.warning(f"备份 cookie 失败（忽略）: {e}")
+            self.backup_existing_cookie()
+        except CookieException as e:
+            return False, f'备份现有 Cookie 失败，已中止覆盖: {e}'
 
-        return self.cookie_manager.write_cookie(cookie_string)
+        ok = self.cookie_manager.write_cookie(cookie_string)
+        return (ok, '' if ok else '写入 Cookie 失败')
 
 
 # 创建Flask应用和服务实例
@@ -684,12 +706,41 @@ def api_info():
         return APIResponse.error(f"获取API信息失败: {str(e)}", 500)
 
 
-def _build_cookie_status() -> Dict[str, Any]:
-    """构造 cookie/登录状态信息（不含敏感明文）。"""
+def _build_cookie_status(verify: bool = True) -> Dict[str, Any]:
+    """构造 cookie/登录状态信息（不含敏感明文）。
+
+    Args:
+        verify: 是否向网易云实时校验登录态。为 True 时 logged_in 反映
+                “已确认有效”，而非仅本地格式合法，避免把已失效的
+                Cookie 长期显示为“已授权”。
+    """
     info = api_service.cookie_manager.get_cookie_info()
+    cookie_present = bool(info.get('cookie_count'))
+    format_ok = bool(info.get('is_valid'))  # 本地格式校验（含 MUSIC_U）
+
+    verified = 'unknown'
+    nickname = None
+    if cookie_present and format_ok and verify:
+        try:
+            cookies = api_service._get_cookies()
+            verified, profile = api_service.netease_api.get_login_status(cookies)
+            if profile:
+                nickname = profile.get('nickname')
+        except Exception as e:
+            api_service.logger.warning(f"校验登录态失败: {e}")
+            verified = 'unknown'
+    elif not (cookie_present and format_ok):
+        verified = 'invalid'
+
+    # 仅当实时校验确认有效时才判为已登录；网络无法校验时不下“未登录”结论
+    logged_in = (verified == 'valid')
+
     return {
-        'logged_in': bool(info.get('is_valid')),
-        'cookie_present': bool(info.get('cookie_count')),
+        'logged_in': logged_in,
+        'verified': verified,
+        'cookie_present': cookie_present,
+        'format_ok': format_ok,
+        'nickname': nickname,
         'important_cookies_present': info.get('important_cookies_present', []),
         'missing_important_cookies': info.get('missing_important_cookies', []),
         'last_modified': info.get('last_modified'),
@@ -743,9 +794,9 @@ def qrlogin_check():
 
         cookie_saved = False
         if code == 803:
-            cookie_saved = api_service.save_login_cookie(cookie_dict)
+            cookie_saved, save_error = api_service.save_login_cookie(cookie_dict)
             if not cookie_saved:
-                return APIResponse.error("登录成功但未能获取/保存 Cookie，请重试", 502)
+                return APIResponse.error(save_error or "登录成功但未能保存 Cookie，请重试", 502)
 
         payload = {
             'code': code,
@@ -784,11 +835,11 @@ def cookie_set():
         if not api_service.cookie_manager.validate_cookie_format(cookie_content):
             return APIResponse.error("cookie 格式无效", 400)
 
+        # 覆盖前备份现有 cookie；备份失败则中止，不销毁原副本
         try:
-            if api_service.cookie_manager.cookie_file.exists() and api_service.cookie_manager.read_cookie():
-                api_service.cookie_manager.backup_cookie()
-        except Exception as e:
-            api_service.logger.warning(f"备份 cookie 失败（忽略）: {e}")
+            api_service.backup_existing_cookie()
+        except CookieException as e:
+            return APIResponse.error(f"备份现有 Cookie 失败，已中止覆盖: {str(e)}", 500)
 
         api_service.cookie_manager.write_cookie(cookie_content)
         return APIResponse.success(_build_cookie_status(), "cookie 已保存")
@@ -803,14 +854,15 @@ def cookie_set():
 def cookie_clear():
     """清除当前 cookie（登出），清除前自动备份。"""
     try:
+        # 清除前备份现有 cookie；备份失败则中止，不销毁唯一副本
         try:
-            if api_service.cookie_manager.cookie_file.exists() and api_service.cookie_manager.read_cookie():
-                api_service.cookie_manager.backup_cookie('logout')
-        except Exception as e:
-            api_service.logger.warning(f"备份 cookie 失败（忽略）: {e}")
+            api_service.backup_existing_cookie('logout')
+        except CookieException as e:
+            return APIResponse.error(f"备份现有 Cookie 失败，已中止清除: {str(e)}", 500)
 
         api_service.cookie_manager.clear_cookie()
-        return APIResponse.success(_build_cookie_status(), "已清除登录")
+        # 已清除，无需再向网易云校验
+        return APIResponse.success(_build_cookie_status(verify=False), "已清除登录")
     except Exception as e:
         api_service.logger.error(f"清除 cookie 异常: {e}")
         return APIResponse.error(f"清除 cookie 失败: {str(e)}", 500)
