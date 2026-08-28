@@ -23,10 +23,17 @@ MUSIC_API_ADMIN_TOKEN="${MUSIC_API_ADMIN_TOKEN:-}"
 # 一个干净的整数经 ssh 传到远端，避免八进制解析、空白/元字符注入等问题。
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
 case "${BACKUP_KEEP}" in
-  ''|*[!0-9]*) BACKUP_KEEP=7 ;;
+  ''|*[!0-9]*) BACKUP_KEEP=7 ;;                         # 空 / 含非数字
   *)
-    BACKUP_KEEP=$((10#${BACKUP_KEEP}))
-    { [ "${BACKUP_KEEP}" -ge 1 ] && [ "${BACKUP_KEEP}" -le 1000 ]; } || BACKUP_KEEP=7
+    # 先按字符串长度卡上界（最大 1000 仅需 4 位），再做算术，
+    # 避免超大数字在 $(()) 里溢出回绕后反而落入合法区间（如 2^64+1 → 1）
+    if [ "${#BACKUP_KEEP}" -le 4 ] \
+       && [ "$((10#${BACKUP_KEEP}))" -ge 1 ] \
+       && [ "$((10#${BACKUP_KEEP}))" -le 1000 ]; then
+      BACKUP_KEEP=$((10#${BACKUP_KEEP}))
+    else
+      BACKUP_KEEP=7
+    fi
     ;;
 esac
 SSH_OPTS="${SSH_OPTS:-}"
@@ -250,10 +257,19 @@ ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
   'bash -s' <<'REMOTE_BACKUP'
 set -euo pipefail
 
-# 保留份数：本地已规整为干净整数，这里再兜底一次（非法回退 7，base-10 解析）
+# 保留份数：本地已规整为干净整数，这里再兜底一次
+# （先卡长度再算术，避免超大值在 $(()) 溢出回绕后落入合法区间）
 KEEP="${BACKUP_KEEP:-7}"
-case "${KEEP}" in ''|*[!0-9]*) KEEP=7 ;; *) KEEP=$((10#${KEEP})) ;; esac
-{ [ "${KEEP}" -ge 1 ] && [ "${KEEP}" -le 1000 ]; } || KEEP=7
+case "${KEEP}" in
+  ''|*[!0-9]*) KEEP=7 ;;
+  *)
+    if [ "${#KEEP}" -le 4 ] && [ "$((10#${KEEP}))" -ge 1 ] && [ "$((10#${KEEP}))" -le 1000 ]; then
+      KEEP=$((10#${KEEP}))
+    else
+      KEEP=7
+    fi
+    ;;
+esac
 
 # 删除某备份目录下的旧备份，仅保留最新 KEEP 份（含本次刚打的）。
 # 每个目录只存放单一项目的备份，故用固定字面后缀匹配（不含变量），
