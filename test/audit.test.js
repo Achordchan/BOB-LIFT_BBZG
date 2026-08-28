@@ -104,3 +104,25 @@ test('管理员退出后台被审计且归属登出前的操作人', () => {
   assert.equal(latest.actor, 'boss');
   assert.equal(latest.actorType, 'admin');
 });
+
+test('保存启动音频配置（非上传）也被审计', () => {
+  const mw = auditMiddleware();
+  runMiddleware(mw, { method: 'POST', url: '/api/startup-audio', session: { loggedIn: true, adminUsername: 'admin' }, status: 200, body: { mode: 'tts', audioPath: '/music/tts/x.mp3' } });
+  const latest = readAudit({ limit: 5 }).entries[0];
+  assert.equal(latest.action, '保存启动音频配置');
+  assert.ok(String(latest.detail).includes('mode=tts'));
+});
+
+test('轮转后仍能读到归档中的历史审计记录', () => {
+  const fsx = require('node:fs');
+  // 造一个归档文件，模拟 audit.jsonl 已被轮转走
+  const archive = path.join(tmpDir, 'audit-2026-01-01T00-00-00-000Z.jsonl');
+  fsx.writeFileSync(archive, JSON.stringify({
+    ts: '2026-01-01T00:00:00.000Z', actor: 'oldadmin', actorType: 'admin',
+    action: '归档里的历史操作', target: '', detail: '', ip: '1.1.1.1', method: 'POST', path: '/x', status: 200, requestId: 'old-1'
+  }) + '\n');
+
+  const found = readAudit({ limit: 500 }).entries.find((e) => e.action === '归档里的历史操作');
+  assert.ok(found, '轮转归档中的记录应仍可读取');
+  assert.equal(found.actor, 'oldadmin');
+});

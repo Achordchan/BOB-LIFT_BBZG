@@ -41,8 +41,13 @@ const { auditMiddleware } = require('./lib/audit');
 const { publicErrorPayload } = require('./lib/safe-error');
 const { logger, httpLogger, installConsoleBridge, installProcessHandlers, logDir } = require('./lib/logger');
 
-// 尽早接管 console.* 与进程级异常，确保后续所有日志统一落盘/脱敏
-installProcessHandlers();
+// 尽早接管 console.* 与进程级异常，确保后续所有日志统一落盘/脱敏。
+// 致命异常记录后以非零状态退出，交由进程管理器重启；退出前尽力断开 SSE 长连接。
+installProcessHandlers({
+  onFatal: () => {
+    try { mainStreamHub.shutdown(); } catch (_) { /* 尚未初始化或已关闭 */ }
+  }
+});
 installConsoleBridge();
 
 // 添加性能诊断日志
