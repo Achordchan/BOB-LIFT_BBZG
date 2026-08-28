@@ -8,12 +8,17 @@
 - 健康检查
 """
 
+import base64
+import hmac
+import io
 import logging
 import os
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from urllib.parse import quote
@@ -21,8 +26,8 @@ from flask import Flask, request, send_file, render_template, Response
 
 try:
     from music_api import (
-        NeteaseAPI, APIException, QualityLevel,
-        url_v1, name_v1, lyric_v1, search_music, 
+        NeteaseAPI, APIException, QualityLevel, QRLoginManager,
+        url_v1, name_v1, lyric_v1, search_music,
         playlist_detail, album_detail
     )
     from cookie_manager import CookieManager, CookieException
@@ -82,6 +87,14 @@ class MusicAPIService:
         self.logger = self._setup_logger()
         self.cookie_manager = CookieManager(os.environ.get('NETEASE_COOKIE_FILE', 'cookie.txt'))
         self.netease_api = NeteaseAPI()
+        self.qr_manager = QRLoginManager()
+        # 最近一次下发的扫码 key；仅允许它写入 Cookie，
+        # 防止“重新扫码”后旧二维码达成登录再覆盖新授权。
+        # _auth_lock 串行化 active_qr_key 的变更与 Cookie 读写/清除，
+        # 避免线程化 Flask 下“检查-写入”之间的竞态。
+        self.active_qr_key = None
+        self.qr_seq = 0
+        self._auth_lock = threading.Lock()
         self.downloader = MusicDownloader()
         
         # 创建下载目录
@@ -202,11 +215,98 @@ class MusicAPIService:
             self.logger.error(f"获取请求数据失败: {e}")
             return {}
 
+    def build_qr_data_uri(self, login_url: str) -> str:
+        """将登录链接生成二维码，返回 data:image/svg+xml 的 base64 data URI。
+
+        使用 qrcode 的 SVG 工厂，无需 Pillow 依赖。
+        """
+        import qrcode
+        import qrcode.image.svg
+
+        factory = qrcode.image.svg.SvgPathImage
+        img = qrcode.make(login_url, image_factory=factory)
+        buf = io.BytesIO()
+        img.save(buf)
+        svg_bytes = buf.getvalue()
+        b64 = base64.b64encode(svg_bytes).decode('ascii')
+        return f"data:image/svg+xml;base64,{b64}"
+
+    def backup_existing_cookie(self, suffix: Optional[str] = None) -> None:
+        """备份当前 cookie（若存在且非空）。
+
+        备份失败时抛出 CookieException，用于在覆盖/清除前中止破坏性操作，
+        兑现“覆盖前自动备份”的保证，避免在无法备份时丢失唯一副本。
+        """
+        try:
+            has_existing = self.cookie_manager.cookie_file.exists() and bool(self.cookie_manager.read_cookie())
+        except Exception:
+            # 读取失败按“存在”处理，强制走备份逻辑（备份失败则中止）
+            has_existing = self.cookie_manager.cookie_file.exists()
+        if not has_existing:
+            return
+        if suffix:
+            self.cookie_manager.backup_cookie(suffix)
+        else:
+            self.cookie_manager.backup_cookie()
+
+    def save_login_cookie(self, cookie_dict: Dict[str, str]) -> Tuple[bool, str]:
+        """将扫码得到的 cookie 字典写入 cookie 文件（写入前自动备份）。
+
+        Returns:
+            (是否成功, 错误信息)
+        """
+        music_u = (cookie_dict or {}).get('MUSIC_U', '')
+        if not music_u:
+            return False, '未获取到 MUSIC_U'
+
+        # 组装 cookie 字符串，补充网易云客户端常用字段
+        parts = [f"MUSIC_U={music_u}"]
+        for name in ('MUSIC_A', '__csrf', 'NMTID'):
+            value = cookie_dict.get(name)
+            if value:
+                parts.append(f"{name}={value}")
+        parts.extend(['os=pc', 'appver=8.9.70'])
+        cookie_string = '; '.join(parts)
+
+        # 覆盖前备份现有 cookie；备份失败则中止，不销毁原副本
+        try:
+            self.backup_existing_cookie()
+        except CookieException as e:
+            return False, f'备份现有 Cookie 失败，已中止覆盖: {e}'
+
+        ok = self.cookie_manager.write_cookie(cookie_string)
+        return (ok, '' if ok else '写入 Cookie 失败')
+
 
 # 创建Flask应用和服务实例
 config = APIConfig()
 app = Flask(__name__)
 api_service = MusicAPIService(config)
+
+# 授权/凭证管理端点的共享令牌：由 Node 后端在代理请求时携带。
+# 服务仅监听 127.0.0.1，但 loopback 不等于“管理员”——同机其他账号/进程
+# 也能访问；配置该令牌后，这些敏感端点要求匹配请求头，才允许操作。
+NETEASE_ADMIN_TOKEN = os.environ.get('NETEASE_ADMIN_TOKEN', '').strip()
+if not NETEASE_ADMIN_TOKEN:
+    api_service.logger.warning(
+        "未配置 NETEASE_ADMIN_TOKEN：授权/Cookie 管理端点仅靠 loopback 保护，"
+        "建议在音乐服务与 Node 后端同时配置相同令牌以启用请求鉴权。"
+    )
+
+
+def require_admin_token(f):
+    """保护敏感端点：配置了 NETEASE_ADMIN_TOKEN 时，校验请求头令牌。
+
+    未配置时保持向后兼容（仅 loopback 保护），已在启动时告警。
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if NETEASE_ADMIN_TOKEN:
+            provided = request.headers.get('X-Netease-Admin-Token', '')
+            if not hmac.compare_digest(str(provided), NETEASE_ADMIN_TOKEN):
+                return APIResponse.error("未授权：缺少或错误的管理令牌", 403)
+        return f(*args, **kwargs)
+    return wrapper
 
 
 @app.before_request
@@ -639,6 +739,214 @@ def api_info():
     except Exception as e:
         api_service.logger.error(f"获取API信息异常: {e}")
         return APIResponse.error(f"获取API信息失败: {str(e)}", 500)
+
+
+def _build_cookie_status(verify: bool = True) -> Dict[str, Any]:
+    """构造 cookie/登录状态信息（不含敏感明文）。
+
+    Args:
+        verify: 是否向网易云实时校验登录态。为 True 时 logged_in 反映
+                “已确认有效”，而非仅本地格式合法，避免把已失效的
+                Cookie 长期显示为“已授权”。
+    """
+    info = api_service.cookie_manager.get_cookie_info()
+    cookie_present = bool(info.get('cookie_count'))
+    format_ok = bool(info.get('is_valid'))  # 本地格式校验（含 MUSIC_U）
+
+    verified = 'unknown'
+    nickname = None
+    if cookie_present and format_ok and verify:
+        try:
+            cookies = api_service._get_cookies()
+            verified, profile = api_service.netease_api.get_login_status(cookies)
+            if profile:
+                nickname = profile.get('nickname')
+        except Exception as e:
+            api_service.logger.warning(f"校验登录态失败: {e}")
+            verified = 'unknown'
+    elif not (cookie_present and format_ok):
+        verified = 'invalid'
+
+    # 仅当实时校验确认有效时才判为已登录；网络无法校验时不下“未登录”结论
+    logged_in = (verified == 'valid')
+
+    return {
+        'logged_in': logged_in,
+        'verified': verified,
+        'cookie_present': cookie_present,
+        'format_ok': format_ok,
+        'nickname': nickname,
+        'important_cookies_present': info.get('important_cookies_present', []),
+        'missing_important_cookies': info.get('missing_important_cookies', []),
+        'last_modified': info.get('last_modified'),
+    }
+
+
+@app.route('/qrlogin/create', methods=['GET', 'POST'])
+@require_admin_token
+def qrlogin_create():
+    """创建扫码登录二维码，返回 unikey 与二维码图片(data URI)。"""
+    try:
+        # 先在锁内预留一个递增序号，再发起网络请求：
+        # 只有“最新一次 create”能最终激活自己的 key，避免慢速的旧 create
+        # 在新 create 之后才回来改写 active_qr_key，把新二维码误判为已取代
+        with api_service._auth_lock:
+            api_service.qr_seq += 1
+            my_seq = api_service.qr_seq
+            # 立即失效旧 key：本次生成期间，任何旧扫码 803 都不得再写入
+            api_service.active_qr_key = None
+
+        unikey = api_service.qr_manager.generate_qr_key()
+        if not unikey:
+            return APIResponse.error("生成二维码失败，请稍后重试", 502)
+
+        with api_service._auth_lock:
+            if my_seq != api_service.qr_seq:
+                # 已有更晚的 create 发起，本次作废，让前端用最新的二维码
+                return APIResponse.error("二维码已被新的请求取代，请重试", 409)
+            api_service.active_qr_key = unikey
+
+        login_url = f'https://music.163.com/login?codekey={unikey}'
+        data = {
+            'key': unikey,
+            'login_url': login_url,
+            'qr_image': api_service.build_qr_data_uri(login_url),
+            'expires_in': 180,
+        }
+        return APIResponse.success(data, "二维码创建成功")
+    except APIException as e:
+        return APIResponse.error(f"生成二维码失败: {str(e)}", 502)
+    except Exception as e:
+        api_service.logger.error(f"创建二维码异常: {e}\n{traceback.format_exc()}")
+        return APIResponse.error(f"创建二维码失败: {str(e)}", 500)
+
+
+@app.route('/qrlogin/check', methods=['GET', 'POST'])
+@require_admin_token
+def qrlogin_check():
+    """轮询扫码登录状态。登录成功(803)时写入 cookie。
+
+    状态码含义：801 等待扫码 / 802 已扫码待确认 / 803 登录成功 / 800 二维码过期。
+    """
+    try:
+        data = api_service._safe_get_request_data()
+        unikey = data.get('key') or data.get('unikey')
+        if not unikey:
+            return APIResponse.error("缺少 key 参数", 400)
+
+        code, cookie_dict = api_service.qr_manager.check_qr_login(unikey)
+
+        status_map = {
+            800: 'expired',
+            801: 'waiting',
+            802: 'scanned',
+            803: 'success',
+        }
+        status = status_map.get(code, 'unknown')
+
+        cookie_saved = False
+        if code == 803:
+            # 「检查活跃 key + 写入」在同一把锁内完成，避免与并发的
+            # /qrlogin/create（改写 active_qr_key）或 /cookie/clear 交错
+            save_error = ''
+            superseded = False
+            with api_service._auth_lock:
+                if unikey != api_service.active_qr_key:
+                    superseded = True
+                else:
+                    cookie_saved, save_error = api_service.save_login_cookie(cookie_dict)
+            if superseded:
+                return APIResponse.success(
+                    {'code': code, 'status': 'superseded', 'cookie_saved': False},
+                    "二维码已被新的扫码会话取代"
+                )
+            if not cookie_saved:
+                return APIResponse.error(save_error or "登录成功但未能保存 Cookie，请重试", 502)
+
+        payload = {
+            'code': code,
+            'status': status,
+            'cookie_saved': cookie_saved,
+        }
+        if code == 803:
+            payload['cookie_status'] = _build_cookie_status()
+        return APIResponse.success(payload, "查询成功")
+    except APIException as e:
+        return APIResponse.error(f"查询登录状态失败: {str(e)}", 502)
+    except Exception as e:
+        api_service.logger.error(f"查询登录状态异常: {e}\n{traceback.format_exc()}")
+        return APIResponse.error(f"查询登录状态失败: {str(e)}", 500)
+
+
+@app.route('/cookie/status', methods=['GET'])
+@require_admin_token
+def cookie_status():
+    """查询当前 cookie/登录状态。"""
+    try:
+        return APIResponse.success(_build_cookie_status(), "获取成功")
+    except Exception as e:
+        api_service.logger.error(f"获取 cookie 状态异常: {e}")
+        return APIResponse.error(f"获取 cookie 状态失败: {str(e)}", 500)
+
+
+@app.route('/cookie/set', methods=['POST'])
+@require_admin_token
+def cookie_set():
+    """手动录入 cookie（粘贴方式），写入前自动备份。"""
+    try:
+        data = api_service._safe_get_request_data()
+        cookie_content = str(data.get('cookie') or data.get('content') or '').strip()
+        if not cookie_content:
+            return APIResponse.error("cookie 内容不能为空", 400)
+
+        if not api_service.cookie_manager.validate_cookie_format(cookie_content):
+            return APIResponse.error("cookie 格式无效", 400)
+
+        # 必须包含有效 MUSIC_U，否则会用无效凭证覆盖掉可用登录态
+        parsed = api_service.cookie_manager.parse_cookie_string(cookie_content)
+        music_u = parsed.get('MUSIC_U', '')
+        if not music_u or len(music_u) < 10:
+            return APIResponse.error("cookie 缺少有效的 MUSIC_U 字段", 400)
+
+        # 手动录入即视为最新授权：使任何进行中的扫码会话失效，
+        # 备份+写入与 key 失效在同一把锁内完成
+        with api_service._auth_lock:
+            try:
+                api_service.backup_existing_cookie()
+            except CookieException as e:
+                return APIResponse.error(f"备份现有 Cookie 失败，已中止覆盖: {str(e)}", 500)
+            api_service.active_qr_key = None
+            api_service.cookie_manager.write_cookie(cookie_content)
+        return APIResponse.success(_build_cookie_status(), "cookie 已保存")
+    except CookieException as e:
+        return APIResponse.error(f"保存 cookie 失败: {str(e)}", 400)
+    except Exception as e:
+        api_service.logger.error(f"保存 cookie 异常: {e}")
+        return APIResponse.error(f"保存 cookie 失败: {str(e)}", 500)
+
+
+@app.route('/cookie/clear', methods=['POST'])
+@require_admin_token
+def cookie_clear():
+    """清除当前 cookie（登出），清除前自动备份。"""
+    try:
+        # 失效进行中的扫码会话 + 备份 + 清除，须原子完成，
+        # 否则在途的旧扫码 803 可能在登出后又把 Cookie 写回来
+        with api_service._auth_lock:
+            try:
+                api_service.backup_existing_cookie('logout')
+            except CookieException as e:
+                return APIResponse.error(f"备份现有 Cookie 失败，已中止清除: {str(e)}", 500)
+            # 先失效扫码会话（无论清除是否成功都不让旧扫码写回），再清除
+            api_service.active_qr_key = None
+            cleared = api_service.cookie_manager.clear_cookie()
+            if not cleared:
+                return APIResponse.error("清除 Cookie 失败，请检查文件权限", 500)
+        # 已清除，无需再向网易云校验
+        return APIResponse.success(_build_cookie_status(verify=False), "已清除登录")
+    except Exception as e:
+        api_service.logger.error(f"清除 cookie 异常: {e}")
+        return APIResponse.error(f"清除 cookie 失败: {str(e)}", 500)
 
 
 def start_api_server():

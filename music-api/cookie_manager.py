@@ -47,7 +47,7 @@ class CookieManager:
         self.cookie_file = Path(cookie_file)
         self.logger = logging.getLogger(__name__)
         
-        # 网易云音乐相关的重要Cookie字段
+        # 网易云音乐相关的重要Cookie字段（用于信息展示）
         self.important_cookies = {
             'MUSIC_U',      # 用户标识
             'MUSIC_A',      # 用户认证
@@ -56,15 +56,48 @@ class CookieManager:
             'WEVNSM',       # 会话管理
             'WNMCID',       # 客户端标识
         }
+
+        # 真正决定登录有效性的必需Cookie。
+        # 网易云鉴权只依赖 MUSIC_U，扫码登录也仅产出该字段，
+        # 因此有效性判定只以 MUSIC_U 为准，避免误报“未授权”。
+        self.required_cookies = {
+            'MUSIC_U',      # 用户标识（登录态核心）
+        }
         
         # 确保cookie文件存在
         self._ensure_cookie_file_exists()
     
     def _ensure_cookie_file_exists(self) -> None:
-        """确保Cookie文件存在"""
+        """确保Cookie文件存在（以 0600 创建，避免出现可被他人读取的空占位文件）"""
         if not self.cookie_file.exists():
-            self.cookie_file.touch()
+            fd = os.open(str(self.cookie_file), os.O_CREAT | os.O_WRONLY, 0o600)
+            os.close(fd)
+            try:
+                os.chmod(self.cookie_file, 0o600)
+            except OSError:
+                pass
             self.logger.info(f"创建Cookie文件: {self.cookie_file}")
+
+    @staticmethod
+    def _write_secure_text(path, content: str) -> None:
+        """以 0600 打开并写入文本：写入前即收紧权限，
+        杜绝明文凭证短暂以 0644 存在的窗口（O_CREAT 对已存在文件不改权限，
+        故再用 fchmod 强制收紧后再写入数据）。
+
+        若无法将权限收紧到 0600，则中止写入并抛出 CookieException——
+        绝不以宽松权限落盘凭证；且此时不 truncate，原文件内容保持不变。
+        """
+        # 注意：不带 O_TRUNC，确保收紧权限失败时不破坏原有内容
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+        except OSError as e:
+            os.close(fd)
+            raise CookieException(f"无法将凭证文件权限收紧到 0600，已中止写入: {e}")
+        # 权限已确保 0600，fd 交由 fdopen 管理，再清空并写入
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.truncate(0)
+            f.write(content)
     
     def read_cookie(self) -> str:
         """读取Cookie文件内容
@@ -116,9 +149,9 @@ class CookieManager:
             if not self.validate_cookie_format(cookie_content):
                 raise CookieException("Cookie格式无效")
             
-            # 写入文件
-            self.cookie_file.write_text(cookie_content.strip(), encoding='utf-8')
-            
+            # 以 0600 写入（写入前即收紧权限，避免明文凭证短暂以 0644 存在）
+            self._write_secure_text(self.cookie_file, cookie_content.strip())
+
             self.logger.info(f"成功写入Cookie到文件: {self.cookie_file}")
             return True
             
@@ -241,10 +274,10 @@ class CookieManager:
                 self.logger.warning("Cookie为空")
                 return False
             
-            # 检查重要Cookie是否存在
-            missing_cookies = self.important_cookies - set(cookies.keys())
+            # 检查必需Cookie是否存在（仅 MUSIC_U）
+            missing_cookies = self.required_cookies - set(cookies.keys())
             if missing_cookies:
-                self.logger.warning(f"缺少重要Cookie: {missing_cookies}")
+                self.logger.warning(f"缺少必需Cookie: {missing_cookies}")
                 return False
             
             # 检查MUSIC_U是否有效（基本验证）
@@ -316,10 +349,10 @@ class CookieManager:
             
             backup_path = self.cookie_file.with_suffix(f".{backup_suffix}.bak")
             
-            # 复制文件内容
+            # 复制文件内容（备份含 MUSIC_U 凭证，以 0600 写入，避免同机其他账号读取）
             content = self.cookie_file.read_text(encoding='utf-8')
-            backup_path.write_text(content, encoding='utf-8')
-            
+            self._write_secure_text(backup_path, content)
+
             self.logger.info(f"Cookie备份成功: {backup_path}")
             return str(backup_path)
             

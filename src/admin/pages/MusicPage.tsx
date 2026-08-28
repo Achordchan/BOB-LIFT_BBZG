@@ -3,6 +3,7 @@ import { App, Button, Card, Drawer, Form, Input, Modal, Popconfirm, Progress, Sp
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, apiText, audioUrl, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
+import { NeteaseAuthCard } from '../components/NeteaseAuthCard';
 import type { MusicItem, PlayAdminTrackInput } from '../types';
 
 interface MusicPageProps {
@@ -600,6 +601,9 @@ export default function MusicPage({
   ];
 
   return <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <SectionCard title="网易云授权" description="扫码登录管理网易云账号授权，替代手工提取 Cookie / 环境变量">
+      <NeteaseAuthCard />
+    </SectionCard>
     <SectionCard title="音乐资产" description="音乐库、音效库和网易云导入统一管理" extra={<Space><Button icon={<SearchOutlined />} onClick={openSearchModal}>网易云导入</Button><Button icon={<PlusOutlined />} onClick={() => setOpen('sound')}>上传音效</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen('music')}>上传音乐</Button></Space>}>
       {importing && <Progress percent={Number(importing.percent || 0)} status={importing.status === 'error' ? 'exception' : importing.status === 'done' ? 'success' : 'active'} />}
       {!assetView ? <div className="music-asset-entry-grid">

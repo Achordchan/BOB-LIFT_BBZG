@@ -34,6 +34,7 @@ const { registerEggRoutes } = require('./routes/egg');
 const { registerThemeRoutes } = require('./routes/themes');
 const { registerExternalAccessRoutes } = require('./routes/external-access');
 const { registerSystemStatusRoutes } = require('./routes/system-status');
+const { registerNeteaseAuthRoutes } = require('./routes/netease-auth');
 const { logSafe, publicErrorPayload } = require('./lib/safe-error');
 
 // 添加性能诊断日志
@@ -199,6 +200,10 @@ registerMusicRoutes(app, {
   saveData,
   uuidv4,
   baseDir: __dirname
+});
+
+registerNeteaseAuthRoutes(app, {
+  requireLogin
 });
 
 registerTtsRoutes(app, {
