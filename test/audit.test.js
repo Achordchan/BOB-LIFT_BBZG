@@ -126,3 +126,41 @@ test('轮转后仍能读到归档中的历史审计记录', () => {
   assert.ok(found, '轮转归档中的记录应仍可读取');
   assert.equal(found.actor, 'oldadmin');
 });
+
+test('默认战歌的上传与移除同样被审计', () => {
+  const mw = auditMiddleware();
+  runMiddleware(mw, { method: 'POST', url: '/api/defaultBattleSong/upload', session: { loggedIn: true, adminUsername: 'admin' }, status: 200 });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '上传并设为默认战歌');
+
+  runMiddleware(mw, { method: 'DELETE', url: '/api/defaultBattleSong/delete', session: { loggedIn: true, adminUsername: 'admin' }, status: 200 });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '移除默认战歌');
+});
+
+test('个性化音频与文件维护类操作被审计', () => {
+  const mw = auditMiddleware();
+  const admin = { loggedIn: true, adminUsername: 'admin' };
+
+  runMiddleware(mw, { method: 'POST', url: '/api/personalized/add', session: admin, status: 200, body: { name: '登顶', source: 'tts' } });
+  const added = readAudit({ limit: 3 }).entries[0];
+  assert.equal(added.action, '新增个性化音频');
+  assert.ok(String(added.detail).includes('name=登顶'));
+
+  runMiddleware(mw, { method: 'DELETE', url: '/api/personalized/delete/abc123', session: admin, status: 200 });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '删除个性化音频');
+
+  runMiddleware(mw, { method: 'POST', url: '/api/personalized/fire', session: admin, status: 200, body: { audioPath: '/music/tts/x.mp3' } });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '推送个性化音频到首页');
+
+  runMiddleware(mw, { method: 'POST', url: '/api/audio-cleanup/delete', session: admin, status: 200, body: { audioPath: '/music/tts/old.mp3' } });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '删除可清理音频');
+});
+
+test('只读与高频端点不写入审计', () => {
+  const mw = auditMiddleware();
+  const before = readAudit({ limit: 1000 }).scanned;
+  const admin = { loggedIn: true, adminUsername: 'admin' };
+  for (const url of ['/api/audio-cleanup/scan', '/api/personalized/list', '/api/netease/qr/create', '/api/test-aliyun-tts', '/api/text-to-speech']) {
+    runMiddleware(mw, { method: 'POST', url, session: admin, status: 200 });
+  }
+  assert.equal(readAudit({ limit: 1000 }).scanned, before, '只读/高频端点不应产生审计记录');
+});
