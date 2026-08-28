@@ -3,7 +3,9 @@ import {
   BarChartOutlined,
   BgColorsOutlined,
   CustomerServiceOutlined,
+  AuditOutlined,
   DashboardOutlined,
+  FileSearchOutlined,
   FlagOutlined,
   SettingOutlined,
   ShopOutlined,
@@ -25,6 +27,8 @@ export type PageKey =
   | 'users'
   | 'themes'
   | 'system'
+  | 'audit'
+  | 'logs'
   | 'apis';
 
 export interface PageMeta {
@@ -77,6 +81,8 @@ export const navGroups: NavGroup[] = [
     label: '系统管理',
     items: [
       { key: 'system', label: '系统设置', icon: <SettingOutlined /> },
+      { key: 'audit', label: '操作日志', icon: <AuditOutlined /> },
+      { key: 'logs', label: '运行日志', icon: <FileSearchOutlined /> },
       { key: 'apis', label: 'API 调试', icon: <ApiOutlined /> }
     ]
   }
@@ -142,6 +148,18 @@ export const pages: Record<PageKey, PageMeta> = {
     sub: '登录密码、外部接口绑定和临时文件维护',
     group: '系统管理',
     keywords: '密码 token 钉钉 绑定 清理 维护'
+  },
+  audit: {
+    title: '操作日志',
+    sub: '谁在什么时候做了什么业务动作，支持按操作人、动作和时间筛选',
+    group: '系统管理',
+    keywords: '操作 审计 行为 记录 谁 成交 询盘 登录 授权 追责 复盘'
+  },
+  logs: {
+    title: '运行日志',
+    sub: '查看后台访问、错误与运行日志，支持按级别和关键字过滤',
+    group: '系统管理',
+    keywords: '日志 log 访问 错误 error 排查 requestId 追踪 技术'
   },
   apis: {
     title: 'API 调试',

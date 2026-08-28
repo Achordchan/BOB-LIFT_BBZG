@@ -177,10 +177,10 @@ export default function SystemPage() {
       <div className="system-settings-panel system-settings-token">
         <SectionCard
         title="外部接口绑定"
-        description="生成钉钉连接器使用的 Query Token，无需配置服务器环境变量"
         extra={tokenStatus?.configured ? <Typography.Text type="success">已绑定</Typography.Text> : <Typography.Text type="secondary">未生成</Typography.Text>}
       >
         <Space direction="vertical" size={14} style={{ width: '100%', maxWidth: 720 }}>
+          <Typography.Text type="secondary">生成钉钉连接器使用的 Query Token，无需配置服务器环境变量</Typography.Text>
           <Alert
             type="info"
             showIcon

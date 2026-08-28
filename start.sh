@@ -44,6 +44,11 @@ select_compatible_node() {
   local dir
   local seen=":"
 
+  # 生产运行时为 Node 20/22（首选，保证一致性）；本地允许 >=20 的其它版本，
+  # 仅打印提示不拦截，方便用更新的 Node（如 26）本地开发。
+  local fallback_bin=""
+  local fallback_version=""
+
   if [ -n "$requested" ]; then
     candidate="$(command -v "$requested" 2>/dev/null || true)"
     if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
@@ -54,16 +59,21 @@ select_compatible_node() {
     major="${version#v}"
     major="${major%%.*}"
     case "$major" in
-      20|22)
-        NODE_BIN="$candidate"
-        NODE_VERSION="$version"
-        return 0
-        ;;
-      *)
-        echo "错误: NODE_BIN 指向 ${version}，本项目需要 Node.js 20 或 22。" >&2
+      ''|*[!0-9]*)
+        echo "错误: 无法识别 NODE_BIN 的 Node.js 版本: ${version:-未知}" >&2
         return 1
         ;;
     esac
+    if [ "$major" -ge 20 ]; then
+      NODE_BIN="$candidate"
+      NODE_VERSION="$version"
+      if [ "$major" != 20 ] && [ "$major" != 22 ]; then
+        echo "提示: 使用 ${version}（生产为 Node 20/22，其它版本通常可用但未逐一验证）。" >&2
+      fi
+      return 0
+    fi
+    echo "错误: NODE_BIN 指向 ${version}，本项目需要 Node.js 20 或更高。" >&2
+    return 1
   fi
 
   local old_ifs="$IFS"
@@ -80,17 +90,31 @@ select_compatible_node() {
     major="${version#v}"
     major="${major%%.*}"
     case "$major" in
-      20|22)
-        IFS="$old_ifs"
-        NODE_BIN="$candidate"
-        NODE_VERSION="$version"
-        return 0
-        ;;
+      ''|*[!0-9]*) continue ;;
     esac
+    # 首选生产同款 20/22，命中即用
+    if [ "$major" = 20 ] || [ "$major" = 22 ]; then
+      IFS="$old_ifs"
+      NODE_BIN="$candidate"
+      NODE_VERSION="$version"
+      return 0
+    fi
+    # 其它 >=20 版本记为候补，扫描完仍无 20/22 时再用
+    if [ "$major" -ge 20 ] && [ -z "$fallback_bin" ]; then
+      fallback_bin="$candidate"
+      fallback_version="$version"
+    fi
   done
   IFS="$old_ifs"
 
-  echo "错误: PATH 中未找到兼容的 Node.js 20 或 22。" >&2
+  if [ -n "$fallback_bin" ]; then
+    NODE_BIN="$fallback_bin"
+    NODE_VERSION="$fallback_version"
+    echo "提示: 未找到 Node 20/22，改用 ${fallback_version}（生产为 20/22，通常可用但未逐一验证）。" >&2
+    return 0
+  fi
+
+  echo "错误: PATH 中未找到 Node.js 20 或更高版本。" >&2
   echo "当前默认版本: $(node --version 2>/dev/null || echo 未安装)" >&2
   return 1
 }
