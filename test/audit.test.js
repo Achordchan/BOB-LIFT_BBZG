@@ -9,10 +9,14 @@ process.env.BBZG_AUDIT_DIR = tmpDir;
 
 const { writeAudit, readAudit, auditMiddleware } = require('../lib/audit');
 
-function runMiddleware(mw, { method, url, session = {}, status = 200, body = {} }) {
+function runMiddleware(mw, { method, url, session = {}, status = 200, body = {}, headers = {} }) {
   let finishCb = null;
   const req = { method, path: url.split('?')[0], originalUrl: url, session, body, headers: {}, id: 'req-1', socket: {} };
-  const res = { statusCode: status, on: (evt, cb) => { if (evt === 'finish') finishCb = cb; } };
+  const res = {
+    statusCode: status,
+    getHeader: (name) => headers[String(name)],
+    on: (evt, cb) => { if (evt === 'finish') finishCb = cb; }
+  };
   let nextCalled = false;
   mw(req, res, () => { nextCalled = true; });
   if (finishCb) finishCb();
@@ -50,9 +54,13 @@ test('auditMiddleware 记录白名单内的成功变更，忽略未匹配路径'
   assert.ok(String(latest.detail).includes('8888'));
 });
 
-test('登录失败按会话判定标记（失败）', () => {
+test('登录失败按响应重定向判定标记（失败）', () => {
   const mw = auditMiddleware();
-  runMiddleware(mw, { method: 'POST', url: '/login', session: {}, status: 302, body: { username: 'tester' } });
+  // 真实行为：登录失败重定向回 /login?error=1
+  runMiddleware(mw, {
+    method: 'POST', url: '/login', session: {}, status: 302,
+    body: { username: 'tester' }, headers: { Location: '/login?error=1' }
+  });
   const latest = readAudit({ limit: 5 }).entries[0];
   assert.equal(latest.action, '登录后台（失败）');
   assert.equal(latest.actorType, 'anon');
@@ -60,7 +68,10 @@ test('登录失败按会话判定标记（失败）', () => {
 
 test('登录成功记录管理员', () => {
   const mw = auditMiddleware();
-  runMiddleware(mw, { method: 'POST', url: '/login', session: { loggedIn: true, adminUsername: 'boss' }, status: 302, body: { username: 'boss' } });
+  runMiddleware(mw, {
+    method: 'POST', url: '/login', session: { loggedIn: true, adminUsername: 'boss' },
+    status: 302, body: { username: 'boss' }, headers: { Location: '/admin' }
+  });
   const latest = readAudit({ limit: 5 }).entries[0];
   assert.equal(latest.action, '登录后台');
   assert.equal(latest.actor, 'boss');
@@ -163,4 +174,44 @@ test('只读与高频端点不写入审计', () => {
     runMiddleware(mw, { method: 'POST', url, session: admin, status: 200 });
   }
   assert.equal(readAudit({ limit: 1000 }).scanned, before, '只读/高频端点不应产生审计记录');
+});
+
+test('已登录状态下再次输错密码，不得记成登录成功', () => {
+  const mw = auditMiddleware();
+  // 管理员：失败时重定向回 /login?error=1，即便旧会话仍在
+  runMiddleware(mw, {
+    method: 'POST', url: '/login',
+    session: { loggedIn: true, adminUsername: 'boss' },
+    status: 302, body: { username: 'boss' },
+    headers: { Location: '/login?error=1' }
+  });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '登录后台（失败）');
+
+  // 管理员：成功跳 /admin
+  runMiddleware(mw, {
+    method: 'POST', url: '/login',
+    session: { loggedIn: true, adminUsername: 'boss' },
+    status: 302, body: { username: 'boss' },
+    headers: { Location: '/admin' }
+  });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '登录后台');
+
+  // 员工端：已有会话但本次返回 400
+  runMiddleware(mw, {
+    method: 'POST', url: '/api/egg/login',
+    session: { eggUserId: 'u1', eggUsername: 'wangwu' },
+    status: 400
+  });
+  assert.equal(readAudit({ limit: 3 }).entries[0].action, '员工端登录（失败）');
+});
+
+test('网易云导入不在接口返回时立即记为成功', () => {
+  const mw = auditMiddleware();
+  const before = readAudit({ limit: 1000 }).scanned;
+  runMiddleware(mw, {
+    method: 'POST', url: '/api/music/import-netease',
+    session: { loggedIn: true, adminUsername: 'admin' },
+    status: 200, body: { name: '某歌', neteaseId: '123' }
+  });
+  assert.equal(readAudit({ limit: 1000 }).scanned, before, '异步导入应待任务完成后由路由显式记录');
 });

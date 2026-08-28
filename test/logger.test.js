@@ -94,3 +94,19 @@ test('未捕获异常记录后以非零状态退出，交由进程管理器重�
   assert.ok(content.includes('故意抛出的致命错误'), '日志应包含异常信息');
   assert.ok(content.includes('uncaughtException'), '应标注为未捕获异常');
 });
+
+test('文件日志写入失败时停用该输出而非崩溃', async () => {
+  const winston = require('winston');
+  const before = logger.transports.length;
+  const fileTransport = logger.transports.find((t) => t instanceof winston.transports.DailyRotateFile);
+  assert.ok(fileTransport, '应存在文件 transport');
+
+  // 模拟运行期异步错误（目录不可写/磁盘满/轮转失败）
+  fileTransport.emit('error', new Error('EACCES: permission denied'));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  assert.ok(logger.transports.length < before, '故障 transport 应被移除');
+  assert.ok(!logger.transports.includes(fileTransport), '不应再持有故障 transport');
+  // 后续写日志不应抛出
+  assert.doesNotThrow(() => logger.info('transport 移除后仍可记录'));
+});
