@@ -125,7 +125,12 @@ class CookieManager:
             
             # 写入文件
             self.cookie_file.write_text(cookie_content.strip(), encoding='utf-8')
-            
+            # 收紧权限至 0600（新建文件默认 0644 会泄露 MUSIC_U）
+            try:
+                os.chmod(self.cookie_file, 0o600)
+            except OSError as e:
+                self.logger.warning(f"设置 Cookie 文件权限失败: {e}")
+
             self.logger.info(f"成功写入Cookie到文件: {self.cookie_file}")
             return True
             
@@ -326,7 +331,12 @@ class CookieManager:
             # 复制文件内容
             content = self.cookie_file.read_text(encoding='utf-8')
             backup_path.write_text(content, encoding='utf-8')
-            
+            # 备份含 MUSIC_U 凭证，收紧权限至 0600，避免同机其他账号读取
+            try:
+                os.chmod(backup_path, 0o600)
+            except OSError as e:
+                self.logger.warning(f"设置备份文件权限失败: {e}")
+
             self.logger.info(f"Cookie备份成功: {backup_path}")
             return str(backup_path)
             

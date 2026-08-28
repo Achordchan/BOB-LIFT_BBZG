@@ -14,10 +14,11 @@ function registerNeteaseAuthRoutes(app, deps) {
     process.env.BBZG_MUSIC_API_BASE ||
     'http://127.0.0.1:5000'
   ).replace(/\/+$/, '');
-  // 授权类接口涉及向网易云实时校验登录态，需给足余量，
-  // 且必须大于 Flask 侧整个操作耗时（校验超时 8s + 其它开销），避免代理先超时
+  // 授权类接口涉及向网易云实时校验登录态，需给足余量，且必须大于 Flask 侧整个
+  // 操作最坏耗时（QR ~10s + 成功后登录校验 ~10s + 备份/写入/调度开销 ≈ 20s+），
+  // 30s 留足余量，避免代理先于 Flask 超时返回 502 而 Cookie 实际已落盘
   const timeoutMs = Number.parseInt(
-    String((deps && deps.timeoutMs) || process.env.BBZG_NETEASE_AUTH_TIMEOUT_MS || '20000'),
+    String((deps && deps.timeoutMs) || process.env.BBZG_NETEASE_AUTH_TIMEOUT_MS || '30000'),
     10
   );
 

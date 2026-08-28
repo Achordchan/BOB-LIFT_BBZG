@@ -765,6 +765,8 @@ def qrlogin_create():
         with api_service._auth_lock:
             api_service.qr_seq += 1
             my_seq = api_service.qr_seq
+            # 立即失效旧 key：本次生成期间，任何旧扫码 803 都不得再写入
+            api_service.active_qr_key = None
 
         unikey = api_service.qr_manager.generate_qr_key()
         if not unikey:
