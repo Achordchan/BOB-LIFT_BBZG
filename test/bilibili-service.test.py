@@ -168,7 +168,7 @@ class BilibiliServiceTest(unittest.TestCase):
             cache = self.service.Mp3Cache(Path(self.temp.name) / 'slow-cdn', 'unused-encoder', True)
             started = time.monotonic()
             with self.assertRaisesRegex(RuntimeError, '超时'):
-                cache.get('slow', lambda: self.service.open_cdn_source(url, lambda _url: None, {}, timeout=0.15))
+                cache.get('slow', lambda: self.service.open_cdn_source(url, lambda _url: None, {}, timeout=0.15, use_proxy=False))
             self.assertLess(time.monotonic() - started, 0.5)
             self.assertEqual(cache.pending, set())
             self.assertTrue(cache.slots.acquire(blocking=False))
@@ -180,7 +180,7 @@ class BilibiliServiceTest(unittest.TestCase):
             core = SimpleNamespace(UA='test', cookie_string=lambda: '')
             gate = self.service.CoreRequestGate(request_timeout=0.15)
             def open_test_api(_url, _validate, headers, timeout, method):
-                return self.service.open_cdn_source(url, lambda _url: None, headers, timeout=timeout, method=method)
+                return self.service.open_cdn_source(url, lambda _url: None, headers, timeout=timeout, method=method, use_proxy=False)
             self.service.install_core_transport(core, gate, open_source=open_test_api)
             with gate:
                 with self.assertRaisesRegex(RuntimeError, '超时'):
@@ -221,6 +221,65 @@ class BilibiliServiceTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '过大'):
                 core.http_req('https://api.bilibili.com/test')
 
+    def test_configured_proxy_is_used_for_trusted_upstreams(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        requests = []
+        class Proxy(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+            def do_GET(self):
+                requests.append((self.path, self.headers.get('Connection')))
+                self.send_response(200)
+                self.send_header('Content-Length', '2')
+                self.end_headers()
+                self.wfile.write(b'ok')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Proxy)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch('urllib.request.getproxies', return_value={'http': f'http://127.0.0.1:{server.server_port}'}), \
+                 patch('urllib.request.proxy_bypass', return_value=False):
+                with self.service.open_cdn_source('http://upstream.example/image', lambda _url: None, {}, timeout=1) as response:
+                    self.assertEqual(response.read(10), b'ok')
+            self.assertEqual(requests, [('http://upstream.example/image', 'close')])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_deadline_interrupts_a_slow_proxy_connect(self):
+        import time
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        stopped = threading.Event()
+        class Proxy(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+            def do_CONNECT(self):
+                try:
+                    for _ in range(30):
+                        self.wfile.write(b'H')
+                        self.wfile.flush()
+                        if stopped.wait(0.02):
+                            break
+                except OSError:
+                    pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Proxy)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch('urllib.request.getproxies', return_value={'https': f'http://127.0.0.1:{server.server_port}'}), \
+                 patch('urllib.request.proxy_bypass', return_value=False):
+                started = time.monotonic()
+                with self.assertRaisesRegex(RuntimeError, '超时'):
+                    with self.service.open_cdn_source('https://upstream.example/image', lambda _url: None, {}, timeout=0.15):
+                        self.fail('不应完成慢速 CONNECT')
+                self.assertLess(time.monotonic() - started, 0.5)
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
     def test_slow_cover_deadline_releases_image_slot(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from http.client import IncompleteRead
@@ -248,7 +307,7 @@ class BilibiliServiceTest(unittest.TestCase):
         original_release = self.service.IMAGE_SLOTS.release
         def open_test_source(_url, _validate, headers, timeout):
             self.assertEqual(timeout, 12)
-            return original_open(f'http://127.0.0.1:{server.server_port}/image', lambda _url: None, headers, timeout=0.15)
+            return original_open(f'http://127.0.0.1:{server.server_port}/image', lambda _url: None, headers, timeout=0.15, use_proxy=False)
         def release_slot():
             original_release()
             released.set()
