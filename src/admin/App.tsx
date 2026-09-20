@@ -198,6 +198,8 @@ export default function App() {
           if (!/^\d+$/.test(neteaseId)) return;
           const data = await apiGet<{ success: boolean; lyric?: string; tLyric?: string; message?: string }>(`/api/public/music/lyric?id=${encodeURIComponent(neteaseId)}`);
           content = data && data.success ? (data.lyric || data.tLyric || '') : '';
+        } else if (trackId.startsWith('bilibili-')) {
+          content = '';
         } else {
           return;
         }

@@ -2,12 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { createNeteaseClient } = require('../lib/netease-client');
+const { createBilibiliClient, parseBilibiliId, assertMp3Response } = require('../lib/bilibili-client');
+const { saveMusicStream, acquireMusicImportSlot } = require('../lib/music-download');
+const { normalizeMusicCover, musicCoverUrl } = require('../lib/music-cover');
 const { getClientIp } = require('../lib/request-ip');
 const { hashPassword, verifyPassword, needsRehash } = require('../lib/password');
 const { createRateLimiter } = require('../lib/rate-limit');
 
 function registerEggRoutes(app, deps) {
   const netease = createNeteaseClient();
+  const bilibili = createBilibiliClient();
   const { getData, saveData, updateData, uuidv4, baseDir } = deps;
 
   const guessExtByUrl = netease.guessExtByUrl;
@@ -79,7 +83,9 @@ function registerEggRoutes(app, deps) {
 
 
 
-  async function importNeteaseToLocal(payload) {
+  async function importOnlineMusicToLocal(payload) {
+    const source = payload.source || 'netease';
+    const isBilibili = source === 'bilibili';
     const idStr = String(payload && payload.neteaseId ? payload.neteaseId : '').trim();
     const nameStr = String(payload && payload.name ? payload.name : '').trim();
 
@@ -88,11 +94,11 @@ function registerEggRoutes(app, deps) {
 
     const existingData = getData();
     if (existingData && Array.isArray(existingData.music)) {
-      const found = existingData.music.find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
+      const found = existingData.music.find(m => m && m.source === source && String(m.sourceId || '') === idStr);
       if (found && found.filename) {
         const fp = path.join(baseDir, 'public', 'music', String(found.filename));
         if (fs.existsSync(fp)) {
-          if (!found.lrcFilename) {
+          if (!found.lrcFilename && !isBilibili) {
             try {
               const lyric = await fetchNeteaseLyric(idStr);
               const lyricText = lyric.lyric || lyric.tLyric || '';
@@ -104,7 +110,7 @@ function registerEggRoutes(app, deps) {
                 if (typeof updateData === 'function') {
                   updateData((latest) => {
                     if (!latest.music || !Array.isArray(latest.music)) return false;
-                    const target = latest.music.find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
+                    const target = latest.music.find(m => m && m.source === source && String(m.sourceId || '') === idStr);
                     if (!target || target.lrcFilename) return false;
                     target.lrcFilename = cachedLyricName;
                     return latest;
@@ -122,24 +128,26 @@ function registerEggRoutes(app, deps) {
     }
 
     let lyricText = '';
-    try {
+    if (!isBilibili) try {
       const lyric = await fetchNeteaseLyric(idStr);
       lyricText = lyric.lyric || lyric.tLyric || '';
     } catch (e) {}
 
-    const playableUrl = await resolveNeteasePlayableUrl(idStr);
+    const playableUrl = await (isBilibili ? bilibili.resolve(idStr) : resolveNeteasePlayableUrl(idStr));
     if (!playableUrl) throw new Error('获取播放链接失败');
 
     const response = await axios.get(playableUrl, {
       responseType: 'stream',
-      timeout: Number(process.env.BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS || 30000),
-      maxRedirects: 5,
+      timeout: isBilibili ? 210000 : Number(process.env.BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS || 30000),
+      maxRedirects: isBilibili ? 0 : 5,
       headers: {
-        'User-Agent': 'bbzg-egg-import'
+        'User-Agent': 'bbzg-egg-import',
+        ...(isBilibili ? bilibili.headers() : {})
       }
     });
 
-    let ext = guessExtByUrl(playableUrl);
+    if (isBilibili) assertMp3Response(response);
+    let ext = isBilibili ? '.mp3' : guessExtByUrl(playableUrl);
     if (!ext) ext = guessExtByContentType(response && response.headers ? response.headers['content-type'] : '');
     if (!ext) ext = '.mp3';
 
@@ -147,18 +155,7 @@ function registerEggRoutes(app, deps) {
     const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
     const filePath = path.join(musicDir, filename);
 
-    const cleanupPaths = [];
-    await new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(filePath);
-      cleanupPaths.push(filePath);
-      response.data.on('error', reject);
-      writer.on('error', reject);
-      writer.on('finish', resolve);
-      response.data.pipe(writer);
-    }).catch(error => {
-      cleanupPaths.forEach(p => safeUnlink(p));
-      throw error;
-    });
+    await saveMusicStream(response, filePath);
 
     const data = getData();
     if (!data.music) data.music = [];
@@ -177,9 +174,9 @@ function registerEggRoutes(app, deps) {
       originalname: `${nameStr}${ext}`,
       isSound: false,
       uploadDate: new Date().toISOString(),
-      source: 'netease',
+      source,
       sourceId: idStr,
-      coverUrl: sanitizeText(payload && payload.coverUrl ? payload.coverUrl : '')
+      coverUrl: normalizeMusicCover(payload.coverUrl, payload.coverHostname)
     };
 
     if (lyricText) {
@@ -193,28 +190,39 @@ function registerEggRoutes(app, deps) {
       }
     }
 
-    if (typeof updateData === 'function') {
-      const result = updateData((latest) => {
-        if (!latest.music) latest.music = [];
-        // 并发下若已有同 sourceId 记录则复用
-        const existing = latest.music.find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
-        if (existing) {
+    let saved = musicRecord;
+    try {
+      const persist = latest => {
+        if (!Array.isArray(latest.music)) latest.music = [];
+        const existing = latest.music.find(m => m && m.source === source && String(m.sourceId || '') === idStr);
+        if (existing && existing.filename && fs.existsSync(path.join(musicDir, existing.filename))) {
+          saved = existing;
           if (!existing.lrcFilename && musicRecord.lrcFilename) existing.lrcFilename = musicRecord.lrcFilename;
-          return latest;
+        } else if (existing) {
+          Object.assign(existing, musicRecord, { id: existing.id });
+          saved = existing;
+        } else {
+          latest.music.push(musicRecord);
         }
-        latest.music.push(musicRecord);
         return latest;
-      });
-      if (result && result.ok && result.data) {
-        const saved = (result.data.music || []).find(m => m && m.source === 'netease' && String(m.sourceId || '') === idStr);
-        if (saved) return saved;
+      };
+      if (typeof updateData === 'function') {
+        const result = updateData(persist);
+        if (!result || !result.ok) throw new Error('音乐库保存失败');
+      } else if (saveData(persist(getData())) === false) {
+        throw new Error('音乐库保存失败');
       }
-    } else {
-      data.music.push(musicRecord);
-      saveData(data);
+      if (saved.filename !== filename) safeUnlink(filePath);
+      if (musicRecord.lrcFilename && saved.lrcFilename !== musicRecord.lrcFilename) {
+        safeUnlink(path.join(musicDir, musicRecord.lrcFilename));
+      }
+    } catch (error) {
+      safeUnlink(filePath);
+      if (musicRecord.lrcFilename) safeUnlink(path.join(musicDir, musicRecord.lrcFilename));
+      throw error;
     }
 
-    return musicRecord;
+    return saved;
   }
 
   app.post('/api/egg/login', (req, res) => {
@@ -334,7 +342,8 @@ function registerEggRoutes(app, deps) {
         id: m.id,
         name: m.name,
         filename: m.filename || '',
-        coverUrl: m.coverUrl || '',
+        coverUrl: musicCoverUrl(m, req.hostname),
+        source: m.source || '',
         lrcFilename: m.lrcFilename || ''
       }));
 
@@ -421,7 +430,7 @@ function registerEggRoutes(app, deps) {
     res.json({ success: true, message: '密码修改成功' });
   });
 
-  app.post('/api/egg/set-broadcast-from-netease', async (req, res) => {
+  app.post(['/api/egg/set-broadcast-from-netease', '/api/egg/set-broadcast-from-bilibili'], async (req, res) => {
     try {
       const user = getEggUser(req);
       if (!user) {
@@ -429,12 +438,14 @@ function registerEggRoutes(app, deps) {
         return;
       }
 
+      const source = req.path.replace(/\/+$/, '').toLowerCase().endsWith('from-bilibili') ? 'bilibili' : 'netease';
       const neteaseId = String(req.body && (req.body.neteaseId || req.body.id) ? (req.body.neteaseId || req.body.id) : '').trim();
       const rawName = sanitizeText(req.body && req.body.name ? req.body.name : '').trim();
       const artists = sanitizeText(req.body && req.body.artists ? req.body.artists : '').trim();
       const coverUrl = sanitizeText(req.body && req.body.coverUrl ? req.body.coverUrl : '').trim();
 
       const joinedName = sanitizeFilename(rawName && artists ? `${rawName}-${artists}` : (rawName || artists || ''));
+      if (source === 'bilibili') parseBilibiliId(neteaseId);
       if (!neteaseId) {
         res.status(400).json({ success: false, message: '缺少歌曲ID' });
         return;
@@ -444,14 +455,17 @@ function registerEggRoutes(app, deps) {
         return;
       }
 
-      const musicRecord = await importNeteaseToLocal({
+      const releaseImport = acquireMusicImportSlot();
+      const musicRecord = await importOnlineMusicToLocal({
+        source,
         neteaseId,
         name: joinedName,
         songName: rawName,
         artist: artists,
         description: 'egg-music',
-        coverUrl
-      });
+        coverUrl,
+        coverHostname: req.hostname
+      }).finally(releaseImport);
 
       const data = getData();
       const target = data && Array.isArray(data.users) ? data.users.find(u => u && u.id === user.id) : null;
@@ -474,7 +488,7 @@ function registerEggRoutes(app, deps) {
         }
       });
     } catch (err) {
-      res.status(500).json({ success: false, message: err && err.message ? err.message : '设置失败' });
+      res.status(err.status || 500).json({ success: false, message: err && err.message ? err.message : '设置失败' });
     }
   });
 }

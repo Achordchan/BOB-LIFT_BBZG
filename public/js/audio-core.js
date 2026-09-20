@@ -127,6 +127,8 @@
           const playPromise = audioElement.play();
           if (playPromise && typeof playPromise.catch === 'function') {
             playPromise.catch(err => {
+              // 切换曲目或主动暂停会中止旧 play Promise，不得把新曲目标记为不可播放。
+              if (err && err.name === 'AbortError') return;
               console.error('播放失败:', err);
               setLoadingState(false);
               markUnplayable(err && err.message ? `播放失败: ${err.message}` : '播放失败');

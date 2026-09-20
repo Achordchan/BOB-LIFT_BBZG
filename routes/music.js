@@ -2,10 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { createNeteaseClient } = require('../lib/netease-client');
+const { createBilibiliClient, parseBilibiliId, assertMp3Response } = require('../lib/bilibili-client');
+const { saveMusicStream, acquireMusicImportSlot } = require('../lib/music-download');
+const { normalizeMusicCover, musicCoverUrl } = require('../lib/music-cover');
 const { recordAudit } = require('../lib/audit');
 
 function registerMusicRoutes(app, deps) {
   const netease = createNeteaseClient();
+  const bilibili = createBilibiliClient();
   const {
     requireLogin,
     upload,
@@ -162,7 +166,7 @@ function registerMusicRoutes(app, deps) {
         closeImportJobSubscribers(job);
       }
       importJobs.delete(jobId);
-    }, 30 * 60 * 1000);
+    }, 30 * 60 * 1000).unref();
   }
 
 
@@ -191,26 +195,44 @@ function registerMusicRoutes(app, deps) {
       message: '解析播放链接...'
     }, { eventType: 'progress', force: true });
 
-    const playableUrl = await resolveNeteasePlayableUrl(payload.neteaseId);
+    const isBilibili = payload.source === 'bilibili';
+    const playableUrl = await (isBilibili ? bilibili.resolve(payload.neteaseId) : resolveNeteasePlayableUrl(payload.neteaseId));
     if (!playableUrl) throw new Error('获取播放链接失败');
+
+    let lrcFilename = '';
+    let lrcText = String(payload.lrcContent || '').trim();
+    if (!lrcText && !isBilibili) {
+      updateImportJob(job, {
+        phase: 'resolving',
+        message: '获取歌词信息...'
+      }, { eventType: 'progress', force: true });
+      try {
+        const lyric = await fetchNeteaseLyric(payload.neteaseId);
+        lrcText = lyric.lyric || lyric.tLyric || '';
+      } catch (err) {
+        console.log(`导入歌曲未同步到歌词: id=${payload.neteaseId}, ${err && err.message ? err.message : '未知错误'}`);
+      }
+    }
 
     updateImportJob(job, {
       phase: 'downloading',
-      message: '下载中...'
+      message: isBilibili ? '下载并转换为 MP3...' : '下载中...'
     }, { eventType: 'progress', force: true });
 
     const musicDir = ensureMusicDir();
-    let ext = guessExtByUrl(playableUrl);
+    let ext = isBilibili ? '.mp3' : guessExtByUrl(playableUrl);
 
     const response = await axios.get(playableUrl, {
       responseType: 'stream',
-      timeout: Number(process.env.BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS || 30000),
-      maxRedirects: 5,
+      timeout: isBilibili ? 210000 : Number(process.env.BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS || 30000),
+      maxRedirects: isBilibili ? 0 : 5,
       headers: {
-        'User-Agent': 'bbzg-music-import'
+        'User-Agent': 'bbzg-music-import',
+        ...(isBilibili ? bilibili.headers() : {})
       }
     });
 
+    if (isBilibili) assertMp3Response(response);
     if (!ext) {
       ext = guessExtByContentType(response && response.headers ? response.headers['content-type'] : '');
     }
@@ -225,51 +247,12 @@ function registerMusicRoutes(app, deps) {
     const totalBytes = totalBytesHeader ? Number(totalBytesHeader) : null;
     job.totalBytes = Number.isFinite(totalBytes) ? totalBytes : null;
 
-    let lrcFilename = '';
-    let lrcText = String(payload.lrcContent || '').trim();
-    if (!lrcText) {
-      updateImportJob(job, {
-        phase: 'resolving',
-        message: '获取歌词信息...'
-      }, { eventType: 'progress', force: true });
-      try {
-        const lyric = await fetchNeteaseLyric(payload.neteaseId);
-        lrcText = lyric.lyric || lyric.tLyric || '';
-      } catch (err) {
-        console.log(`导入歌曲未同步到歌词: id=${payload.neteaseId}, ${err && err.message ? err.message : '未知错误'}`);
-      }
-    }
-
-    await new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(filePath);
-
-      response.data.on('data', chunk => {
-        const size = chunk ? chunk.length : 0;
-        job.downloadedBytes += size;
-        if (job.totalBytes) {
-          const ratio = job.totalBytes ? job.downloadedBytes / job.totalBytes : 0;
-          job.percent = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-          job.progressText = `${formatBytes(job.downloadedBytes)} / ${formatBytes(job.totalBytes)}`;
-        } else {
-          job.percent = 0;
-          job.progressText = `${formatBytes(job.downloadedBytes)}`;
-        }
-        broadcastImportJob(job, 'progress');
-      });
-
-      response.data.on('error', err => {
-        reject(err);
-      });
-
-      writer.on('error', err => {
-        reject(err);
-      });
-
-      writer.on('finish', () => {
-        resolve();
-      });
-
-      response.data.pipe(writer);
+    await saveMusicStream(response, filePath, (received, total) => {
+      job.downloadedBytes = received;
+      job.totalBytes = total;
+      job.percent = total ? Math.min(100, Math.round(received / total * 100)) : 0;
+      job.progressText = total ? `${formatBytes(received)} / ${formatBytes(total)}` : formatBytes(received);
+      broadcastImportJob(job, 'progress');
     });
 
     updateImportJob(job, {
@@ -294,8 +277,9 @@ function registerMusicRoutes(app, deps) {
       originalname: `${payload.name || 'music'}${ext}`,
       isSound: false,
       uploadDate: new Date().toISOString(),
-      source: 'netease',
-      sourceId: String(payload.neteaseId)
+      source: payload.source || 'netease',
+      sourceId: String(payload.neteaseId),
+      coverUrl: normalizeMusicCover(payload.coverUrl, payload.coverHostname)
     };
 
     if (lrcText) {
@@ -312,7 +296,7 @@ function registerMusicRoutes(app, deps) {
     }
 
     data.music.push(musicRecord);
-    saveData(data);
+    if (saveData(data) === false) throw new Error('音乐库保存失败');
 
     updateImportJob(job, {
       status: 'done',
@@ -343,7 +327,7 @@ function registerMusicRoutes(app, deps) {
       return b.idx - a.idx;
     });
 
-    res.json({ success: true, music: withIndex.map(x => x.m) });
+    res.json({ success: true, music: withIndex.map(({ m }) => ({ ...m, coverUrl: musicCoverUrl(m, req.hostname) })) });
   });
 
   // API: 上传音乐文件
@@ -432,9 +416,11 @@ function registerMusicRoutes(app, deps) {
     });
   });
 
-  app.post('/api/music/import-netease', requireLogin, async (req, res) => {
+  app.post(['/api/music/import-netease', '/api/music/import-bilibili'], requireLogin, async (req, res) => {
     try {
-      const neteaseId = req.body && (req.body.neteaseId || req.body.id);
+      const source = req.path.replace(/\/+$/, '').toLowerCase().endsWith('import-bilibili') ? 'bilibili' : 'netease';
+      const sourceName = source === 'bilibili' ? '哔哩哔哩' : '网易云';
+      const neteaseId = req.body && (req.body.id || req.body.neteaseId);
       const name = req.body && req.body.name;
       const songName = req.body && req.body.songName;
       const artist = req.body && req.body.artist;
@@ -444,6 +430,7 @@ function registerMusicRoutes(app, deps) {
       const idStr = String(neteaseId || '').trim();
       const nameStr = String(name || '').trim();
 
+      if (source === 'bilibili') parseBilibiliId(idStr);
       if (!idStr) {
         return res.status(400).json({
           success: false,
@@ -457,6 +444,7 @@ function registerMusicRoutes(app, deps) {
         });
       }
 
+      const releaseImport = acquireMusicImportSlot();
       const jobId = uuidv4();
       const job = createImportJob(jobId, { neteaseId: idStr, name: nameStr });
 
@@ -467,22 +455,25 @@ function registerMusicRoutes(app, deps) {
       });
 
       startImportDownload(job, {
+        source,
         neteaseId: idStr,
         name: nameStr,
         songName,
         artist,
+        coverUrl: req.body.coverUrl,
+        coverHostname: req.hostname,
         description: description || '',
         lrcContent: lrcContent || ''
       }).then(() => {
         // 接口立即返回 jobId，下载与写库是异步的：
         // 只有任务真正完成才记审计，避免把随后失败的导入记成已导入
         try {
-          recordAudit(req, '导入网易云音乐', { detail: `name=${nameStr} neteaseId=${idStr}`, status: 200 });
+          recordAudit(req, `导入${sourceName}音乐`, { detail: `name=${nameStr} neteaseId=${idStr}`, status: 200 });
         } catch (_) { /* 审计失败不影响导入 */ }
       }).catch(err => {
-        console.error('导入网易云音乐失败:', err);
+        console.error('导入在线音乐失败:', err.message);
         try {
-          recordAudit(req, '导入网易云音乐（失败）', {
+          recordAudit(req, `导入${sourceName}音乐（失败）`, {
             detail: `name=${nameStr} neteaseId=${idStr} error=${err && err.message ? String(err.message).slice(0, 120) : '未知错误'}`,
             status: 500
           });
@@ -504,10 +495,10 @@ function registerMusicRoutes(app, deps) {
             safeUnlink(path.join(baseDir, 'public', 'music', job.lrcFilename));
           } catch (e) {}
         }
-      });
+      }).finally(releaseImport);
     } catch (error) {
-      console.error('导入网易云音乐失败:', error);
-      res.status(500).json({
+      console.error('导入在线音乐失败:', error.message);
+      res.status(error.status || 500).json({
         success: false,
         message: '导入失败: ' + (error && error.message ? error.message : '未知错误')
       });
@@ -775,7 +766,7 @@ function registerMusicRoutes(app, deps) {
 
     res.json({
       success: true,
-      music
+      music: { ...music, coverUrl: musicCoverUrl(music, req.hostname) }
     });
   });
 
@@ -853,7 +844,7 @@ function registerMusicRoutes(app, deps) {
       res.json({
         success: true,
         message: '音乐更新成功',
-        music: data.music[musicIndex]
+        music: { ...data.music[musicIndex], coverUrl: musicCoverUrl(data.music[musicIndex], req.hostname) }
       });
     } catch (error) {
       console.error('更新音乐失败:', error);

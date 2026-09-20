@@ -1,4 +1,4 @@
-import type { ApiResult } from './types';
+import type { ApiResult, MusicItem } from './types';
 
 let sessionRedirectStarted = false;
 
@@ -81,6 +81,16 @@ export async function apiForm<T>(url: string, form: FormData) {
 export function audioUrl(filename?: string) {
   if (!filename) return '';
   return filename.startsWith('/music/') ? filename : `/music/${filename}`;
+}
+
+export function musicPreviewSources(song: MusicItem) {
+  const sources: string[] = [];
+  if (song.filename) sources.push(audioUrl(song.filename));
+  if (song.sourceId) {
+    const provider = song.source === 'bilibili' ? 'bilibili/' : '';
+    sources.push(`/api/public/music/${provider}stream?id=${encodeURIComponent(String(song.sourceId))}`);
+  }
+  return Array.from(new Set(sources));
 }
 
 export function money(value?: number) {

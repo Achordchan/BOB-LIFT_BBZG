@@ -1,4 +1,29 @@
 (function () {
+  const sourceSelect = document.getElementById('eggMusicSource');
+  let musicSource = 'netease';
+  let hasMore = false;
+  let searchSequence = 0;
+  function onlineMusicUrl(action, item) {
+    return `/api/public/music/${item.source === 'bilibili' ? 'bilibili/' : ''}${action}?id=${encodeURIComponent(String(item.id))}`;
+  }
+  const coverLoads = new WeakMap();
+  function setMusicCover(img, url) {
+    clearTimeout(coverLoads.get(img)?.timer);
+    const state = { attempt: 0, timer: null };
+    coverLoads.set(img, state);
+    img.style.visibility = url ? 'visible' : 'hidden';
+    img.onerror = () => {
+      if (coverLoads.get(img) !== state) return;
+      if (state.attempt >= 2) { img.style.visibility = 'hidden'; return; }
+      state.attempt += 1;
+      state.timer = setTimeout(() => {
+        if (!img.isConnected || coverLoads.get(img) !== state) return;
+        img.src = `${url}${url.includes('?') ? '&' : '?'}cover_retry=${state.attempt}`;
+      }, state.attempt === 1 ? 500 : 1500);
+    };
+    if (url) img.src = url;
+    else img.removeAttribute('src');
+  }
   const qInput = document.getElementById('q');
   const searchBtn = document.getElementById('searchBtn');
   const clearBtn = document.getElementById('clearBtn');
@@ -59,7 +84,6 @@
 
   const playerRoot = document.getElementById('eggMusicPlayer');
   const audioEl = document.getElementById('eggMusicAudio');
-  const audioSourceEl = audioEl ? audioEl.querySelector('source') : null;
   const playBtn = playerRoot ? playerRoot.querySelector('.play-music-btn') : null;
   const playerBinding = (window.AudioCore && typeof window.AudioCore.bindAudioPlayer === 'function')
     ? window.AudioCore.bindAudioPlayer(playerRoot, { audioSelector: '#eggMusicAudio' })
@@ -423,6 +447,10 @@
 
   function setBusy(busy) {
     if (searchBtn) searchBtn.disabled = !!busy;
+    if (sourceSelect) sourceSelect.disabled = !!busy;
+    if (prevBtn) prevBtn.disabled = !!busy || page <= 1;
+    if (nextBtn) nextBtn.disabled = !!busy || !hasMore;
+    if (jumpPageBtn) jumpPageBtn.disabled = !!busy;
     if (clearBtn) clearBtn.disabled = !!busy;
     setStatus(busy ? '加载中…' : '准备就绪');
   }
@@ -474,8 +502,8 @@
       .then(res => {
         if (!res || !res.ok) throw new Error('音乐文件不可用');
 
-        if (audioSourceEl) audioSourceEl.setAttribute('src', url);
         if (audioEl) {
+          audioEl.src = url;
           try { audioEl.load(); } catch (e) {}
         }
         if (player) player.style.display = 'block';
@@ -495,7 +523,7 @@
         if (nowCover) {
           const coverUrl = music && music.coverUrl ? String(music.coverUrl) : '';
           if (coverUrl) {
-            nowCover.src = coverUrl;
+            setMusicCover(nowCover, coverUrl);
             nowCover.style.display = 'block';
           } else {
             nowCover.removeAttribute('src');
@@ -600,7 +628,19 @@
       actions.appendChild(setBtn);
       actions.appendChild(lyricBtn);
 
-      row.appendChild(title);
+      const titleGroup = document.createElement('div');
+      titleGroup.className = 'eggBroadcastItemMeta';
+      if (m.coverUrl) {
+        const cover = document.createElement('img');
+        cover.className = m.source === 'bilibili' ? 'cover egg-music-video-cover' : 'cover';
+        setMusicCover(cover, m.coverUrl);
+        cover.alt = m.source === 'bilibili' ? '视频封面' : '歌曲封面';
+        cover.loading = 'lazy';
+        cover.referrerPolicy = 'no-referrer';
+        titleGroup.appendChild(cover);
+      }
+      titleGroup.appendChild(title);
+      row.appendChild(titleGroup);
       row.appendChild(actions);
       eggBroadcastList.appendChild(row);
     });
@@ -813,7 +853,7 @@
     if (!panel || !list) return;
 
     list.innerHTML = '';
-    if (!items || items.length === 0) {
+    if (!items || (items.length === 0 && page <= 1)) {
       panel.style.display = 'none';
       return;
     }
@@ -822,7 +862,7 @@
 
     const totalPages = total ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
     if (resultMeta) {
-      resultMeta.textContent = `共 ${total || items.length} 条 · 第 ${page}/${totalPages} 页`;
+      resultMeta.textContent = musicSource === 'bilibili' ? `哔哩哔哩 · 第 ${page} 页 · 默认播放第一 P 音轨` : `共 ${total || items.length} 条 · 第 ${page}/${totalPages} 页`;
     }
 
     items.forEach(item => {
@@ -833,14 +873,12 @@
       meta.className = 'meta';
 
       const img = document.createElement('img');
-      img.className = 'cover';
+      img.className = item.source === 'bilibili' ? 'cover egg-music-video-cover' : 'cover';
+      img.referrerPolicy = 'no-referrer';
       const coverUrl = getCoverUrl(item);
-      img.src = coverUrl || '';
+      setMusicCover(img, coverUrl);
       img.alt = safeText(item.name);
       img.loading = 'lazy';
-      img.onerror = function () {
-        try { img.style.visibility = 'hidden'; } catch (e) {}
-      };
 
       const texts = document.createElement('div');
       texts.className = 'texts';
@@ -883,17 +921,20 @@
           const old = auditionBtn.textContent;
           auditionBtn.textContent = '加载中…';
 
-          const url = `/api/public/music/stream?id=${encodeURIComponent(id)}`;
+          const url = onlineMusicUrl('stream', item);
           try {
             bindStreamErrorToast();
-            if (audioSourceEl) audioSourceEl.setAttribute('src', url);
             if (audioEl) {
+              audioEl.src = url;
               try { audioEl.load(); } catch (e) {}
             }
             if (player) player.style.display = 'block';
             if (nowTitle) nowTitle.textContent = safeText(item.name || '未知歌曲');
             if (nowSub) nowSub.textContent = desc.textContent || '';
-            loadPlayerLyrics(
+            if (item.source === 'bilibili') {
+              eggCurrentLyricKey = `bilibili:${id}`;
+              setPlayerLyricsPayload('暂无歌词', safeText(item.name));
+            } else loadPlayerLyrics(
               `netease:${id}`,
               safeText(item.name || '歌词'),
               `/api/public/music/lyric?id=${encodeURIComponent(id)}`,
@@ -903,7 +944,7 @@
             if (nowCover) {
               const coverUrl = getCoverUrl(item);
               if (coverUrl) {
-                nowCover.src = coverUrl;
+                setMusicCover(nowCover, coverUrl);
                 nowCover.style.display = 'block';
               } else {
                 nowCover.removeAttribute('src');
@@ -950,7 +991,8 @@
 
       const id = (item && item.id != null) ? String(item.id) : '';
       const dlName = makeDownloadName(item);
-      downloadLink.href = `/api/public/music/download?id=${encodeURIComponent(id)}&name=${encodeURIComponent(dlName)}`;
+      downloadLink.href = `${onlineMusicUrl('download', item)}&name=${encodeURIComponent(dlName)}`;
+      if (item.source === 'bilibili') downloadLink.textContent = '下载 MP3';
 
       downloadLink.addEventListener('click', function (e) {
         try { if (e) e.preventDefault(); } catch (err) {}
@@ -985,7 +1027,7 @@
           setBtn.disabled = true;
           const old = setBtn.textContent;
           setBtn.textContent = '设置中…';
-          apiPostJson('/api/egg/set-broadcast-from-netease', {
+          apiPostJson(`/api/egg/set-broadcast-from-${item.source === 'bilibili' ? 'bilibili' : 'netease'}`, {
             neteaseId,
             name: safeText(item && item.name ? item.name : ''),
             artists: safeText(item && item.artists ? item.artists : ''),
@@ -1007,7 +1049,7 @@
       });
 
       actions.appendChild(auditionBtn);
-      actions.appendChild(lyricBtn);
+      if (item.source !== 'bilibili') actions.appendChild(lyricBtn);
       actions.appendChild(downloadLink);
       actions.appendChild(setBtn);
 
@@ -1018,7 +1060,7 @@
 
     const totalPages2 = total ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
     if (pager) {
-      if (totalPages2 > 1) {
+      if (musicSource === 'bilibili' ? page > 1 || hasMore : totalPages2 > 1) {
         pager.style.display = 'flex';
       } else {
         pager.style.display = 'none';
@@ -1026,13 +1068,15 @@
     }
 
     if (jumpPageInput) {
+      jumpPageInput.hidden = musicSource === 'bilibili';
+      if (jumpPageBtn) jumpPageBtn.hidden = musicSource === 'bilibili';
       try { jumpPageInput.max = String(totalPages2); } catch (e) {}
       try { jumpPageInput.placeholder = `跳转 ${totalPages2}`; } catch (e) {}
     }
 
     if (prevBtn) prevBtn.disabled = page <= 1;
-    if (nextBtn) nextBtn.disabled = page >= totalPages2;
-    if (pageInfo) pageInfo.textContent = `${page}/${totalPages2}`;
+    if (nextBtn) nextBtn.disabled = !hasMore;
+    if (pageInfo) pageInfo.textContent = musicSource === 'bilibili' ? `第 ${page} 页` : `${page}/${totalPages2}`;
   }
 
   function jumpToPage() {
@@ -1064,12 +1108,13 @@
       keywords = q;
       page = (typeof newPage === 'number' && newPage > 0) ? newPage : 1;
 
+      const sequence = ++searchSequence;
       setBusy(true);
 
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
-      const timeoutId = controller ? setTimeout(() => controller.abort(), 9000) : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), musicSource === 'bilibili' ? 65000 : 9000) : null;
 
-      fetch(`/api/public/music/search?keywords=${encodeURIComponent(keywords)}&page=${encodeURIComponent(page)}&limit=${encodeURIComponent(PAGE_SIZE)}`, {
+      fetch(`/api/public/music/${musicSource === 'bilibili' ? 'bilibili/' : ''}search?keywords=${encodeURIComponent(keywords)}&page=${encodeURIComponent(page)}&limit=${encodeURIComponent(PAGE_SIZE)}`, {
         signal: controller ? controller.signal : undefined
       })
         .then(r => {
@@ -1082,13 +1127,16 @@
         })
         .then(data => {
           if (!data || !data.success) throw new Error((data && data.message) ? data.message : '搜索失败');
+          if (sequence !== searchSequence) return;
           items = Array.isArray(data.songs) ? data.songs : [];
           total = (typeof data.total === 'number') ? data.total : (items.length || 0);
+          hasMore = musicSource === 'bilibili' ? !!data.hasMore : page * PAGE_SIZE < total;
           render();
           if (items.length === 0) showToast('没有结果', 'error');
         })
         .catch(err => {
-          console.error(err);
+          if (sequence !== searchSequence) return;
+          hasMore = false;
           items = [];
           total = 0;
           render();
@@ -1097,10 +1145,19 @@
         })
         .finally(() => {
           if (timeoutId) clearTimeout(timeoutId);
-          setBusy(false);
+          if (sequence === searchSequence) setBusy(false);
         });
     });
   }
+
+  if (sourceSelect) sourceSelect.addEventListener('change', function () {
+    ++searchSequence;
+    musicSource = sourceSelect.value === 'bilibili' ? 'bilibili' : 'netease';
+    items = []; total = 0; page = 1; hasMore = false;
+    render();
+    setBusy(false);
+    if (qInput) qInput.placeholder = musicSource === 'bilibili' ? '音频标题 / UP 主' : '歌名 / 歌手';
+  });
 
   if (searchBtn) searchBtn.addEventListener('click', function () { runSearch(1); });
   if (clearBtn) {

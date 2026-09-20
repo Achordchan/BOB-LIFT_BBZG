@@ -49,3 +49,8 @@ storage/sessions/*
 
 # 运行时音乐/egg 缓存
 .bbzg-cache/
+
+# 哔哩哔哩 Python 服务编译缓存与上游旧位置凭据
+bilibili-api/**/__pycache__/
+bilibili-api/__pycache__/
+bilibili-api/vendor/.bili-cookies.json

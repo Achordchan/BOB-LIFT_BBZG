@@ -33,6 +33,15 @@ const loadedLyrics = {
   trackId: 'netease-28971281'
 };
 
+const { musicPreviewSources } = loadTypeScriptModule(path.join(__dirname, '../src/admin/api.ts'));
+
+test('成员和音乐库试听在本地音频缺失时保留正确的 B 站回退地址', () => {
+  const track = { id: 'track', name: '测试', filename: 'missing.mp3', source: 'bilibili', sourceId: 'BV1os41197sv' };
+  assert.deepEqual(musicPreviewSources(track), ['/music/missing.mp3', '/api/public/music/bilibili/stream?id=BV1os41197sv']);
+  assert.deepEqual(musicPreviewSources({ ...track, filename: undefined }), ['/api/public/music/bilibili/stream?id=BV1os41197sv']);
+  assert.deepEqual(musicPreviewSources({ ...track, source: 'netease', sourceId: '123' }), ['/music/missing.mp3', '/api/public/music/stream?id=123']);
+});
+
 test('重复试听同一首网易云歌曲时保留已有歌词', () => {
   assert.equal(
     keepLyricsForReplay(loadedLyrics, 'netease-28971281'),

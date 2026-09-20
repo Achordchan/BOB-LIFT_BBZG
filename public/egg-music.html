@@ -859,6 +859,10 @@
       .music-progress{ width: 100%; }
       .music-progress-wrap{ min-width: 0; }
     }
+    .egg-music-source { color: #fff; background: #202b40; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; padding: 12px; max-width: 100%; }
+    .egg-music-source option { color: #fff; background: #202b40; }
+    .eggBroadcastItemMeta { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .egg-music-video-cover { width: 76px; height: 44px; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -908,6 +912,10 @@
       </div>
 
       <div class="tools">
+        <select id="eggMusicSource" class="egg-music-source" aria-label="音乐来源">
+          <option value="netease">网易云音乐</option>
+          <option value="bilibili">哔哩哔哩</option>
+        </select>
         <div class="input">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: rgba(255,255,255,0.7)">
             <circle cx="11" cy="11" r="8"></circle>
@@ -964,7 +972,6 @@
           <span class="play-text">播放</span>
         </button>
         <audio class="music-audio" id="eggMusicAudio" preload="none" style="display:none;">
-          <source src="" type="audio/mpeg">
           您的浏览器不支持音频播放
         </audio>
         <div class="music-progress-wrap">

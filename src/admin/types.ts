@@ -30,6 +30,9 @@ export interface MusicItem {
   uploadDate?: string;
   uploadedAt?: string;
   size?: number;
+  source?: string;
+  sourceId?: string;
+  coverUrl?: string;
 }
 
 export interface PlatformTarget {
@@ -105,6 +108,8 @@ export interface AdminAudioTrack {
   id: string;
   title: string;
   subtitle?: string;
+  coverUrl?: string;
+  source?: string;
   sources: string[];
   sourceIndex?: number;
 }
