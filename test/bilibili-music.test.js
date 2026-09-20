@@ -212,6 +212,31 @@ test('导入限制文件大小并清理中断残片', async t => {
   assert.equal(fs.readFileSync(target, 'utf8'), 'original');
 });
 
+test('文件打开尚未完成时上游中断，也会关闭句柄并清除残片', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bbzg-open-race-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const target = path.join(dir, 'interrupted.mp3');
+  const originalOpen = fs.promises.open.bind(fs.promises);
+  let notifyOpen;
+  let releaseOpen;
+  const opened = new Promise(resolve => { notifyOpen = resolve; });
+  const gate = new Promise(resolve => { releaseOpen = resolve; });
+  t.mock.method(fs.promises, 'open', async (...args) => {
+    const file = await originalOpen(...args);
+    notifyOpen();
+    await gate;
+    return file;
+  });
+  const source = new Readable({ read() {} });
+  const failed = assert.rejects(saveMusicStream({ headers: {}, data: source }, target), /上游中断/);
+  await opened;
+  source.destroy(new Error('上游中断'));
+  await new Promise(resolve => setImmediate(resolve));
+  releaseOpen();
+  await failed;
+  assert.equal(fs.existsSync(target), false);
+});
+
 
 test('整页封面排队加载，不占用音频并发额度', async t => {
   let release;

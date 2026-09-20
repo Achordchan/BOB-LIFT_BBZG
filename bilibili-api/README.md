@@ -35,7 +35,7 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 
 这是新增的 Python 常驻进程，不是 Node 构建产物，也不需要对公网新增域名、SSL 或反向代理。现有 Node 站点代理前端请求至本机服务。
 
-在宝塔 Python 项目 / 进程管理中创建独立项目，工作目录设为本站项目根目录，确认该进程 PATH 能找到 `ffmpeg` 且 `ffmpeg -encoders` 包含 `libmp3lame`，启动命令为 `python3 -B bilibili-api/server.py`，监听 `127.0.0.1:5001`，开启进程守护；Python 与 Node 进程应以同一系统用户运行，以读取权限为 0600 的令牌和凭据。若使用不同用户，使用两端相同的环境令牌并正确配置 Python 对 `storage/bilibili` 的读写权限。
+在宝塔 Python 项目 / 进程管理中创建独立项目，项目目录设为本站的 `bilibili-api` 子目录（避免与 Node 项目路径重复），确认该进程 PATH 能找到 `ffmpeg` 且 `ffmpeg -encoders` 包含 `libmp3lame`，启动命令为 `python -B server.py`，监听 `127.0.0.1:5001`，开启进程守护；Python 与 Node 进程应以同一系统用户运行，以读取权限为 0600 的令牌和凭据。若使用不同用户，使用两端相同的环境令牌并正确配置 Python 对 `storage/bilibili` 的读写权限。
 
 现有部署脚本会同步 `bilibili-api` 源码并保留 `storage/`。它不会自动创建或重启新增 Python 项目；首次上线须完成上述面板配置，后续更新该目录时需在面板重启该项目。不要直接在现有 Docker Node 容器中使用默认 loopback 地址访问宿主 Python 服务；本接入按当前宝塔同机运行方式配置。
 
@@ -100,7 +100,7 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 ## 本地验收记录（2026-09-20）
 
 - `npm run build:admin`：通过；Vite 提示部分构建包超过 500 kB。
-- `npm test`：169 项通过，无失败或跳过。
+- `npm test`：170 项通过，无失败或跳过。
 - `python3 -B test/bilibili-service.test.py`：13 项通过，包括真实 FFmpeg 转码、授权写入竞态、音频/图片/API 读取截止与核心锁等待。
 - `node --check`：新增 Node 模块及员工端脚本通过语法检查；`git diff --check` 通过。
 - 真实 B 站搜索、二维码生成、视频封面加载、MP3 编码（ffprobe 确认 192000 bit/s）、206 分段响应均验证通过。
@@ -111,3 +111,5 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 - 审查修复后增加远程封面代理；真实网络烟测因本机 Fake-IP DNS 被安全策略拒绝，未放行私有地址。模拟公网 DNS 与重定向链的集成测试通过。
 
 - 上游传输适配后，真实 B 站 nav API 返回 HTTP 200（游客 code=-101），验证了既有代理配置兼容；增加 HTTP 代理目标保持和慢速 CONNECT 截止测试。
+
+- Linux / Node 20 部署回归：下载文件先原子独占打开再连接流，处理打开期间的上游中断；100 次超限下载验证无残片，已有文件保持不变。
