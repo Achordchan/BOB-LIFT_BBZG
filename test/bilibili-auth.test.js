@@ -44,6 +44,7 @@ test('扫码状态通过 SSE 推送，成功后终止查询且不暴露 Cookie',
   let polls = 0;
   const request = await fixture(t, async endpoint => {
     if (endpoint === '/api/login/qrcode') return qr;
+    if (endpoint !== '/api/login/poll') return { ok: true };
     polls += 1;
     return polls === 1 ? { state: 'scanned' } : { state: 'confirmed', logged_in: true, uname: '测试账户', cookie: 'must-not-leak' };
   });
@@ -68,6 +69,7 @@ test('连续上游错误退避三次后结束授权', async t => {
   let polls = 0;
   const request = await fixture(t, async endpoint => {
     if (endpoint === '/api/login/qrcode') return qr;
+    if (endpoint !== '/api/login/poll') return { ok: true };
     polls += 1;
     throw new Error('test upstream unavailable');
   });
@@ -92,4 +94,21 @@ test('较早的二维码请求不能覆盖后生成的二维码', async t => {
   resolveFirst(qr);
   assert.equal((await first).status, 409);
   await request('/qr', 'DELETE');
+});
+
+
+test('清除授权同时使其他管理员的二维码失效', async t => {
+  let number = 0;
+  const cancelled = [];
+  const request = await fixture(t, async (endpoint, _params, _method, data) => {
+    if (endpoint === '/api/login/qrcode') return { ...qr, key: `key-${++number}` };
+    if (endpoint === '/api/login/cancel') cancelled.push(data.key);
+    return { ok: true };
+  });
+  await request('/qr', 'POST');
+  await request('/qr', 'POST', { 'x-session': 'admin-two' });
+  assert.equal((await request('/cookie', 'DELETE')).status, 200);
+  assert.equal((await request('/qr/events')).status, 410);
+  assert.equal((await request('/qr/events', 'GET', { 'x-session': 'admin-two' })).status, 410);
+  assert.deepEqual(cancelled.sort(), ['key-1', 'key-2']);
 });

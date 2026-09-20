@@ -120,7 +120,7 @@ test('音轨分段代理保留 206、MIME 和 Content-Range，下载使用 mp3 �
 
 test('后台导入通过 SSE 完成，保存 B 站来源及真实 mp3 文件', async t => {
   const { base, dir, getData, requests } = await fixture(t);
-  const response = await post(base, '/api/music/import-bilibili', { id: BV, name: '钢琴', artist: 'UP 主', coverUrl: 'https://i0.hdslb.com/cover.jpg' });
+  const response = await post(base, '/api/music/import-bilibili/', { id: BV, name: '钢琴', artist: 'UP 主', coverUrl: 'https://i0.hdslb.com/cover.jpg' });
   assert.equal(response.status, 200);
   const { jobId } = await response.json();
   const events = await fetch(`${base}/api/music/import-events/${jobId}`, { headers: { 'x-test-role': 'admin' }, signal: AbortSignal.timeout(5000) });
@@ -145,7 +145,7 @@ test('员工设为播报复用音乐库，修复缺失音频且不覆盖其他�
   assert.equal((await post(base, endpoint, { id: BV, name: '钢琴' }, '')).status, 401);
   const first = await (await post(base, endpoint, { id: BV, name: '钢琴' }, 'egg')).json();
   assert.equal(first.success, true);
-  const second = await (await post(base, endpoint, { id: BV, name: '钢琴' }, 'egg')).json();
+  const second = await (await post(base, endpoint + '/', { id: BV, name: '钢琴' }, 'egg')).json();
   assert.equal(second.music.id, first.music.id);
   assert.equal(first.music.id, 'missing-bili');
   assert.equal(getData().users[0].musicId, first.music.id);
@@ -180,4 +180,38 @@ test('导入限制文件大小并清理中断残片', async t => {
   fs.writeFileSync(target, 'original');
   await assert.rejects(saveMusicStream({ headers: {}, data: Readable.from([Buffer.from('new')]) }, target), /EEXIST/);
   assert.equal(fs.readFileSync(target, 'utf8'), 'original');
+});
+
+
+test('整页封面排队加载，不占用音频并发额度', async t => {
+  let release;
+  let ready;
+  let started = 0;
+  let released = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  const readyGate = new Promise(resolve => { ready = resolve; });
+  const app = express();
+  app.use((req, _res, next) => { req.session = { loggedIn: true }; next(); });
+  registerBilibiliMusicRoutes(app, { client: {
+    imageUrl: value => value,
+    resolve: async () => 'audio',
+    stream: async url => {
+      const image = url !== 'audio';
+      if (image && !released) { started += 1; if (started === 4) ready(); await gate; }
+      return { status: 200, headers: { 'content-type': image ? 'image/png' : 'audio/mpeg' }, data: Readable.from([Buffer.from('ok')]) };
+    }
+  } });
+  const base = await listen(t, app);
+  const covers = Array.from({ length: 20 }, (_, i) => fetch(`${base}/api/public/music/bilibili/image?url=image-${i}`).then(async response => {
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'ok');
+  }));
+  await readyGate;
+  const audio = await fetch(`${base}/api/public/music/bilibili/stream?id=${BV}`);
+  assert.equal(audio.status, 200);
+  assert.equal(await audio.text(), 'ok');
+  assert.equal(started, 4);
+  released = true;
+  release();
+  await Promise.all(covers);
 });

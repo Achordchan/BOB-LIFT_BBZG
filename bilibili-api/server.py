@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from audio_mp3 import Mp3Cache, byte_range
+from auth_state import AuthorizationState
 STATE = ROOT.parent / 'storage' / 'bilibili'
 STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 sys.path.insert(0, str(ROOT / 'vendor'))
@@ -41,7 +42,9 @@ if not TOKEN:
     raise SystemExit('服务令牌不能为空')
 
 CORE_LOCK = threading.Lock()
+AUTH = AuthorizationState(bili, CORE_LOCK)
 SLOTS = threading.BoundedSemaphore(12)
+IMAGE_SLOTS = threading.BoundedSemaphore(4)
 MP3_CACHE = Mp3Cache(STATE / 'mp3-cache', bili.FFMPEG, bili.MP3_OK)
 
 
@@ -87,7 +90,8 @@ class Handler(BaseHTTPRequestHandler):
     def dispatch(self):
         if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + TOKEN):
             return self.send_json({'ok': False, 'error': '服务鉴权失败'}, 403)
-        if not SLOTS.acquire(blocking=False):
+        slots = IMAGE_SLOTS if urllib.parse.urlsplit(self.path).path == '/api/image' else SLOTS
+        if not slots.acquire(blocking=False):
             return self.send_json({'ok': False, 'error': '音频服务繁忙'}, 503)
         try:
             self.route()
@@ -98,7 +102,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.send_json({'ok': False, 'error': '哔哩哔哩请求失败，请稍后重试'}, 502)
         finally:
-            SLOTS.release()
+            slots.release()
 
     def route(self):
         parsed = urllib.parse.urlsplit(self.path)
@@ -108,6 +112,26 @@ class Handler(BaseHTTPRequestHandler):
             if route == '/api/stream':
                 return self.mp3(query.get('url', ''), query.get('track', ''))
             return self.image(query.get('url', ''))
+        if route in ('/api/login/qrcode', '/api/login/poll', '/api/login/manual', '/api/login/logout', '/api/login/cancel'):
+            if self.command == 'GET' and route == '/api/login/qrcode':
+                result = AUTH.issue()
+            elif self.command == 'GET' and route == '/api/login/poll':
+                result = AUTH.poll(query.get('key', ''))
+            elif self.command == 'POST' and route == '/api/login/logout':
+                result = AUTH.replace()
+            elif self.command == 'POST' and route in ('/api/login/manual', '/api/login/cancel'):
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 16384:
+                    raise ValueError('授权内容无效')
+                data = json.loads(self.rfile.read(length))
+                if route == '/api/login/cancel':
+                    AUTH.cancel(str(data.get('key', '')))
+                    result = {}
+                else:
+                    result = AUTH.replace(str(data.get('cookie', '')))
+            else:
+                return self.send_json({'ok': False, 'error': '接口不存在'}, 404)
+            return self.send_json({'ok': True, **result})
         # 上游共享 Cookie/Wbi 状态不是线程安全对象，核心操作串行执行。
         with CORE_LOCK:
             if self.command == 'GET' and route == '/api/search':
@@ -120,26 +144,6 @@ class Handler(BaseHTTPRequestHandler):
                 result = bili.resolve_audio(query.get('bvid', ''), query.get('cid'))
             elif self.command == 'GET' and route == '/api/login/status':
                 result = {**bili.nav_info(), 'mp3': bili.MP3_OK}
-            elif self.command == 'GET' and route == '/api/login/qrcode':
-                result = bili.qr_generate()
-            elif self.command == 'GET' and route == '/api/login/poll':
-                result = bili.qr_poll(query.get('key', ''))
-            elif self.command == 'POST' and route == '/api/login/manual':
-                length = int(self.headers.get('Content-Length', '0'))
-                if not 0 < length <= 16384:
-                    raise ValueError('授权内容无效')
-                data = json.loads(self.rfile.read(length))
-                previous = dict(bili.COOKIES)
-                try:
-                    result = bili.manual_login(str(data.get('cookie', '')))
-                except Exception:
-                    bili.COOKIES.clear()
-                    bili.COOKIES.update(previous)
-                    bili.save_cookies()
-                    raise
-            elif self.command == 'POST' and route == '/api/login/logout':
-                bili.logout()
-                result = {}
             else:
                 return self.send_json({'ok': False, 'error': '接口不存在'}, 404)
         self.send_json({'ok': True, **result})

@@ -16,6 +16,11 @@ function registerBilibiliAuthRoutes(app, client, options = {}) {
     sessions.delete(id);
     clearTimeout(state.expiry);
     state.stop?.();
+    if (state.key) void client.request('/api/login/cancel', undefined, 'POST', { key: state.key }).catch(() => {});
+  }
+
+  function removeAll() {
+    for (const id of [...sessions.keys()]) remove(id);
   }
 
   app.post('/api/bilibili/qr', admin, async (req, res) => {
@@ -30,7 +35,10 @@ function registerBilibiliAuthRoutes(app, client, options = {}) {
       const result = await client.request('/api/login/qrcode');
       const url = new URL(result.url);
       if (!result.key || url.protocol !== 'https:' || !['passport.bilibili.com', 'account.bilibili.com'].includes(url.hostname)) throw new Error('二维码数据无效');
-      if (sessions.get(req.sessionID) !== state) return res.status(409).json({ success: false, message: '二维码已更新，请使用新的二维码' });
+      if (sessions.get(req.sessionID) !== state) {
+        void client.request('/api/login/cancel', undefined, 'POST', { key: result.key }).catch(() => {});
+        return res.status(409).json({ success: false, message: '二维码已更新，请使用新的二维码' });
+      }
       state.key = result.key;
       res.json({ success: true, url: result.url, expiresAt: state.expiresAt });
     } catch (error) {
@@ -47,7 +55,9 @@ function registerBilibiliAuthRoutes(app, client, options = {}) {
   app.get('/api/bilibili/qr/events', admin, (req, res) => {
     const state = sessions.get(req.sessionID);
     if (!state?.key || state.expiresAt <= Date.now()) return res.status(410).json({ success: false, message: '二维码已过期，请重新生成' });
-    state.stop?.();
+    const previousStop = state.stop;
+    state.stop = null;
+    previousStop?.();
     res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' });
     res.flushHeaders();
     let stopped = false;
@@ -60,8 +70,12 @@ function registerBilibiliAuthRoutes(app, client, options = {}) {
       clearTimeout(timer);
       res.end();
     };
-    state.stop = () => { send({ state: 'expired' }); stop(); };
-    res.once('close', stop);
+    const expire = () => { send({ state: 'expired' }); stop(); };
+    state.stop = expire;
+    res.once('close', () => {
+      stop();
+      if (state.stop === expire && sessions.get(req.sessionID) === state) remove(req.sessionID);
+    });
     send({ state: 'waiting' });
     const check = async () => {
       if (stopped || sessions.get(req.sessionID) !== state) return;
@@ -97,12 +111,12 @@ function registerBilibiliAuthRoutes(app, client, options = {}) {
     if (typeof cookie !== 'string' || cookie.length > 8192 || !cookie.includes('SESSDATA=')) {
       return res.status(400).json({ success: false, message: '请提供包含 SESSDATA 的 Cookie' });
     }
-    remove(req.sessionID);
+    removeAll();
     try { res.json({ success: true, data: await client.request('/api/login/manual', undefined, 'POST', { cookie }) }); }
     catch (error) { fail(res, error); }
   });
   app.delete('/api/bilibili/cookie', admin, async (req, res) => {
-    remove(req.sessionID);
+    removeAll();
     try { await client.request('/api/login/logout', undefined, 'POST'); res.json({ success: true }); }
     catch (error) { fail(res, error); }
   });

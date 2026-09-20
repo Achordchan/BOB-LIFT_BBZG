@@ -72,10 +72,63 @@ class BilibiliServiceTest(unittest.TestCase):
     def test_failed_manual_authorization_preserves_previous_account(self):
         self.service.bili.COOKIES.clear()
         self.service.bili.COOKIES['SESSDATA'] = 'previous-test-account'
+        self.service.bili.save_cookies()
         with patch.object(self.service.bili, 'nav_info', return_value={'logged_in': False}):
             self.assertEqual(self.request('/api/login/manual', {'cookie': 'SESSDATA=invalid-test'})[0], 400)
         self.assertEqual(self.service.bili.COOKIES['SESSDATA'], 'previous-test-account')
         self.assertEqual(Path(self.service.bili.COOKIE_FILE).stat().st_mode & 0o777, 0o600)
+
+    def test_logout_or_manual_replace_fences_inflight_qr_writes(self):
+        from concurrent.futures import ThreadPoolExecutor
+        for replacement in (None, 'new-account'):
+            with self.subTest(replacement=replacement):
+                self.service.AUTH.invalidate()
+                self.service.bili.COOKIES.clear()
+                self.service.bili.COOKIES['SESSDATA'] = 'previous-account'
+                self.service.bili.save_cookies()
+                with patch.object(self.service.bili, 'qr_generate', return_value={'key': 'race', 'url': 'https://account.bilibili.com/test'}):
+                    self.assertEqual(self.request('/api/login/qrcode')[0], 200)
+                started, resume, invalidated = threading.Event(), threading.Event(), threading.Event()
+                original_invalidate = self.service.AUTH.invalidate
+                def invalidate():
+                    result = original_invalidate()
+                    invalidated.set()
+                    return result
+                def poll(_key):
+                    self.service.bili.COOKIES['SESSDATA'] = 'stale-qr-account'
+                    self.service.bili.save_cookies()
+                    started.set()
+                    self.assertTrue(resume.wait(2))
+                    return {'state': 'confirmed', 'logged_in': True}
+                def manual(_cookie):
+                    self.service.bili.COOKIES['SESSDATA'] = 'new-account'
+                    self.service.bili.save_cookies()
+                    return {'logged_in': True}
+                with patch.object(self.service.bili, 'qr_poll', side_effect=poll), \
+                     patch.object(self.service.bili, 'manual_login', side_effect=manual), \
+                     patch.object(self.service.AUTH, 'invalidate', side_effect=invalidate), \
+                     ThreadPoolExecutor(max_workers=2) as pool:
+                    pending = pool.submit(self.request, '/api/login/poll?key=race')
+                    self.assertTrue(started.wait(2))
+                    self.assertEqual(json.loads(Path(self.service.bili.COOKIE_FILE).read_text())['SESSDATA'], 'previous-account')
+                    endpoint = '/api/login/logout' if replacement is None else '/api/login/manual'
+                    update = pool.submit(self.request, endpoint, {} if replacement is None else {'cookie': 'SESSDATA=new-account'})
+                    self.assertTrue(invalidated.wait(2))
+                    resume.set()
+                    self.assertEqual(pending.result()[1]['state'], 'expired')
+                    self.assertEqual(update.result()[0], 200)
+                cookies = json.loads(Path(self.service.bili.COOKIE_FILE).read_text())
+                self.assertEqual(cookies.get('SESSDATA'), replacement)
+                self.assertEqual(self.request('/api/login/poll?key=race')[1]['state'], 'expired')
+
+    def test_cancelled_qr_never_commits_credentials(self):
+        self.service.AUTH.invalidate()
+        with patch.object(self.service.bili, 'qr_generate', return_value={'key': 'cancel', 'url': 'https://account.bilibili.com/test'}):
+            self.request('/api/login/qrcode')
+        self.assertEqual(self.request('/api/login/cancel', {'key': 'cancel'})[0], 200)
+        with patch.object(self.service.bili, 'qr_poll') as poll:
+            self.assertEqual(self.request('/api/login/poll?key=cancel')[1]['state'], 'expired')
+            poll.assert_not_called()
 
     def test_mp3_ranges_and_missing_encoder(self):
         self.assertEqual(self.service.byte_range('bytes=2-5', 8), (2, 5, 206))

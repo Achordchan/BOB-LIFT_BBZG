@@ -25,7 +25,9 @@ python3 -B bilibili-api/server.py
 | Node `BBZG_MUSIC_MAX_DOWNLOAD_BYTES` | `31457280` | 音乐库导入上限，30 MiB |
 | Node `BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS` | `30000` | 下载阶段总时限，30 秒 |
 
-搜索上游未提供总数；有结果时允许继续翻页，遇到空页或第 50 页停止，不显示虚构总数。B 站请求可能因账号、区域或平台风控失败，界面会显示失败信息，不自动替换为其他来源。
+搜索上游未提供总数；有结果时允许继续翻页，遇到空页或第 50 页停止，不显示虚构总数。封面在 Node 端单独限制为 4 个并发、128 个排队请求，等待最长 20 秒；Python 端也单独分配 4 个图片并发，避免图片占用音频额度。两端界面加载失败后仅重试两次（500 / 1500 毫秒），组件移除或图片切换时停止旧重试。
+
+B 站请求可能因账号、区域或平台风控失败，界面会显示失败信息，不自动替换为其他来源。
 
 ## 宝塔运行配置
 
@@ -51,6 +53,7 @@ python3 -B bilibili-api/server.py
 | --- | --- |
 | `bilibili-api/vendor/bili.py` | 引入固定版本上游核心，保持源码原样 |
 | `bilibili-api/server.py` | 本机鉴权、扫码与账号 API、封面代理、MP3 Range 响应 |
+| `bilibili-api/auth_state.py` | 二维码代次与有效期校验、暂存凭据、原子提交与全局失效 |
 | `bilibili-api/audio_mp3.py` | FFmpeg 转码、缓存、并发与容量限制、失败清理 |
 | `bilibili-api/README.md` | 运行要求、配置、宝塔接入和验收边界 |
 | `lib/bilibili-client.js` | 搜索、解析、服务访问以及 MP3 响应校验 |
@@ -85,8 +88,8 @@ python3 -B bilibili-api/server.py
 ## 本地验收记录（2026-09-20）
 
 - `npm run build:admin`：通过；Vite 提示部分构建包超过 500 kB。
-- `npm test`：157 项通过，无失败或跳过。
-- `python3 -B test/bilibili-service.test.py`：6 项通过，包括真实 FFmpeg 转码。
+- `npm test`：159 项通过，无失败或跳过。
+- `python3 -B test/bilibili-service.test.py`：8 项通过，包括真实 FFmpeg 转码和授权写入竞态。
 - `node --check`：新增 Node 模块及员工端脚本通过语法检查；`git diff --check` 通过。
 - 真实 B 站搜索、二维码生成、视频封面加载、MP3 编码（ffprobe 确认 192000 bit/s）、206 分段响应均验证通过。
 - 隔离员工账号完成“设为播报”，记录指向真实 `.mp3` 文件；浏览器实际试听成功。后台导入任务与封面保存通过接口测试，后台页面已检查布局。

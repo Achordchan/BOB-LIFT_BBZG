@@ -7,14 +7,48 @@ const { getClientIp } = require('../lib/request-ip');
 function registerBilibiliMusicRoutes(app, options = {}) {
   const client = options.client || createBilibiliClient();
   const limiter = createRateLimiter({ max: 90, windowMs: 60000 });
+  const imageLimiter = createRateLimiter({ max: 600, windowMs: 60000 });
   let activeStreams = 0;
+  let activeImages = 0;
+  const imageQueue = [];
+  function takeImageSlot(res) {
+    return new Promise((resolve, reject) => {
+      if (imageQueue.length >= 128) return reject(Object.assign(new Error('封面加载繁忙，请稍后重试'), { status: 503 }));
+      let timer;
+      const cancel = () => {
+        const index = imageQueue.indexOf(start);
+        if (index >= 0) imageQueue.splice(index, 1);
+        clearTimeout(timer);
+        res.off('close', cancel);
+        reject(Object.assign(new Error('封面加载等待结束'), { status: 503 }));
+      };
+      const start = () => {
+        clearTimeout(timer);
+        res.off('close', cancel);
+        activeImages += 1;
+        let released = false;
+        resolve(() => {
+          if (released) return;
+          released = true;
+          activeImages -= 1;
+          imageQueue.shift()?.();
+        });
+      };
+      if (activeImages < 4) return start();
+      imageQueue.push(start);
+      timer = setTimeout(cancel, 20000);
+      res.once('close', cancel);
+    });
+  }
   const prefix = '/api/public/music/bilibili';
   app.use(prefix, (req, res, next) => {
     if (!req.session?.loggedIn && !req.session?.eggUserId) return res.status(401).json({ success: false, message: '请先登录' });
-    if (!limiter.hit(getClientIp(req)).allowed) return res.status(429).json({ success: false, message: '请求过于频繁，请稍后重试' });
+    const requestLimiter = req.path.replace(/\/+$/, '') === '/image' ? imageLimiter : limiter;
+    if (!requestLimiter.hit(getClientIp(req)).allowed) return res.status(429).json({ success: false, message: '请求过于频繁，请稍后重试' });
     next();
   });
   const fail = (res, error) => {
+    if (res.destroyed) return;
     if (!res.headersSent) res.status(error.status || 502).json({ success: false, message: error.message });
     else res.destroy();
   };
@@ -32,15 +66,18 @@ function registerBilibiliMusicRoutes(app, options = {}) {
   });
   for (const action of ['stream', 'download', 'image']) {
     app.get(`${prefix}/${action}`, async (req, res) => {
-      if (activeStreams >= 8) return res.status(429).json({ success: false, message: '音频服务繁忙，请稍后重试' });
-      activeStreams += 1;
+      if (action !== 'image' && activeStreams >= 8) return res.status(429).json({ success: false, message: '音频服务繁忙，请稍后重试' });
+      if (action !== 'image') activeStreams += 1;
+      let releaseImage;
       let upstream;
       const close = () => upstream?.data.destroy();
       res.once('close', close);
       try {
+        if (action === 'image') releaseImage = await takeImageSlot(res);
+        if (res.destroyed) return;
         const url = action === 'image' ? client.imageUrl(String(req.query.url || '')) : await client.resolve(req.query.id);
         if (res.destroyed) return;
-        upstream = await client.stream(url, action === 'stream' ? req.headers.range : undefined);
+        upstream = await client.stream(url, action === 'stream' ? req.headers.range : undefined, action === 'image' ? 15000 : 210000);
         if (res.destroyed) { close(); return; }
         if (![200, 206, 416].includes(upstream.status)) {
           close();
@@ -58,7 +95,12 @@ function registerBilibiliMusicRoutes(app, options = {}) {
         }
         await pipeline(upstream.data, res);
       } catch (error) { fail(res, error); }
-      finally { activeStreams -= 1; res.off('close', close); close(); }
+      finally {
+        if (action !== 'image') activeStreams -= 1;
+        releaseImage?.();
+        res.off('close', close);
+        close();
+      }
     });
   }
   registerBilibiliAuthRoutes(app, client, options);

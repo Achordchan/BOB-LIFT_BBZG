@@ -6,6 +6,24 @@
   function onlineMusicUrl(action, item) {
     return `/api/public/music/${item.source === 'bilibili' ? 'bilibili/' : ''}${action}?id=${encodeURIComponent(String(item.id))}`;
   }
+  const coverLoads = new WeakMap();
+  function setMusicCover(img, url) {
+    clearTimeout(coverLoads.get(img)?.timer);
+    const state = { attempt: 0, timer: null };
+    coverLoads.set(img, state);
+    img.style.visibility = url ? 'visible' : 'hidden';
+    img.onerror = () => {
+      if (coverLoads.get(img) !== state) return;
+      if (state.attempt >= 2) { img.style.visibility = 'hidden'; return; }
+      state.attempt += 1;
+      state.timer = setTimeout(() => {
+        if (!img.isConnected || coverLoads.get(img) !== state) return;
+        img.src = `${url}${url.includes('?') ? '&' : '?'}cover_retry=${state.attempt}`;
+      }, state.attempt === 1 ? 500 : 1500);
+    };
+    if (url) img.src = url;
+    else img.removeAttribute('src');
+  }
   const qInput = document.getElementById('q');
   const searchBtn = document.getElementById('searchBtn');
   const clearBtn = document.getElementById('clearBtn');
@@ -505,7 +523,7 @@
         if (nowCover) {
           const coverUrl = music && music.coverUrl ? String(music.coverUrl) : '';
           if (coverUrl) {
-            nowCover.src = coverUrl;
+            setMusicCover(nowCover, coverUrl);
             nowCover.style.display = 'block';
           } else {
             nowCover.removeAttribute('src');
@@ -615,11 +633,10 @@
       if (m.coverUrl) {
         const cover = document.createElement('img');
         cover.className = m.source === 'bilibili' ? 'cover egg-music-video-cover' : 'cover';
-        cover.src = m.coverUrl;
+        setMusicCover(cover, m.coverUrl);
         cover.alt = m.source === 'bilibili' ? '视频封面' : '歌曲封面';
         cover.loading = 'lazy';
         cover.referrerPolicy = 'no-referrer';
-        cover.onerror = () => { cover.style.visibility = 'hidden'; };
         titleGroup.appendChild(cover);
       }
       titleGroup.appendChild(title);
@@ -859,12 +876,9 @@
       img.className = item.source === 'bilibili' ? 'cover egg-music-video-cover' : 'cover';
       img.referrerPolicy = 'no-referrer';
       const coverUrl = getCoverUrl(item);
-      img.src = coverUrl || '';
+      setMusicCover(img, coverUrl);
       img.alt = safeText(item.name);
       img.loading = 'lazy';
-      img.onerror = function () {
-        try { img.style.visibility = 'hidden'; } catch (e) {}
-      };
 
       const texts = document.createElement('div');
       texts.className = 'texts';
@@ -930,7 +944,7 @@
             if (nowCover) {
               const coverUrl = getCoverUrl(item);
               if (coverUrl) {
-                nowCover.src = coverUrl;
+                setMusicCover(nowCover, coverUrl);
                 nowCover.style.display = 'block';
               } else {
                 nowCover.removeAttribute('src');
