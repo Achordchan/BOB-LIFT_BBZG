@@ -6,7 +6,9 @@ function createUpload(baseDir) {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
       let uploadDir;
-      if (file.fieldname === 'startupAudioFile' || file.fieldname === 'personalizedAudioFile') {
+      if (file.fieldname === 'coverFile') {
+        uploadDir = path.join(baseDir, 'storage', 'cover-uploads');
+      } else if (file.fieldname === 'startupAudioFile' || file.fieldname === 'personalizedAudioFile') {
         uploadDir = path.join(baseDir, 'public', 'music', 'custom');
       } else if (file.fieldname === 'musicFile' || file.fieldname === 'lrcFile' || file.fieldname === 'battleSongFile' || file.fieldname === 'sound') {
         uploadDir = path.join(baseDir, 'public', 'music');
@@ -39,7 +41,7 @@ function createUpload(baseDir) {
         } else {
           cb(new Error('不支持的文件类型'));
         }
-      } else if (file.fieldname === 'userPhoto' || file.fieldname === 'userFullPhoto') {
+      } else if (file.fieldname === 'userPhoto' || file.fieldname === 'userFullPhoto' || file.fieldname === 'coverFile') {
         if (file.mimetype.startsWith('image/')) {
           cb(null, true);
         } else {

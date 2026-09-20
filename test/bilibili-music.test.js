@@ -270,3 +270,27 @@ test('整页封面排队加载，不占用音频并发额度', async t => {
   release();
   await Promise.all(covers);
 });
+
+test('管理员和员工导入均持久化 WebP，歌曲展示继续使用只读本地封面接口', async t => {
+  const sharp = require('sharp');
+  const { base, getData, dir } = await fixture(t);
+  fs.mkdirSync(path.join(dir, 'public'), { recursive: true });
+  const original = await sharp({ create: { width: 900, height: 600, channels: 3, background: '#28507c' } }).png().toBuffer();
+  fs.writeFileSync(path.join(dir, 'public/cover.png'), original);
+  const { jobId } = await (await post(base, '/api/music/import-bilibili', { id: BV, name: '后台歌曲', coverUrl: '/cover.png' })).json();
+  const events = await fetch(`${base}/api/music/import-events/${jobId}`, { headers: { 'x-test-role': 'admin' }, signal: AbortSignal.timeout(5000) });
+  assert.match(await events.text(), /event: done/);
+  const employeeId = 'BV1xx411c7mD';
+  const response = await (await post(base, '/api/egg/set-broadcast-from-bilibili', { id: employeeId, name: '员工歌曲', coverUrl: '/cover.png' }, 'egg')).json();
+  assert.equal(response.success, true);
+  assert.equal(getData().music.length, 2);
+  for (const song of getData().music) {
+    assert.match(song.coverUrl, /^\/music\/covers\/[a-f0-9]{64}\.webp$/);
+    assert.equal(song.coverOptimization.status, 'ready');
+    const metadata = await sharp(path.join(dir, 'public', song.coverUrl)).metadata();
+    assert.deepEqual([metadata.format, metadata.width, metadata.height], ['webp', 640, 427]);
+  }
+  const list = await (await fetch(`${base}/api/music`, { headers: { 'x-test-role': 'admin' } })).json();
+  assert.ok(list.music.every(song => song.coverUrl.startsWith('/api/public/music/local-cover?')));
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'public/cover.png')), original);
+});
