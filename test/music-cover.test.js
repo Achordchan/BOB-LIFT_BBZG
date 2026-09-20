@@ -13,7 +13,10 @@ test('网易云封面统一 HTTPS，B 站视频封面走同源代理', () => {
   assert.equal(musicCoverUrl({ source: 'netease', sourceId: '123' }), '/api/public/music/cover?id=123');
   assert.equal(musicCoverUrl({ source: 'bilibili', sourceId: 'BV1os41197sv' }), '');
   for (const coverUrl of ['/uploads/cover.jpg', 'images/custom.png', '../covers/a.jpg', 'https://cdn.example.com/a.jpg', 'http://legacy.example.com/a.jpg', 'https://cdn.example.com/image?id=123', 'https://cdn.example.com/transform/width/200/photo']) {
-    assert.equal(musicCoverUrl({ source: 'netease', sourceId: '123', coverUrl }), coverUrl);
+    assert.equal(normalizeMusicCover(coverUrl), coverUrl);
+    const displayed = musicCoverUrl({ source: 'netease', sourceId: '123', coverUrl });
+    if (/^https?:/.test(coverUrl)) assert.equal(new URL(displayed, 'https://local.test').searchParams.get('url'), coverUrl);
+    else assert.equal(displayed, coverUrl);
   }
 });
 
@@ -60,7 +63,8 @@ test('历史网易云记录按来源 ID 补取封面并缓存，不依赖歌曲�
   for (let i = 0; i < 2; i++) {
     const response = await fetch(url, { redirect: 'manual' });
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get('location'), 'https://p1.music.126.net/cover.jpg');
+    assert.equal(new URL(response.headers.get('location'), 'https://local.test').pathname, '/api/public/music/cover-image');
+    assert.equal(new URL(response.headers.get('location'), 'https://local.test').searchParams.get('url'), 'https://p1.music.126.net/cover.jpg');
   }
   assert.equal(calls, 1);
 });

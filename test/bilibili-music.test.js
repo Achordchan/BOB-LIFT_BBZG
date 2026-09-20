@@ -93,7 +93,7 @@ test('后台与员工音乐库保留历史同源及自定义 HTTPS 封面', asyn
   saveData({ users: [{ id: 'employee' }], music: covers.map((coverUrl, index) => ({ id: String(index), coverUrl, source: 'netease', sourceId: '123' })) });
   for (const [endpoint, role] of [['/api/music', 'admin'], ['/api/egg/music', 'egg']]) {
     const result = await (await fetch(base + endpoint, { headers: { 'x-test-role': role } })).json();
-    assert.deepEqual(result.music.map(item => item.coverUrl).sort(), covers.slice().sort());
+    assert.deepEqual(result.music.map(item => item.coverUrl.startsWith('/api/public/music/cover-image?') ? new URL(item.coverUrl, base).searchParams.get('url') : item.coverUrl).sort(), covers.slice().sort());
   }
 });
 

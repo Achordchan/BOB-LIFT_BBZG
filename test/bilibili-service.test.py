@@ -176,11 +176,50 @@ class BilibiliServiceTest(unittest.TestCase):
             cache.slots.release()
             cache.slots.release()
             self.assertEqual(list(cache.directory.iterdir()), [])
+            from types import SimpleNamespace
+            core = SimpleNamespace(UA='test', cookie_string=lambda: '')
+            gate = self.service.CoreRequestGate(request_timeout=0.15)
+            def open_test_api(_url, _validate, headers, timeout, method):
+                return self.service.open_cdn_source(url, lambda _url: None, headers, timeout=timeout, method=method)
+            self.service.install_core_transport(core, gate, open_source=open_test_api)
+            with gate:
+                with self.assertRaisesRegex(RuntimeError, '超时'):
+                    core.http_req('https://api.bilibili.com/test')
         finally:
             stopped.set()
             server.shutdown()
             server.server_close()
             thread.join()
+
+    def test_core_lock_wait_and_response_size_are_bounded(self):
+        from types import SimpleNamespace
+        from contextlib import contextmanager
+        held, release = threading.Event(), threading.Event()
+        gate = self.service.CoreRequestGate(wait_timeout=0.05)
+        def holder():
+            with gate:
+                held.set()
+                release.wait(2)
+        thread = threading.Thread(target=holder)
+        thread.start()
+        try:
+            self.assertTrue(held.wait(1))
+            with self.assertRaisesRegex(RuntimeError, '繁忙'):
+                with gate:
+                    self.fail('锁等待不应无限排队')
+        finally:
+            release.set()
+            thread.join()
+        @contextmanager
+        def large_response(_url, _validate, _headers, **_options):
+            with io.BytesIO(b'12345678') as response:
+                response.status, response.headers = 200, {}
+                yield response
+        core = SimpleNamespace(UA='test', cookie_string=lambda: '')
+        self.service.install_core_transport(core, gate, open_source=large_response, max_bytes=4)
+        with gate:
+            with self.assertRaisesRegex(RuntimeError, '过大'):
+                core.http_req('https://api.bilibili.com/test')
 
     def test_slow_cover_deadline_releases_image_slot(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

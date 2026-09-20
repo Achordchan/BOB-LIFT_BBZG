@@ -5,7 +5,7 @@ const { createNeteaseClient } = require('../lib/netease-client');
 const { getClientIp } = require('../lib/request-ip');
 const { createTtlMap } = require('../lib/ttl-map');
 const { createRateLimiter, createConcurrencyGate } = require('../lib/rate-limit');
-const { normalizeMusicCover } = require('../lib/music-cover');
+const { normalizeMusicCover, displayMusicCover } = require('../lib/music-cover');
 
 function purgeEggMusicCache(maxAgeMs = 7 * 24 * 60 * 60 * 1000) {
   const dir = path.join(process.cwd(), '.bbzg-cache', 'egg-music');
@@ -431,7 +431,7 @@ function registerPublicMusicRoutes(app) {
       }
       if (!cover) return res.status(404).end();
       res.setHeader('Cache-Control', 'private, max-age=3600');
-      res.redirect(302, cover);
+      res.redirect(302, displayMusicCover(cover, req.hostname));
     } catch (_) { res.status(502).end(); }
   });
 
@@ -497,7 +497,7 @@ function registerPublicMusicRoutes(app) {
         return {
           id: song && song.id != null ? song.id : '',
           name: song && song.name ? song.name : '',
-          picUrl,
+          picUrl: displayMusicCover(picUrl, req.hostname),
           artists,
           album
         };

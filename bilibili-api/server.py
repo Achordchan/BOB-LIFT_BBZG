@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from audio_mp3 import Mp3Cache, byte_range
 from auth_state import AuthorizationState
 from cdn_source import open_cdn_source
+from core_transport import CoreRequestGate, install_core_transport
 STATE = ROOT.parent / 'storage' / 'bilibili'
 STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 sys.path.insert(0, str(ROOT / 'vendor'))
@@ -40,7 +41,8 @@ if not TOKEN:
 if not TOKEN:
     raise SystemExit('服务令牌不能为空')
 
-CORE_LOCK = threading.Lock()
+CORE_LOCK = CoreRequestGate()
+install_core_transport(bili, CORE_LOCK)
 AUTH = AuthorizationState(bili, CORE_LOCK)
 SLOTS = threading.BoundedSemaphore(12)
 IMAGE_SLOTS = threading.BoundedSemaphore(4)

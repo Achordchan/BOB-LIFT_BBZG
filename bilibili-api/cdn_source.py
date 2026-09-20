@@ -29,7 +29,7 @@ class DeadlineResponse:
 
 
 @contextmanager
-def open_cdn_source(url, validate, headers, timeout=90):
+def open_cdn_source(url, validate, headers, timeout=90, method='GET'):
     deadline = time.monotonic() + timeout
     for _ in range(6):
         validate(url)
@@ -55,7 +55,7 @@ def open_cdn_source(url, validate, headers, timeout=90):
             timer.daemon = True
             timer.start()
             target = urllib.parse.urlunsplit(('', '', parsed.path or '/', parsed.query, ''))
-            connection.request('GET', target, headers=headers)
+            connection.request(method, target, headers=headers)
             response = connection.getresponse()
             if response.status in (301, 302, 303, 307, 308):
                 location = response.headers.get('Location')
