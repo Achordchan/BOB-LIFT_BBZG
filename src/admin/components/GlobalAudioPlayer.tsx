@@ -4,6 +4,7 @@ import { CloseOutlined } from '@ant-design/icons';
 import AudioPlayer from 'react-h5-audio-player';
 import 'react-h5-audio-player/lib/styles.css';
 import type { AdminAudioTrack } from '../types';
+import { MusicCover } from './MusicCover';
 
 interface LyricLine {
   time: number;
@@ -69,8 +70,11 @@ export function GlobalAudioPlayer({ track, onError, onClose, onListen, currentTi
   return <>
     <div className="admin-global-player">
       <div className="admin-global-player-meta">
-        <strong>{track.title}</strong>
-        {track.subtitle ? <span>{track.subtitle}</span> : null}
+        <MusicCover url={track.coverUrl} video={track.source === 'bilibili'} />
+        <div className="admin-global-player-track-text">
+          <strong>{track.title}</strong>
+          {track.subtitle ? <span>{track.subtitle}</span> : null}
+        </div>
       </div>
       <button
         type="button"

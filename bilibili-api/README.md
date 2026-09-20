@@ -1,0 +1,94 @@
+# 哔哩哔哩音频接入
+
+后台显示网易云歌曲图片与 B 站视频封面，导入后保存封面地址；旧网易云导入记录若仍有来源 ID，会按需补取歌曲图片。
+
+后台“音乐资产 → 在线导入”和 `/egg-music` 均可选择“哔哩哔哩”。支持关键词搜索、试听、拖动播放进度、下载 MP3，以及导入音乐库 / 设为个人播报。网易云保留原入口和歌词能力。多 P 视频默认使用第一 P；B 站不提供歌词，因此搜索结果不显示歌词按钮。
+
+## 本地运行
+
+需要 Python 3.9+ 和支持 libmp3lame 的 FFmpeg。Python 仅使用标准库，不新增 npm 或 pip 生产依赖；FFmpeg 用于真正的音频转码，不能省略。在项目根目录的单独终端启动：
+
+```sh
+python3 -B bilibili-api/server.py
+```
+
+原 Node 服务继续使用 `./start.sh`。Python 服务只监听 `127.0.0.1:5001`，端口冲突直接报错，不自动换端口。停止时在对应终端按 Ctrl+C。
+
+服务首次启动在 `storage/bilibili/api-token` 生成随机鉴权令牌，Node 从同一路径读取；不要将它写进前端或提交 Git。Cookie 保存在 `storage/bilibili/cookies.json`，权限为 0600；游客模式无需登录。后台“哔哩哔哩音频”默认使用原项目的扫码授权协议，二维码由已有 Ant Design 组件生成，无需安装 segno。可刷新状态、清除授权，也可展开手动 Cookie 授权。浏览器通过 SSE 接收等待扫码、手机确认、成功和过期状态；B 站上游协议仅提供查询接口，因此服务端每 3 秒查询一次，错误按 6 / 12 秒退避，连续 3 次错误、关闭连接、授权完成或 180 秒到期均停止。
+
+| 配置 | 默认值 | 用途 |
+| --- | --- | --- |
+| Python `BBZG_BILIBILI_PORT` | `5001` | 本机服务端口 |
+| Node `BBZG_BILIBILI_API_BASE` | `http://127.0.0.1:5001` | 音频服务地址 |
+| 两端 `BBZG_BILIBILI_API_TOKEN` | 读取 / 生成本地令牌文件 | 分开部署时必须设置相同令牌 |
+| Python `BILI_SESSDATA` | 未设置 | 可选账号凭据；使用后台管理授权时不要同时设置 |
+| Node `BBZG_MUSIC_MAX_DOWNLOAD_BYTES` | `31457280` | 音乐库导入上限，30 MiB |
+| Node `BBZG_MUSIC_DOWNLOAD_TIMEOUT_MS` | `30000` | 下载阶段总时限，30 秒 |
+
+搜索上游未提供总数；有结果时允许继续翻页，遇到空页或第 50 页停止，不显示虚构总数。B 站请求可能因账号、区域或平台风控失败，界面会显示失败信息，不自动替换为其他来源。
+
+## 宝塔运行配置
+
+这是新增的 Python 常驻进程，不是 Node 构建产物，也不需要对公网新增域名、SSL 或反向代理。现有 Node 站点代理前端请求至本机服务。
+
+在宝塔 Python 项目 / 进程管理中创建独立项目，工作目录设为本站项目根目录，确认该进程 PATH 能找到 `ffmpeg` 且 `ffmpeg -encoders` 包含 `libmp3lame`，启动命令为 `python3 -B bilibili-api/server.py`，监听 `127.0.0.1:5001`，开启进程守护；Python 与 Node 进程应以同一系统用户运行，以读取权限为 0600 的令牌和凭据。若使用不同用户，使用两端相同的环境令牌并正确配置 Python 对 `storage/bilibili` 的读写权限。
+
+现有部署脚本会同步 `bilibili-api` 源码并保留 `storage/`。它不会自动创建或重启新增 Python 项目；首次上线须完成上述面板配置，后续更新该目录时需在面板重启该项目。不要直接在现有 Docker Node 容器中使用默认 loopback 地址访问宿主 Python 服务；本接入按当前宝塔同机运行方式配置。
+
+## 上游来源
+
+`vendor/bili.py` 原样取自用户指定仓库：
+
+- 仓库：`https://github.com/Achordchan/bilibili-audio`
+- 固定提交：`76bad09bd8257ec377494223f752f5aea3d29702`
+- 文件：`bili.py`
+
+该文件负责 Wbi 签名、搜索、音轨解析和账号操作。本项目的 `server.py` 负责本机鉴权、CDN 及重定向校验、Range 代理、并发限制和凭据存储。仅请求音频流，不下载视频；试听、下载和导入统一输出 MP3（192 kbps、audio/mpeg），服务端先下载音轨再通过 FFmpeg 解码、编码，绝不只修改扩展名。成品缓存在 storage/bilibili/mp3-cache，以支持 Range 拖动和重复使用；转换并发上限 2，原始音轨限 100 MiB，MP3 成品限 30 MiB，缓存限 512 MiB / 24 小时。下载阶段检查 90 秒截止时间，单次网络读取超时为 30 秒，转码进程超时为 90 秒；Node 等待转换响应最多 210 秒。缺少 FFmpeg 或转换失败时明确报错，不返回 M4A。上游该版本未附 LICENSE 文件，保留来源说明，不另行声明第三方代码许可证。
+
+## 修改文件清单
+
+| 文件 | 修改内容 |
+| --- | --- |
+| `bilibili-api/vendor/bili.py` | 引入固定版本上游核心，保持源码原样 |
+| `bilibili-api/server.py` | 本机鉴权、扫码与账号 API、封面代理、MP3 Range 响应 |
+| `bilibili-api/audio_mp3.py` | FFmpeg 转码、缓存、并发与容量限制、失败清理 |
+| `bilibili-api/README.md` | 运行要求、配置、宝塔接入和验收边界 |
+| `lib/bilibili-client.js` | 搜索、解析、服务访问以及 MP3 响应校验 |
+| `lib/music-download.js` | 两个导入入口共用流式下载、并发限制和残片清理 |
+| `lib/music-cover.js` | 封面地址规范化与历史网易云封面入口 |
+| `lib/audit.js` | 补充 B 站授权和员工播报审计 |
+| `routes/bilibili-music.js` | 搜索、试听、MP3 下载与封面路由 |
+| `routes/bilibili-auth.js` | 二维码、会话隔离、SSE 状态、退避和退出机制 |
+| `routes/music.js` | B 站后台导入复用现有任务，保存来源和封面 |
+| `routes/egg.js` | B 站设为播报、音乐库复用和封面返回 |
+| `routes/public-music.js` | 按歌曲来源 ID 查询并缓存历史网易云封面 |
+| `server.js` | 注册新增路由 |
+| `src/admin/pages/MusicPage.tsx` | 来源切换、封面、在线导入与结果表格布局 |
+| `src/admin/components/BilibiliAuthCard.tsx` | 默认扫码授权、状态提示与手动授权折叠入口 |
+| `src/admin/components/MusicCover.tsx` | 歌曲图片 / 视频封面组件与加载失败状态 |
+| `src/admin/components/GlobalAudioPlayer.tsx` | 播放器显示来源封面 |
+| `src/admin/App.tsx` | B 站曲目清除上一首歌词状态 |
+| `src/admin/types.ts` | 音乐记录、播放参数增加来源与封面字段 |
+| `src/admin/navigation.tsx` | 更新在线导入导航与搜索关键词 |
+| `src/admin/styles.css` | 封面、窄屏搜索表格和播放器布局的作用域样式 |
+| `public/egg-music.html` | 来源选择、封面样式与播放器音源入口 |
+| `public/js/egg-music.js` | B 站搜索、试听、下载、播报设置及封面展示 |
+| `public/js/audio-core.js` | 切歌时忽略旧播放请求的 AbortError |
+| `public/admin-app/index.html`、`public/admin-app/assets/*` | 重新生成后台产物并移除旧哈希文件 |
+| `.gitignore` | 排除 Python 缓存和上游默认凭据路径 |
+| `test/bilibili-music.test.js` | 权限、搜索、MP3 类型、导入、播报及失败清理 |
+| `test/bilibili-auth.test.js` | 扫码状态、隔离、过期、退避和请求竞态 |
+| `test/bilibili-service.test.py` | CDN 校验、凭据回滚、真实 FFmpeg 转码和 Range |
+| `test/music-cover.test.js` | 封面规范化、历史图片查询和缓存 |
+| `test/audio-core-playback.test.js` | 旧播放中断不破坏新曲目的回归测试 |
+
+## 本地验收记录（2026-09-20）
+
+- `npm run build:admin`：通过；Vite 提示部分构建包超过 500 kB。
+- `npm test`：157 项通过，无失败或跳过。
+- `python3 -B test/bilibili-service.test.py`：6 项通过，包括真实 FFmpeg 转码。
+- `node --check`：新增 Node 模块及员工端脚本通过语法检查；`git diff --check` 通过。
+- 真实 B 站搜索、二维码生成、视频封面加载、MP3 编码（ffprobe 确认 192000 bit/s）、206 分段响应均验证通过。
+- 隔离员工账号完成“设为播报”，记录指向真实 `.mp3` 文件；浏览器实际试听成功。后台导入任务与封面保存通过接口测试，后台页面已检查布局。
+- 已清理本次临时预览进程、测试账号和预览入口；测试替身仅位于 `test/`，不进入生产代码。
+- 未执行真实手机扫码确认、正式大屏播报和生产部署；未验证 Safari / 移动端解码。网易云封面接口已通过集成测试，本地未启动其 Python 服务，因此未完成网易云在线接口实测。

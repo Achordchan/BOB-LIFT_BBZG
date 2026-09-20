@@ -121,9 +121,9 @@ export const pages: Record<PageKey, PageMeta> = {
   },
   music: {
     title: '音乐管理',
-    sub: '音乐库、音效库、歌词和网易云导入',
+    sub: '音乐库、音效库、歌词和在线导入',
     group: '音频中心',
-    keywords: '音乐 音效 歌词 lrc 导入 网易云'
+    keywords: '音乐 音效 歌词 lrc 导入 网易云 哔哩哔哩 B站'
   },
   playback: {
     title: '播放配置',

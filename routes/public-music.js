@@ -5,6 +5,7 @@ const { createNeteaseClient } = require('../lib/netease-client');
 const { getClientIp } = require('../lib/request-ip');
 const { createTtlMap } = require('../lib/ttl-map');
 const { createRateLimiter, createConcurrencyGate } = require('../lib/rate-limit');
+const { normalizeMusicCover } = require('../lib/music-cover');
 
 function purgeEggMusicCache(maxAgeMs = 7 * 24 * 60 * 60 * 1000) {
   const dir = path.join(process.cwd(), '.bbzg-cache', 'egg-music');
@@ -408,6 +409,31 @@ function registerPublicMusicRoutes(app) {
 
     fs.createReadStream(record.filePath, { start, end }).pipe(res);
   }
+
+  const coverCache = createTtlMap({ defaultTtlMs: 60 * 60 * 1000, maxSize: 300 });
+  const coverRequests = new Map();
+  app.get('/api/public/music/cover', async (req, res) => {
+    const id = String(req.query.id || '');
+    if (!/^\d+$/.test(id)) return res.status(400).end();
+    if (!rateLimit(req, 'cover', 120, 60000)) return res.status(429).end();
+    try {
+      let cover = coverCache.get(id);
+      if (cover === undefined) {
+        if (!coverRequests.has(id)) {
+          coverRequests.set(id, requestNeteaseSongApi(id, 'name').then(payload => {
+            const song = payload?.data?.songs?.[0] || payload?.songs?.[0];
+            const url = normalizeMusicCover(song?.al?.picUrl || song?.album?.picUrl);
+            coverCache.set(id, url, url ? 3600000 : 60000);
+            return url;
+          }).finally(() => coverRequests.delete(id)));
+        }
+        cover = await coverRequests.get(id);
+      }
+      if (!cover) return res.status(404).end();
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.redirect(302, cover);
+    } catch (_) { res.status(502).end(); }
+  });
 
   app.get('/api/public/music/search', async (req, res) => {
     try {

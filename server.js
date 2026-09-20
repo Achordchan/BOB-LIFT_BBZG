@@ -29,6 +29,7 @@ const { registerAuthRoutes } = require('./routes/auth');
 const { registerPlatformDisplaySettingsRoutes } = require('./routes/platform-display-settings');
 const { registerPageSettingsRoutes } = require('./routes/page-settings');
 const { registerMiscRoutes } = require('./routes/misc');
+const { registerBilibiliMusicRoutes } = require('./routes/bilibili-music');
 const { registerPublicMusicRoutes } = require('./routes/public-music');
 const { registerEggRoutes } = require('./routes/egg');
 const { registerThemeRoutes } = require('./routes/themes');
@@ -299,6 +300,7 @@ registerPageSettingsRoutes(app, {
 });
 
 registerPublicMusicRoutes(app);
+registerBilibiliMusicRoutes(app);
 
 registerEggRoutes(app, {
   getData,

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, Drawer, Form, Input, Modal, Popconfirm, Progress, Space, Spin, Table, Tabs, Tag, Typography, Upload } from 'antd';
+import { App, Button, Drawer, Form, Input, Modal, Popconfirm, Progress, Select, Space, Spin, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import { apiForm, apiGet, apiJson, apiText, audioUrl, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
+import { MusicCover } from '../components/MusicCover';
+import { BilibiliAuthCard } from '../components/BilibiliAuthCard';
 import { NeteaseAuthCard } from '../components/NeteaseAuthCard';
 import type { MusicItem, PlayAdminTrackInput } from '../types';
 
@@ -46,6 +48,9 @@ export default function MusicPage({
   const [editing, setEditing] = useState<MusicItem | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [musicSource, setMusicSource] = useState<'netease' | 'bilibili'>('netease');
+  const [searchHasMore, setSearchHasMore] = useState(false);
+  const searchRequestRef = useRef(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchRows, setSearchRows] = useState<any[]>([]);
   const [lyricsOpen, setLyricsOpen] = useState<LyricsOpenState | null>(null);
@@ -395,24 +400,27 @@ export default function MusicPage({
   async function search(values: any, page = 1) {
     const keyword = String(values.keyword || searchKeyword || '').trim();
     if (!keyword) { message.warning('请输入搜索关键词'); return; }
+    const requestId = ++searchRequestRef.current;
     setSearchLoading(true);
     try {
       const limit = 20;
-      const res = await apiGet<any>(`/api/public/music/search?keywords=${encodeURIComponent(keyword)}&limit=${limit}&page=${page}`);
+      const res = await apiGet<any>(`/api/public/music/${musicSource === 'bilibili' ? 'bilibili/' : ''}search?keywords=${encodeURIComponent(keyword)}&limit=${limit}&page=${page}`);
       const rows = (res as any).songs || (res as any).data?.songs || (res as any).result?.songs || [];
+      if (requestId !== searchRequestRef.current) return;
+      setSearchHasMore(musicSource === 'bilibili' ? !!res.hasMore : rows.length >= limit);
       setSearchKeyword(keyword);
       setSearchPage(page);
       setSearchRows(Array.isArray(rows) ? rows : []);
       setSearchHasRun(true);
       if (!rows.length) message.info('没有搜索到可导入音乐');
-    } catch (e: any) { message.error(e.message || '搜索失败'); }
-    finally { setSearchLoading(false); }
+    } catch (e: any) { if (requestId === searchRequestRef.current) { setSearchRows([]); setSearchHasMore(false); message.error(e.message || '搜索失败'); } }
+    finally { if (requestId === searchRequestRef.current) setSearchLoading(false); }
   }
 
   function getMusicSources(row: MusicItem) {
     const sources: string[] = [];
     if (row.filename) sources.push(audioUrl(row.filename));
-    if ((row as any).sourceId) sources.push(`/api/public/music/stream?id=${encodeURIComponent(String((row as any).sourceId))}`);
+    if (row.sourceId) sources.push(`/api/public/music/${row.source === 'bilibili' ? 'bilibili/' : ''}stream?id=${encodeURIComponent(String(row.sourceId))}`);
     return Array.from(new Set(sources));
   }
 
@@ -466,7 +474,7 @@ export default function MusicPage({
 
   function getSearchSources(row: any) {
     const id = getSearchId(row);
-    return id ? [`/api/public/music/stream?id=${encodeURIComponent(String(id))}`] : [];
+    return id ? [`/api/public/music/${row.source === 'bilibili' ? 'bilibili/' : ''}stream?id=${encodeURIComponent(String(id))}`] : [];
   }
 
   function playLibraryTrack(row: MusicItem) {
@@ -474,6 +482,8 @@ export default function MusicPage({
       id: `music-${row.id}`,
       title: row.isSound ? row.name : getMusicTitle(row),
       subtitle: row.isSound ? (row.description || '音效库') : getMusicArtist(row, '音乐库'),
+      coverUrl: row.coverUrl,
+      source: row.source,
       sources: getMusicSources(row)
     });
   }
@@ -482,9 +492,11 @@ export default function MusicPage({
     const id = getSearchId(row);
     const title = getSearchTitle(row);
     playTrack({
-      id: `netease-${id}`,
+      id: `${row.source || 'netease'}-${id}`,
       title,
       subtitle: getSearchArtist(row),
+      coverUrl: row.picUrl,
+      source: row.source || 'netease',
       sources: getSearchSources(row)
     });
   }
@@ -502,7 +514,7 @@ export default function MusicPage({
   function renderSearchName(row: any) {
     const id = getSearchId(row);
     const title = getSearchTitle(row);
-    const active = activeTrackId === `netease-${id}`;
+    const active = activeTrackId === `${row.source || 'netease'}-${id}`;
     return <Button
       type="link"
       className={active ? 'admin-track-link admin-track-link-active' : 'admin-track-link'}
@@ -517,6 +529,7 @@ export default function MusicPage({
   }
 
   function openSearchModal() {
+    ++searchRequestRef.current;
     setSearchOpen(true);
     setSearchRows([]);
     setSearchKeyword('');
@@ -527,12 +540,14 @@ export default function MusicPage({
   }
 
   async function importSong(row: any) {
+    if (importing && !['done', 'error'].includes(importing.status)) return;
+    setImporting({ status: 'queued', percent: 0, message: '创建导入任务' });
     try {
       const id = getSearchId(row);
       const songName = getSearchTitle(row);
       const artist = getSearchArtist(row, '');
       const name = [songName, artist].filter(Boolean).join('-');
-      const res = await apiJson<{ jobId: string }>('/api/music/import-netease', 'POST', { neteaseId: id, name, songName, artist, description: artist });
+      const res = await apiJson<{ jobId: string }>(`/api/music/import-${row.source === 'bilibili' ? 'bilibili' : 'netease'}`, 'POST', { id, name, songName, artist, coverUrl: row.picUrl, description: artist });
       const jobId = (res as any).jobId;
       if (!jobId) throw new Error('导入任务未返回 jobId');
       importSourceRef.current?.close();
@@ -568,7 +583,7 @@ export default function MusicPage({
       es.addEventListener('progress', handleMessage as EventListener);
       es.addEventListener('done', handleMessage as EventListener);
       es.addEventListener('error', handleConnectionError);
-    } catch (e: any) { message.error(e.message || '导入失败'); }
+    } catch (e: any) { setImporting({ status: 'error', percent: 0, message: e.message || '导入失败' }); message.error(e.message || '导入失败'); }
   }
 
   const actionColumn = {
@@ -585,9 +600,9 @@ export default function MusicPage({
   };
 
   const songColumns = [
-    { title: '歌曲名', dataIndex: 'name', width: 280, ellipsis: true, render: (_: any, r: MusicItem) => renderTrackName(r) },
+    { title: '歌曲名', dataIndex: 'name', width: 280, ellipsis: true, render: (_: any, r: MusicItem) => <div className="music-track-cell"><MusicCover url={r.coverUrl} video={r.source === 'bilibili'} />{renderTrackName(r)}</div> },
     { title: '歌手', width: 160, ellipsis: true, render: (_: any, r: MusicItem) => getMusicArtist(r) },
-    { title: '来源/备注', dataIndex: 'description', width: 160, ellipsis: true, render: (v: string) => v || '—' },
+    { title: '来源/备注', dataIndex: 'description', width: 160, ellipsis: true, render: (v: string, r: MusicItem) => r.source === 'bilibili' ? `哔哩哔哩${v ? ` · ${v}` : ''}` : v || '—' },
     { title: '上传时间', width: 170, render: (_: any, r: MusicItem) => dateTime(r.uploadDate || r.uploadedAt) },
     { title: '歌词', width: 86, align: 'center' as const, render: (_: any, r: MusicItem) => r.lrcFilename ? <Tag color="green">有</Tag> : <Tag>无</Tag> },
     actionColumn
@@ -604,7 +619,8 @@ export default function MusicPage({
     <SectionCard title="网易云授权" description="扫码登录管理网易云账号授权，替代手工提取 Cookie / 环境变量">
       <NeteaseAuthCard />
     </SectionCard>
-    <SectionCard title="音乐资产" description="音乐库、音效库和网易云导入统一管理" extra={<Space><Button icon={<SearchOutlined />} onClick={openSearchModal}>网易云导入</Button><Button icon={<PlusOutlined />} onClick={() => setOpen('sound')}>上传音效</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen('music')}>上传音乐</Button></Space>}>
+    <SectionCard title="哔哩哔哩音频"><BilibiliAuthCard /></SectionCard>
+    <SectionCard title="音乐资产" description="音乐库、音效库和在线音乐导入统一管理" extra={<Space><Button icon={<SearchOutlined />} onClick={openSearchModal}>在线导入</Button><Button icon={<PlusOutlined />} onClick={() => setOpen('sound')}>上传音效</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen('music')}>上传音乐</Button></Space>}>
       {importing && <Progress percent={Number(importing.percent || 0)} status={importing.status === 'error' ? 'exception' : importing.status === 'done' ? 'success' : 'active'} />}
       <Tabs activeKey={assetView} onChange={(key) => setAssetView(key as 'songs' | 'sounds')} items={[{ key: 'songs', label: `音乐库 ${songs.length}`, children: <Table className="music-admin-table" rowKey="id" loading={loading} dataSource={songs} columns={songColumns as any} scroll={{ x: 1010 }} /> }, { key: 'sounds', label: `音效库 ${sounds.length}`, children: <Table className="music-admin-table" rowKey="id" loading={loading} dataSource={sounds} columns={soundColumns as any} scroll={{ x: 860 }} /> }]} />
     </SectionCard>
@@ -667,7 +683,7 @@ export default function MusicPage({
         />
         <Typography.Text type="secondary">当前只负责把你选择的结果歌词写入“歌词内容”，不会自动改歌曲名和歌手。</Typography.Text>
         <Table
-          rowKey={(r) => getSearchId(r) || `${getSearchTitle(r)}-${getSearchArtist(r)}-${getSearchAlbum(r)}`}
+          rowKey={(r) => `${r.source || 'netease'}:${getSearchId(r)}` || `${getSearchTitle(r)}-${getSearchArtist(r)}-${getSearchAlbum(r)}`}
           loading={searchLyricsLoading}
           dataSource={lyricsSearchRows}
           pagination={false}
@@ -677,7 +693,7 @@ export default function MusicPage({
             { title: '歌手', width: 180, render: (_: any, r: any) => getSearchArtist(r) },
             { title: '专辑', width: 180, render: (_: any, r: any) => getSearchAlbum(r) },
             { title: '操作', width: 190, fixed: 'right' as const, render: (_: any, r: any) => <Space>
-              <Button size="small" onClick={() => openSearchLyricsPreview(r)}>查看歌词</Button>
+              {r.source !== 'bilibili' ? <Button size="small" onClick={() => openSearchLyricsPreview(r)}>查看歌词</Button> : null}
               <Button size="small" type="primary" loading={applyLyricsId === getSearchId(r)} onClick={() => applyLyricsFromSearch(r)}>使用</Button>
             </Space> }
           ]}
@@ -685,25 +701,32 @@ export default function MusicPage({
       </Space>
     </Modal>
 
-    <Modal title="网易云音乐导入" width={820} open={searchOpen} onCancel={() => setSearchOpen(false)} footer={null}>
+    <Modal title="在线音乐导入" width={820} open={searchOpen} onCancel={() => setSearchOpen(false)} footer={null}>
+      <Space className="music-source-selector" wrap>
+        <Typography.Text>音乐来源</Typography.Text>
+        <Select aria-label="音乐来源" value={musicSource} disabled={searchLoading} options={[{ value: 'netease', label: '网易云音乐' }, { value: 'bilibili', label: '哔哩哔哩' }]} onChange={value => { ++searchRequestRef.current; setMusicSource(value); setSearchRows([]); setSearchPage(1); setSearchHasMore(false); setSearchHasRun(false); }} />
+        {musicSource === 'bilibili' ? <Typography.Text type="secondary">导入视频音轨；多 P 视频默认使用第一 P</Typography.Text> : null}
+      </Space>
       <Form form={searchForm} layout="inline" onFinish={(v) => search(v, 1)} className="music-search-form"><Form.Item name="keyword" rules={[{ required: true, message: '请输入关键词' }]}><Input placeholder="歌曲或歌手" /></Form.Item><Button type="primary" htmlType="submit" loading={searchLoading}>搜索</Button></Form>
       {searchHasRun ? <>
         <Table
+          className="music-online-results"
+          scroll={{ x: 640, y: 420 }}
           loading={searchLoading}
-          rowKey={(r) => getSearchId(r) || `${getSearchTitle(r)}-${getSearchArtist(r)}`}
+          rowKey={(r) => `${r.source || 'netease'}:${getSearchId(r) || `${getSearchTitle(r)}-${getSearchArtist(r)}`}`}
           dataSource={searchRows}
           pagination={false}
-          columns={[{ title: '歌曲', render: (_: any, r: any) => renderSearchName(r) }, { title: '歌手', render: (_: any, r: any) => getSearchArtist(r) }, { title: '操作', render: (_: any, r: any) => <Space>
+          columns={[{ title: '歌曲', width: 280, render: (_: any, r: any) => <div className="music-track-cell"><MusicCover url={r.picUrl} video={r.source === 'bilibili'} />{renderSearchName(r)}</div> }, { title: musicSource === 'bilibili' ? 'UP 主' : '歌手', width: 120, ellipsis: true, render: (_: any, r: any) => getSearchArtist(r) }, { title: '操作', width: 240, fixed: 'right', render: (_: any, r: any) => <Space wrap>
             <Button size="small" onClick={() => playSearchTrack(r)}>试听</Button>
-            <Button size="small" onClick={() => openSearchLyricsPreview(r)}>查看歌词</Button>
-            <Button size="small" type="primary" onClick={() => importSong(r)}>导入</Button>
+            {r.source !== 'bilibili' ? <Button size="small" onClick={() => openSearchLyricsPreview(r)}>查看歌词</Button> : null}
+            <Button size="small" type="primary" disabled={!!importing && !['done', 'error'].includes(importing.status)} onClick={() => importSong(r)}>导入</Button>
           </Space> }]}
         />
-        {searchRows.length || searchPage > 1 ? <Space style={{ marginTop: 12 }}><Button disabled={searchPage <= 1} onClick={() => search({ keyword: searchKeyword }, searchPage - 1)}>上一页</Button><span>第 {searchPage} 页</span><Button disabled={!searchRows.length} onClick={() => search({ keyword: searchKeyword }, searchPage + 1)}>下一页</Button></Space> : null}
+        {searchRows.length || searchPage > 1 ? <Space style={{ marginTop: 12 }}><Button disabled={searchLoading || searchPage <= 1} onClick={() => search({ keyword: searchKeyword }, searchPage - 1)}>上一页</Button><span>第 {searchPage} 页</span><Button disabled={searchLoading || !searchHasMore} onClick={() => search({ keyword: searchKeyword }, searchPage + 1)}>下一页</Button></Space> : null}
         <div className="music-open-source-credit">
           <Typography.Text strong>开源致谢</Typography.Text>
           <Typography.Text type="secondary">本功能基于开源项目实现，感谢作者。</Typography.Text>
-          <a href="https://github.com/Suxiaoqinx/Netease_url" target="_blank" rel="noopener noreferrer">原仓库地址</a>
+          <a href={musicSource === 'bilibili' ? 'https://github.com/Achordchan/bilibili-audio' : 'https://github.com/Suxiaoqinx/Netease_url'} target="_blank" rel="noopener noreferrer">原仓库地址</a>
         </div>
       </> : null}
     </Modal>
