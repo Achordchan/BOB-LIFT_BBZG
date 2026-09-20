@@ -279,7 +279,7 @@ function registerMusicRoutes(app, deps) {
       uploadDate: new Date().toISOString(),
       source: payload.source || 'netease',
       sourceId: String(payload.neteaseId),
-      coverUrl: normalizeMusicCover(payload.coverUrl)
+      coverUrl: normalizeMusicCover(payload.coverUrl, payload.coverHostname)
     };
 
     if (lrcText) {
@@ -327,7 +327,7 @@ function registerMusicRoutes(app, deps) {
       return b.idx - a.idx;
     });
 
-    res.json({ success: true, music: withIndex.map(({ m }) => ({ ...m, coverUrl: musicCoverUrl(m) })) });
+    res.json({ success: true, music: withIndex.map(({ m }) => ({ ...m, coverUrl: musicCoverUrl(m, req.hostname) })) });
   });
 
   // API: 上传音乐文件
@@ -461,6 +461,7 @@ function registerMusicRoutes(app, deps) {
         songName,
         artist,
         coverUrl: req.body.coverUrl,
+        coverHostname: req.hostname,
         description: description || '',
         lrcContent: lrcContent || ''
       }).then(() => {

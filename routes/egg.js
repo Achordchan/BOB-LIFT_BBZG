@@ -176,7 +176,7 @@ function registerEggRoutes(app, deps) {
       uploadDate: new Date().toISOString(),
       source,
       sourceId: idStr,
-      coverUrl: normalizeMusicCover(payload.coverUrl)
+      coverUrl: normalizeMusicCover(payload.coverUrl, payload.coverHostname)
     };
 
     if (lyricText) {
@@ -342,7 +342,7 @@ function registerEggRoutes(app, deps) {
         id: m.id,
         name: m.name,
         filename: m.filename || '',
-        coverUrl: musicCoverUrl(m),
+        coverUrl: musicCoverUrl(m, req.hostname),
         source: m.source || '',
         lrcFilename: m.lrcFilename || ''
       }));
@@ -463,7 +463,8 @@ function registerEggRoutes(app, deps) {
         songName: rawName,
         artist: artists,
         description: 'egg-music',
-        coverUrl
+        coverUrl,
+        coverHostname: req.hostname
       }).finally(releaseImport);
 
       const data = getData();

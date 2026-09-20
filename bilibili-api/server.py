@@ -7,16 +7,14 @@ from pathlib import Path
 import secrets
 import sys
 import threading
-import urllib.error
 import urllib.parse
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from audio_mp3 import Mp3Cache, byte_range
 from auth_state import AuthorizationState
-from audio_source import open_audio_source
+from cdn_source import open_cdn_source
 STATE = ROOT.parent / 'storage' / 'bilibili'
 STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 sys.path.insert(0, str(ROOT / 'vendor'))
@@ -54,15 +52,6 @@ def validate_url(url, suffixes):
     if (parsed.scheme not in ('https', 'http') or parsed.username or parsed.password
             or parsed.port not in (None, 80, 443) or not bili.host_allowed(parsed.hostname, suffixes)):
         raise ValueError('只允许访问哔哩哔哩 CDN')
-
-
-class CdnRedirect(urllib.request.HTTPRedirectHandler):
-    def __init__(self, suffixes):
-        self.suffixes = suffixes
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        validate_url(newurl, self.suffixes)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -152,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
     def mp3(self, url, track):
         validate_url(url, bili.MEDIA_HOST_SUFFIXES)
         def open_source():
-            return open_audio_source(url, lambda target: validate_url(target, bili.MEDIA_HOST_SUFFIXES),
+            return open_cdn_source(url, lambda target: validate_url(target, bili.MEDIA_HOST_SUFFIXES),
                                      {'User-Agent': bili.UA, 'Referer': 'https://www.bilibili.com/'})
         file = MP3_CACHE.get(track or url, open_source)
         with file.open('rb') as reader:
@@ -185,16 +174,9 @@ class Handler(BaseHTTPRequestHandler):
         suffixes = bili.IMG_HOST_SUFFIXES
         validate_url(url, suffixes)
         headers = {'User-Agent': bili.UA, 'Referer': 'https://www.bilibili.com/'}
-        if self.headers.get('Range'):
-            headers['Range'] = self.headers['Range']
-        opener = urllib.request.build_opener(CdnRedirect(suffixes))
-        try:
-            upstream = opener.open(urllib.request.Request(url, headers=headers), timeout=30)
-        except urllib.error.HTTPError as error:
-            if error.code != 416:
-                raise RuntimeError('哔哩哔哩资源不可用') from error
-            upstream = error
-        with upstream:
+        with open_cdn_source(url, lambda target: validate_url(target, suffixes), headers, timeout=12) as upstream:
+            if upstream.status != 200:
+                raise RuntimeError('哔哩哔哩封面不可用')
             limit = 5 * 1024 * 1024
             if int(upstream.headers.get('Content-Length', '0')) > limit:
                 raise ValueError('资源文件过大')
@@ -217,7 +199,7 @@ class Handler(BaseHTTPRequestHandler):
                     if received > limit:
                         break
                     self.wfile.write(chunk)
-            except (OSError, TimeoutError):
+            except (OSError, TimeoutError, RuntimeError):
                 pass
             self.close_connection = True
 

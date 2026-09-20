@@ -89,7 +89,7 @@ test('B 站 ID 只接受 BV 号与可选分 P cid', () => {
 
 test('后台与员工音乐库保留历史同源及自定义 HTTPS 封面', async t => {
   const { base, saveData } = await fixture(t);
-  const covers = ['/uploads/cover.jpg', 'https://cdn.example.com/cover.jpg'];
+  const covers = ['/uploads/cover.jpg', 'https://cdn.example.com/cover.jpg', 'https://cdn.example.com/image?id=123'];
   saveData({ users: [{ id: 'employee' }], music: covers.map((coverUrl, index) => ({ id: String(index), coverUrl, source: 'netease', sourceId: '123' })) });
   for (const [endpoint, role] of [['/api/music', 'admin'], ['/api/egg/music', 'egg']]) {
     const result = await (await fetch(base + endpoint, { headers: { 'x-test-role': role } })).json();

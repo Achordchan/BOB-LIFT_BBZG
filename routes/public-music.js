@@ -422,7 +422,7 @@ function registerPublicMusicRoutes(app) {
         if (!coverRequests.has(id)) {
           coverRequests.set(id, requestNeteaseSongApi(id, 'name').then(payload => {
             const song = payload?.data?.songs?.[0] || payload?.songs?.[0];
-            const url = normalizeMusicCover(song?.al?.picUrl || song?.album?.picUrl);
+            const url = normalizeMusicCover(song?.al?.picUrl || song?.album?.picUrl, req.hostname);
             coverCache.set(id, url, url ? 3600000 : 60000);
             return url;
           }).finally(() => coverRequests.delete(id)));

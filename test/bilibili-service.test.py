@@ -58,9 +58,9 @@ class BilibiliServiceTest(unittest.TestCase):
                     'https://upos.bilivideo.com:8080/a']:
             with self.assertRaises(ValueError):
                 validate(url, ('bilivideo.com',))
-        handler = self.service.CdnRedirect(('bilivideo.com',))
         with self.assertRaises(ValueError):
-            handler.redirect_request(None, None, 302, '', {}, 'http://127.0.0.1/private')
+            with self.service.open_cdn_source('http://127.0.0.1/private', lambda url: validate(url, ('bilivideo.com',)), {}):
+                self.fail('不应打开被禁止的地址')
 
     def test_qr_endpoints_reuse_upstream_core(self):
         with patch.object(self.service.bili, 'qr_generate', return_value={'key': 'test', 'url': 'https://account.bilibili.com/test'}):
@@ -168,7 +168,7 @@ class BilibiliServiceTest(unittest.TestCase):
             cache = self.service.Mp3Cache(Path(self.temp.name) / 'slow-cdn', 'unused-encoder', True)
             started = time.monotonic()
             with self.assertRaisesRegex(RuntimeError, '超时'):
-                cache.get('slow', lambda: self.service.open_audio_source(url, lambda _url: None, {}, timeout=0.15))
+                cache.get('slow', lambda: self.service.open_cdn_source(url, lambda _url: None, {}, timeout=0.15))
             self.assertLess(time.monotonic() - started, 0.5)
             self.assertEqual(cache.pending, set())
             self.assertTrue(cache.slots.acquire(blocking=False))
@@ -176,6 +176,56 @@ class BilibiliServiceTest(unittest.TestCase):
             cache.slots.release()
             cache.slots.release()
             self.assertEqual(list(cache.directory.iterdir()), [])
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_slow_cover_deadline_releases_image_slot(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from http.client import IncompleteRead
+        stopped, released = threading.Event(), threading.Event()
+        class SlowImage(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.send_header('Content-Length', '1000')
+                self.end_headers()
+                try:
+                    for _ in range(30):
+                        self.wfile.write(b'a')
+                        self.wfile.flush()
+                        if stopped.wait(0.02):
+                            break
+                except OSError:
+                    pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), SlowImage)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        original_open = self.service.open_cdn_source
+        original_release = self.service.IMAGE_SLOTS.release
+        def open_test_source(_url, _validate, headers, timeout):
+            self.assertEqual(timeout, 12)
+            return original_open(f'http://127.0.0.1:{server.server_port}/image', lambda _url: None, headers, timeout=0.15)
+        def release_slot():
+            original_release()
+            released.set()
+        try:
+            with patch.object(self.service, 'open_cdn_source', side_effect=open_test_source), \
+                 patch.object(self.service.IMAGE_SLOTS, 'release', side_effect=release_slot):
+                request = urllib.request.Request(self.base + '/api/image?url=https://i0.hdslb.com/cover.jpg',
+                                                 headers={'Authorization': 'Bearer ' + self.service.TOKEN})
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    with self.assertRaises(IncompleteRead):
+                        response.read()
+                self.assertTrue(released.wait(2))
+            for _ in range(4):
+                self.assertTrue(self.service.IMAGE_SLOTS.acquire(blocking=False))
+            for _ in range(4):
+                self.service.IMAGE_SLOTS.release()
         finally:
             stopped.set()
             server.shutdown()

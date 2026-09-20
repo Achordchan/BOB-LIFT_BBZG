@@ -12,7 +12,7 @@ test('网易云封面统一 HTTPS，B 站视频封面走同源代理', () => {
   }
   assert.equal(musicCoverUrl({ source: 'netease', sourceId: '123' }), '/api/public/music/cover?id=123');
   assert.equal(musicCoverUrl({ source: 'bilibili', sourceId: 'BV1os41197sv' }), '');
-  for (const coverUrl of ['/uploads/cover.jpg', 'images/custom.png', '../covers/a.jpg', 'https://cdn.example.com/a.jpg', 'http://legacy.example.com/a.jpg']) {
+  for (const coverUrl of ['/uploads/cover.jpg', 'images/custom.png', '../covers/a.jpg', 'https://cdn.example.com/a.jpg', 'http://legacy.example.com/a.jpg', 'https://cdn.example.com/image?id=123', 'https://cdn.example.com/transform/width/200/photo']) {
     assert.equal(musicCoverUrl({ source: 'netease', sourceId: '123', coverUrl }), coverUrl);
   }
 });
@@ -30,6 +30,8 @@ test('封面不能变成携带管理员登录态的业务写请求', () => {
     assert.equal(musicCoverUrl({ coverUrl, source: 'bilibili' }), '', coverUrl);
   }
   assert.equal(normalizeMusicCover('/api/public/music/cover?id=123'), '/api/public/music/cover?id=123');
+  assert.equal(normalizeMusicCover('https://bbzg.example.com/custom-action', 'bbzg.example.com'), '');
+  assert.equal(normalizeMusicCover('https://cdn.example.com/image?id=123', 'bbzg.example.com'), 'https://cdn.example.com/image?id=123');
 });
 
 test('历史网易云记录按来源 ID 补取封面并缓存，不依赖歌曲名猜测', async t => {
