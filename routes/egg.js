@@ -438,7 +438,7 @@ function registerEggRoutes(app, deps) {
         return;
       }
 
-      const source = req.path.replace(/\/+$/, '').endsWith('from-bilibili') ? 'bilibili' : 'netease';
+      const source = req.path.replace(/\/+$/, '').toLowerCase().endsWith('from-bilibili') ? 'bilibili' : 'netease';
       const neteaseId = String(req.body && (req.body.neteaseId || req.body.id) ? (req.body.neteaseId || req.body.id) : '').trim();
       const rawName = sanitizeText(req.body && req.body.name ? req.body.name : '').trim();
       const artists = sanitizeText(req.body && req.body.artists ? req.body.artists : '').trim();

@@ -43,7 +43,7 @@ function registerBilibiliMusicRoutes(app, options = {}) {
   const prefix = '/api/public/music/bilibili';
   app.use(prefix, (req, res, next) => {
     if (!req.session?.loggedIn && !req.session?.eggUserId) return res.status(401).json({ success: false, message: '请先登录' });
-    const requestLimiter = req.path.replace(/\/+$/, '') === '/image' ? imageLimiter : limiter;
+    const requestLimiter = req.path.replace(/\/+$/, '').toLowerCase() === '/image' ? imageLimiter : limiter;
     if (!requestLimiter.hit(getClientIp(req)).allowed) return res.status(429).json({ success: false, message: '请求过于频繁，请稍后重试' });
     next();
   });

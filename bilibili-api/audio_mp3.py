@@ -57,7 +57,8 @@ class Mp3Cache:
                 with open_source() as upstream, source.open('wb') as writer:
                     if upstream.status != 200:
                         raise RuntimeError('下载原始音轨失败')
-                    if int(upstream.headers.get('Content-Length', '0')) > 100 * 1024 * 1024:
+                    expected = int(upstream.headers.get('Content-Length', '0'))
+                    if expected > 100 * 1024 * 1024:
                         raise RuntimeError('原始音轨超过 100 MiB，无法转换')
                     while True:
                         chunk = upstream.read(65536)
@@ -69,6 +70,8 @@ class Mp3Cache:
                         if time.monotonic() > deadline:
                             raise RuntimeError('音轨下载超时')
                         writer.write(chunk)
+                    if expected and received != expected:
+                        raise RuntimeError('原始音轨下载不完整')
                 if not received:
                     raise RuntimeError('原始音轨为空')
                 try:

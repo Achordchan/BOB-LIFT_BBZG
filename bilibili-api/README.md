@@ -45,7 +45,7 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 - 固定提交：`76bad09bd8257ec377494223f752f5aea3d29702`
 - 文件：`bili.py`
 
-该文件负责 Wbi 签名、搜索、音轨解析和账号操作。本项目的 `server.py` 负责本机鉴权、CDN 及重定向校验、Range 代理、并发限制和凭据存储。仅请求音频流，不下载视频；试听、下载和导入统一输出 MP3（192 kbps、audio/mpeg），服务端先下载音轨再通过 FFmpeg 解码、编码，绝不只修改扩展名。成品缓存在 storage/bilibili/mp3-cache，以支持 Range 拖动和重复使用；转换并发上限 2，原始音轨限 100 MiB，MP3 成品限 30 MiB，缓存限 512 MiB / 24 小时。下载阶段检查 90 秒截止时间，单次网络读取超时为 30 秒，转码进程超时为 90 秒；Node 等待转换响应最多 210 秒。缺少 FFmpeg 或转换失败时明确报错，不返回 M4A。上游该版本未附 LICENSE 文件，保留来源说明，不另行声明第三方代码许可证。
+该文件负责 Wbi 签名、搜索、音轨解析和账号操作。本项目的 `server.py` 负责本机鉴权、CDN 及重定向校验、Range 代理、并发限制和凭据存储。仅请求音频流，不下载视频；试听、下载和导入统一输出 MP3（192 kbps、audio/mpeg），服务端先下载音轨再通过 FFmpeg 解码、编码，绝不只修改扩展名。成品缓存在 storage/bilibili/mp3-cache，以支持 Range 拖动和重复使用；转换并发上限 2，原始音轨限 100 MiB，MP3 成品限 30 MiB，缓存限 512 MiB / 24 小时。下载阶段使用独立 90 秒计时器关闭底层 socket，分段读取不会等待凑满 64 KiB，单次连接超时为 30 秒，转码进程超时为 90 秒；Node 等待转换响应最多 210 秒。缺少 FFmpeg 或转换失败时明确报错，不返回 M4A。上游该版本未附 LICENSE 文件，保留来源说明，不另行声明第三方代码许可证。
 
 ## 修改文件清单
 
@@ -54,6 +54,7 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 | `bilibili-api/vendor/bili.py` | 引入固定版本上游核心，保持源码原样 |
 | `bilibili-api/server.py` | 本机鉴权、扫码与账号 API、封面代理、MP3 Range 响应 |
 | `bilibili-api/auth_state.py` | 二维码代次与有效期校验、暂存凭据、原子提交与全局失效 |
+| `bilibili-api/audio_source.py` | 音轨 CDN 重定向校验、独立 socket 截止与分段读取 |
 | `bilibili-api/audio_mp3.py` | FFmpeg 转码、缓存、并发与容量限制、失败清理 |
 | `bilibili-api/README.md` | 运行要求、配置、宝塔接入和验收边界 |
 | `lib/bilibili-client.js` | 搜索、解析、服务访问以及 MP3 响应校验 |
@@ -88,8 +89,8 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 ## 本地验收记录（2026-09-20）
 
 - `npm run build:admin`：通过；Vite 提示部分构建包超过 500 kB。
-- `npm test`：159 项通过，无失败或跳过。
-- `python3 -B test/bilibili-service.test.py`：8 项通过，包括真实 FFmpeg 转码和授权写入竞态。
+- `npm test`：160 项通过，无失败或跳过。
+- `python3 -B test/bilibili-service.test.py`：9 项通过，包括真实 FFmpeg 转码、授权写入竞态和慢速滴流截止。
 - `node --check`：新增 Node 模块及员工端脚本通过语法检查；`git diff --check` 通过。
 - 真实 B 站搜索、二维码生成、视频封面加载、MP3 编码（ffprobe 确认 192000 bit/s）、206 分段响应均验证通过。
 - 隔离员工账号完成“设为播报”，记录指向真实 `.mp3` 文件；浏览器实际试听成功。后台导入任务与封面保存通过接口测试，后台页面已检查布局。

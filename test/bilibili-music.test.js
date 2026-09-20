@@ -87,6 +87,16 @@ test('B 站 ID 只接受 BV 号与可选分 P cid', () => {
   }
 });
 
+test('后台与员工音乐库保留历史同源及自定义 HTTPS 封面', async t => {
+  const { base, saveData } = await fixture(t);
+  const covers = ['/uploads/cover.jpg', 'https://cdn.example.com/cover.jpg'];
+  saveData({ users: [{ id: 'employee' }], music: covers.map((coverUrl, index) => ({ id: String(index), coverUrl, source: 'netease', sourceId: '123' })) });
+  for (const [endpoint, role] of [['/api/music', 'admin'], ['/api/egg/music', 'egg']]) {
+    const result = await (await fetch(base + endpoint, { headers: { 'x-test-role': role } })).json();
+    assert.deepEqual(result.music.map(item => item.coverUrl).sort(), covers.slice().sort());
+  }
+});
+
 test('搜索、试听和账号配置按员工 / 管理员权限隔离', async t => {
   const { base, requests } = await fixture(t);
   const search = '/api/public/music/bilibili/search?keywords=钢琴&page=2';
@@ -120,7 +130,7 @@ test('音轨分段代理保留 206、MIME 和 Content-Range，下载使用 mp3 �
 
 test('后台导入通过 SSE 完成，保存 B 站来源及真实 mp3 文件', async t => {
   const { base, dir, getData, requests } = await fixture(t);
-  const response = await post(base, '/api/music/import-bilibili/', { id: BV, name: '钢琴', artist: 'UP 主', coverUrl: 'https://i0.hdslb.com/cover.jpg' });
+  const response = await post(base, '/API/MUSIC/IMPORT-BILIBILI/', { id: BV, name: '钢琴', artist: 'UP 主', coverUrl: 'https://i0.hdslb.com/cover.jpg' });
   assert.equal(response.status, 200);
   const { jobId } = await response.json();
   const events = await fetch(`${base}/api/music/import-events/${jobId}`, { headers: { 'x-test-role': 'admin' }, signal: AbortSignal.timeout(5000) });
@@ -145,7 +155,7 @@ test('员工设为播报复用音乐库，修复缺失音频且不覆盖其他�
   assert.equal((await post(base, endpoint, { id: BV, name: '钢琴' }, '')).status, 401);
   const first = await (await post(base, endpoint, { id: BV, name: '钢琴' }, 'egg')).json();
   assert.equal(first.success, true);
-  const second = await (await post(base, endpoint + '/', { id: BV, name: '钢琴' }, 'egg')).json();
+  const second = await (await post(base, endpoint.toUpperCase() + '/', { id: BV, name: '钢琴' }, 'egg')).json();
   assert.equal(second.music.id, first.music.id);
   assert.equal(first.music.id, 'missing-bili');
   assert.equal(getData().users[0].musicId, first.music.id);

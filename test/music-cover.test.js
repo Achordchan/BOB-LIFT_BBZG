@@ -7,11 +7,14 @@ const { registerPublicMusicRoutes } = require('../routes/public-music');
 test('网易云封面统一 HTTPS，B 站视频封面走同源代理', () => {
   assert.equal(normalizeMusicCover('http://p1.music.126.net/a.jpg'), 'https://p1.music.126.net/a.jpg');
   assert.match(normalizeMusicCover('//i0.hdslb.com/a.jpg'), /^\/api\/public\/music\/bilibili\/image\?/);
-  for (const input of ['javascript:alert(1)', 'https://p1.music.126.net.evil.test/a.jpg', 'file:///etc/passwd']) {
+  for (const input of ['javascript:alert(1)', 'file:///etc/passwd', '/\\evil.test/cover.jpg']) {
     assert.equal(normalizeMusicCover(input), '');
   }
   assert.equal(musicCoverUrl({ source: 'netease', sourceId: '123' }), '/api/public/music/cover?id=123');
   assert.equal(musicCoverUrl({ source: 'bilibili', sourceId: 'BV1os41197sv' }), '');
+  for (const coverUrl of ['/uploads/cover.jpg', 'images/custom.png', '../covers/a.jpg', 'https://cdn.example.com/a.jpg', 'http://legacy.example.com/a.jpg']) {
+    assert.equal(musicCoverUrl({ source: 'netease', sourceId: '123', coverUrl }), coverUrl);
+  }
 });
 
 test('历史网易云记录按来源 ID 补取封面并缓存，不依赖歌曲名猜测', async t => {

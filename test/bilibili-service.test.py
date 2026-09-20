@@ -141,6 +141,47 @@ class BilibiliServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'FFmpeg'):
             cache.get('test', lambda: None)
 
+    def test_slow_cdn_deadline_releases_conversion_slots(self):
+        import time
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        stopped = threading.Event()
+        class SlowCdn(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Length', '1000')
+                self.end_headers()
+                try:
+                    for _ in range(30):
+                        self.wfile.write(b'a')
+                        self.wfile.flush()
+                        if stopped.wait(0.02):
+                            break
+                except OSError:
+                    pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), SlowCdn)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f'http://127.0.0.1:{server.server_port}/audio'
+            cache = self.service.Mp3Cache(Path(self.temp.name) / 'slow-cdn', 'unused-encoder', True)
+            started = time.monotonic()
+            with self.assertRaisesRegex(RuntimeError, '超时'):
+                cache.get('slow', lambda: self.service.open_audio_source(url, lambda _url: None, {}, timeout=0.15))
+            self.assertLess(time.monotonic() - started, 0.5)
+            self.assertEqual(cache.pending, set())
+            self.assertTrue(cache.slots.acquire(blocking=False))
+            self.assertTrue(cache.slots.acquire(blocking=False))
+            cache.slots.release()
+            cache.slots.release()
+            self.assertEqual(list(cache.directory.iterdir()), [])
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
     @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), '本机需要 FFmpeg 和 ffprobe')
     def test_real_mp3_conversion_cache_and_failure_cleanup(self):
         import subprocess

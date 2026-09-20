@@ -418,7 +418,7 @@ function registerMusicRoutes(app, deps) {
 
   app.post(['/api/music/import-netease', '/api/music/import-bilibili'], requireLogin, async (req, res) => {
     try {
-      const source = req.path.replace(/\/+$/, '').endsWith('import-bilibili') ? 'bilibili' : 'netease';
+      const source = req.path.replace(/\/+$/, '').toLowerCase().endsWith('import-bilibili') ? 'bilibili' : 'netease';
       const sourceName = source === 'bilibili' ? '哔哩哔哩' : '网易云';
       const neteaseId = req.body && (req.body.id || req.body.neteaseId);
       const name = req.body && req.body.name;

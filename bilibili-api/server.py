@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from audio_mp3 import Mp3Cache, byte_range
 from auth_state import AuthorizationState
+from audio_source import open_audio_source
 STATE = ROOT.parent / 'storage' / 'bilibili'
 STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 sys.path.insert(0, str(ROOT / 'vendor'))
@@ -151,9 +152,8 @@ class Handler(BaseHTTPRequestHandler):
     def mp3(self, url, track):
         validate_url(url, bili.MEDIA_HOST_SUFFIXES)
         def open_source():
-            opener = urllib.request.build_opener(CdnRedirect(bili.MEDIA_HOST_SUFFIXES))
-            request = urllib.request.Request(url, headers={'User-Agent': bili.UA, 'Referer': 'https://www.bilibili.com/'})
-            return opener.open(request, timeout=30)
+            return open_audio_source(url, lambda target: validate_url(target, bili.MEDIA_HOST_SUFFIXES),
+                                     {'User-Agent': bili.UA, 'Referer': 'https://www.bilibili.com/'})
         file = MP3_CACHE.get(track or url, open_source)
         with file.open('rb') as reader:
             size = os.fstat(reader.fileno()).st_size
