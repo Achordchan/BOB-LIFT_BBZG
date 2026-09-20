@@ -97,6 +97,22 @@ test('后台与员工音乐库保留历史同源及自定义 HTTPS 封面', asyn
   }
 });
 
+test('员工不能把封面持久化为管理员业务写入口，旧记录也在返回时过滤', async t => {
+  const { base, getData, saveData } = await fixture(t);
+  const response = await post(base, '/api/egg/set-broadcast-from-bilibili', {
+    id: BV, name: '封面安全测试', coverUrl: '/api/inquiries/add'
+  }, 'egg');
+  assert.equal(response.status, 200);
+  assert.equal(getData().music[0].coverUrl, '');
+  const data = getData();
+  data.music[0].coverUrl = 'https://bbzg.example.com/api/inquiries/add';
+  saveData(data);
+  for (const [endpoint, role] of [['/api/music', 'admin'], ['/api/egg/music', 'egg']]) {
+    const result = await (await fetch(base + endpoint, { headers: { 'x-test-role': role } })).json();
+    assert.equal(result.music[0].coverUrl, '');
+  }
+});
+
 test('搜索、试听和账号配置按员工 / 管理员权限隔离', async t => {
   const { base, requests } = await fixture(t);
   const search = '/api/public/music/bilibili/search?keywords=钢琴&page=2';

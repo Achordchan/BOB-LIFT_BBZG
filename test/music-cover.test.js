@@ -17,6 +17,21 @@ test('网易云封面统一 HTTPS，B 站视频封面走同源代理', () => {
   }
 });
 
+test('封面不能变成携带管理员登录态的业务写请求', () => {
+  for (const coverUrl of [
+    '/api/inquiries/add', '/API/INQUIRIES/ADD/', '../api/inquiries/add',
+    'https://bbzg.example.com/api/inquiries/add', '//bbzg.example.com/api/deals/add',
+    '/images/../api/inquiries/add', '/uploads/%2e%2e/api/inquiries/add',
+    '/logout', '/api/inquiries/add?image=cover.jpg',
+    '/api/public/music/cover?id=../bad',
+    '/api/public/music/bilibili/image?url=http://127.0.0.1/private'
+  ]) {
+    assert.equal(normalizeMusicCover(coverUrl), '', coverUrl);
+    assert.equal(musicCoverUrl({ coverUrl, source: 'bilibili' }), '', coverUrl);
+  }
+  assert.equal(normalizeMusicCover('/api/public/music/cover?id=123'), '/api/public/music/cover?id=123');
+});
+
 test('历史网易云记录按来源 ID 补取封面并缓存，不依赖歌曲名猜测', async t => {
   let calls = 0;
   const upstream = express();
