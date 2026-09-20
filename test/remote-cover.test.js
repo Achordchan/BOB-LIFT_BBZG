@@ -65,3 +65,31 @@ test('代理校验 DNS 地址并固定已验证的公网 IP', async t => {
   assert.equal(response.headers.get('location'), null);
   assert.equal(await response.text(), 'image-bytes');
 });
+
+test('保留全部已验证地址供双栈回退，显式地址族不会跨族降级', async t => {
+  const original = dns.Resolver;
+  let ipv6Available = true;
+  const ipv6 = '2606:4700:4700::1111';
+  dns.Resolver = class {
+    async resolve4() { return ['93.184.216.34']; }
+    async resolve6() { return ipv6Available ? [ipv6] : []; }
+    cancel() {}
+  };
+  t.after(() => { dns.Resolver = original; });
+  const { base } = await fixture(t, async (_url, options) => {
+    const lookup = settings => new Promise((resolve, reject) => options.httpsAgent.options.lookup('cdn.example', settings, (error, addresses) => error ? reject(error) : resolve(addresses)));
+    if (ipv6Available) {
+      assert.deepEqual(await lookup({ all: true }), [
+        { address: '93.184.216.34', family: 4 }, { address: ipv6, family: 6 }
+      ]);
+      assert.deepEqual(await lookup({ all: true, family: 6 }), [{ address: ipv6, family: 6 }]);
+      assert.deepEqual(await lookup({ all: true, family: 4 }), [{ address: '93.184.216.34', family: 4 }]);
+    } else {
+      await assert.rejects(lookup({ all: true, family: 6 }), /指定地址族/);
+    }
+    return { status: 200, headers: { 'content-type': 'image/png' }, data: Readable.from([Buffer.from('ok')]) };
+  });
+  assert.equal((await fetch(`${base}/image?url=https://cdn.example/image`)).status, 200);
+  ipv6Available = false;
+  assert.equal((await fetch(`${base}/image?url=https://cdn.example/image`)).status, 200);
+});

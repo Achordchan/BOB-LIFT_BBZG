@@ -92,7 +92,7 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 | `test/bilibili-auth.test.js` | 扫码状态、隔离、过期、退避和请求竞态 |
 | `test/bilibili-service.test.py` | CDN 校验、凭据回滚、真实 FFmpeg 转码和 Range |
 | `test/local-cover.test.js` | 根目录、自定义目录、无扩展名图片及越界/非图片拒绝回归 |
-| `test/remote-cover.test.js` | 远程封面重定向、内网地址、DNS 重绑定和图片字节响应测试 |
+| `test/remote-cover.test.js` | 远程封面重定向、内网地址、DNS 重绑定、双栈地址回退和图片字节响应测试 |
 | `test/music-cover.test.js` | 封面规范化、历史图片查询和缓存 |
 | `test/admin-player-lyrics.test.js` | 增加本地文件缺失时 B 站/网易云预览来源契约回归 |
 | `test/audio-core-playback.test.js` | 旧播放中断不破坏新曲目的回归测试 |
@@ -100,7 +100,7 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 ## 本地验收记录（2026-09-20）
 
 - `npm run build:admin`：通过；Vite 提示部分构建包超过 500 kB。
-- `npm test`：168 项通过，无失败或跳过。
+- `npm test`：169 项通过，无失败或跳过。
 - `python3 -B test/bilibili-service.test.py`：13 项通过，包括真实 FFmpeg 转码、授权写入竞态、音频/图片/API 读取截止与核心锁等待。
 - `node --check`：新增 Node 模块及员工端脚本通过语法检查；`git diff --check` 通过。
 - 真实 B 站搜索、二维码生成、视频封面加载、MP3 编码（ffprobe 确认 192000 bit/s）、206 分段响应均验证通过。
