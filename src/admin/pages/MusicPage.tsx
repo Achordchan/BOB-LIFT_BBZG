@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { App, Button, Drawer, Form, Input, Modal, Popconfirm, Progress, Select, Space, Spin, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
-import { apiForm, apiGet, apiJson, apiText, audioUrl, dateTime } from '../api';
+import { apiForm, apiGet, apiJson, apiText, musicPreviewSources, dateTime } from '../api';
 import { SectionCard } from '../components/SectionCard';
 import { MusicCover } from '../components/MusicCover';
 import { BilibiliAuthCard } from '../components/BilibiliAuthCard';
@@ -417,13 +417,6 @@ export default function MusicPage({
     finally { if (requestId === searchRequestRef.current) setSearchLoading(false); }
   }
 
-  function getMusicSources(row: MusicItem) {
-    const sources: string[] = [];
-    if (row.filename) sources.push(audioUrl(row.filename));
-    if (row.sourceId) sources.push(`/api/public/music/${row.source === 'bilibili' ? 'bilibili/' : ''}stream?id=${encodeURIComponent(String(row.sourceId))}`);
-    return Array.from(new Set(sources));
-  }
-
   function safeText(value: any, fallback = '—') {
     if (value == null || value === '') return fallback;
     if (typeof value === 'string' || typeof value === 'number') return String(value);
@@ -484,7 +477,7 @@ export default function MusicPage({
       subtitle: row.isSound ? (row.description || '音效库') : getMusicArtist(row, '音乐库'),
       coverUrl: row.coverUrl,
       source: row.source,
-      sources: getMusicSources(row)
+      sources: musicPreviewSources(row)
     });
   }
 
@@ -506,7 +499,7 @@ export default function MusicPage({
     return <Button
       type="link"
       className={active ? 'admin-track-link admin-track-link-active' : 'admin-track-link'}
-      disabled={!getMusicSources(row).length}
+      disabled={!musicPreviewSources(row).length}
       onClick={() => playLibraryTrack(row)}
     >{row.isSound ? row.name : getMusicTitle(row)}</Button>;
   }

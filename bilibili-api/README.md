@@ -71,6 +71,8 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 | `routes/egg.js` | B 站设为播报、音乐库复用和封面返回 |
 | `routes/public-music.js` | 按歌曲来源 ID 查询并缓存历史网易云封面 |
 | `server.js` | 注册新增路由 |
+| `src/admin/api.ts` | 统一音乐库与成员管理的本地优先、按来源在线回退地址 |
+| `src/admin/pages/UsersPage.tsx` | 成员试听支持 B 站回退并传递封面来源 |
 | `src/admin/pages/MusicPage.tsx` | 来源切换、封面、在线导入与结果表格布局 |
 | `src/admin/components/BilibiliAuthCard.tsx` | 默认扫码授权、状态提示与手动授权折叠入口 |
 | `src/admin/components/MusicCover.tsx` | 歌曲图片 / 视频封面组件与加载失败状态 |
@@ -90,12 +92,13 @@ B 站请求可能因账号、区域或平台风控失败，界面会显示失败
 | `test/bilibili-service.test.py` | CDN 校验、凭据回滚、真实 FFmpeg 转码和 Range |
 | `test/remote-cover.test.js` | 远程封面重定向、内网地址、DNS 重绑定和图片字节响应测试 |
 | `test/music-cover.test.js` | 封面规范化、历史图片查询和缓存 |
+| `test/admin-player-lyrics.test.js` | 增加本地文件缺失时 B 站/网易云预览来源契约回归 |
 | `test/audio-core-playback.test.js` | 旧播放中断不破坏新曲目的回归测试 |
 
 ## 本地验收记录（2026-09-20）
 
 - `npm run build:admin`：通过；Vite 提示部分构建包超过 500 kB。
-- `npm test`：165 项通过，无失败或跳过。
+- `npm test`：166 项通过，无失败或跳过。
 - `python3 -B test/bilibili-service.test.py`：13 项通过，包括真实 FFmpeg 转码、授权写入竞态、音频/图片/API 读取截止与核心锁等待。
 - `node --check`：新增 Node 模块及员工端脚本通过语法检查；`git diff --check` 通过。
 - 真实 B 站搜索、二维码生成、视频封面加载、MP3 编码（ffprobe 确认 192000 bit/s）、206 分段响应均验证通过。

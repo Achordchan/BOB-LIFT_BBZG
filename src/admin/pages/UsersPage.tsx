@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { App, Avatar, Button, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
-import { apiForm, apiGet, apiJson, audioUrl } from '../api';
+import { apiForm, apiGet, apiJson, musicPreviewSources } from '../api';
 import { ImageCropUpload, type CroppedFile } from '../components/ImageCropUpload';
 import { SectionCard } from '../components/SectionCard';
 import type { MusicItem, PlayAdminTrackInput, UserItem } from '../types';
@@ -91,14 +91,6 @@ export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) 
     return music.find(item => item.id === user.musicId) || music.find(item => item.name === user.musicName) || null;
   }
 
-  function getPreviewSources(song: MusicItem) {
-    const sources: string[] = [];
-    if (song.filename) sources.push(audioUrl(song.filename));
-    const sourceId = (song as any).sourceId;
-    if (sourceId) sources.push(`/api/public/music/stream?id=${encodeURIComponent(String(sourceId))}`);
-    return Array.from(new Set(sources));
-  }
-
   function playUserMusic(user: UserItem) {
     const song = getUserMusic(user);
     if (!song) {
@@ -109,7 +101,9 @@ export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) 
       id: `music-${song.id}`,
       title: song.name,
       subtitle: user.name,
-      sources: getPreviewSources(song)
+      sources: musicPreviewSources(song),
+      coverUrl: song.coverUrl,
+      source: song.source
     });
   }
 
@@ -117,7 +111,7 @@ export default function UsersPage({ playTrack, activeTrackId }: UsersPageProps) 
     const song = getUserMusic(user);
     if (!user.musicName) return <Tag>未配置</Tag>;
     const active = !!song?.id && activeTrackId === `music-${song.id}`;
-    const canPlay = !!song && getPreviewSources(song).length > 0;
+    const canPlay = !!song && musicPreviewSources(song).length > 0;
     return <Button
       type="link"
       className={active ? 'admin-track-link admin-track-link-active' : 'admin-track-link'}
