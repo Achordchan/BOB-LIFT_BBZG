@@ -93,7 +93,7 @@ test('后台与员工音乐库保留历史同源及自定义 HTTPS 封面', asyn
   saveData({ users: [{ id: 'employee' }], music: covers.map((coverUrl, index) => ({ id: String(index), coverUrl, source: 'netease', sourceId: '123' })) });
   for (const [endpoint, role] of [['/api/music', 'admin'], ['/api/egg/music', 'egg']]) {
     const result = await (await fetch(base + endpoint, { headers: { 'x-test-role': role } })).json();
-    assert.deepEqual(result.music.map(item => item.coverUrl.startsWith('/api/public/music/cover-image?') ? new URL(item.coverUrl, base).searchParams.get('url') : item.coverUrl).sort(), covers.slice().sort());
+    assert.deepEqual(result.music.map(item => item.coverUrl.startsWith('/api/public/music/cover-image?') ? new URL(item.coverUrl, base).searchParams.get('url') : new URL(item.coverUrl, base).searchParams.get('path') || item.coverUrl).sort(), covers.slice().sort());
   }
 });
 
@@ -111,6 +111,10 @@ test('员工不能把封面持久化为管理员业务写入口，旧记录也�
     const result = await (await fetch(base + endpoint, { headers: { 'x-test-role': role } })).json();
     assert.equal(result.music[0].coverUrl, '');
   }
+  const detail = await (await fetch(`${base}/api/music/${data.music[0].id}`, { headers: { 'x-test-role': 'admin' } })).json();
+  assert.equal(detail.music.coverUrl, '');
+  const updated = await (await post(base, '/api/music/update', { musicId: data.music[0].id, name: '更新测试' })).json();
+  assert.equal(updated.music.coverUrl, '');
 });
 
 test('搜索、试听和账号配置按员工 / 管理员权限隔离', async t => {

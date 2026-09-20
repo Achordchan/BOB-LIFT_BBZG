@@ -4,6 +4,7 @@ const { createRateLimiter } = require('../lib/rate-limit');
 const { registerBilibiliAuthRoutes } = require('./bilibili-auth');
 const { getClientIp } = require('../lib/request-ip');
 const { proxyRemoteCover } = require('../lib/remote-cover');
+const { proxyLocalCover } = require('../lib/local-cover');
 
 function registerBilibiliMusicRoutes(app, options = {}) {
   const client = options.client || createBilibiliClient();
@@ -42,9 +43,9 @@ function registerBilibiliMusicRoutes(app, options = {}) {
     });
   }
   const prefix = '/api/public/music/bilibili';
-  app.use([prefix, '/api/public/music/cover-image'], (req, res, next) => {
+  app.use([prefix, '/api/public/music/cover-image', '/api/public/music/local-cover'], (req, res, next) => {
     if (!req.session?.loggedIn && !req.session?.eggUserId) return res.status(401).json({ success: false, message: '请先登录' });
-    const requestLimiter = req.path.replace(/\/+$/, '').toLowerCase() === '/image' || req.baseUrl.toLowerCase().endsWith('/cover-image') ? imageLimiter : limiter;
+    const requestLimiter = req.path.replace(/\/+$/, '').toLowerCase() === '/image' || /\/(?:cover-image|local-cover)$/i.test(req.baseUrl) ? imageLimiter : limiter;
     if (!requestLimiter.hit(getClientIp(req)).allowed) return res.status(429).json({ success: false, message: '请求过于频繁，请稍后重试' });
     next();
   });
@@ -66,7 +67,7 @@ function registerBilibiliMusicRoutes(app, options = {}) {
     } catch (error) { fail(res, error); }
   });
   for (const action of ['stream', 'download', 'image']) {
-    app.get(action === 'image' ? [`${prefix}/image`, '/api/public/music/cover-image'] : `${prefix}/${action}`, async (req, res) => {
+    app.get(action === 'image' ? [`${prefix}/image`, '/api/public/music/cover-image', '/api/public/music/local-cover'] : `${prefix}/${action}`, async (req, res) => {
       if (action !== 'image' && activeStreams >= 8) return res.status(429).json({ success: false, message: '音频服务繁忙，请稍后重试' });
       if (action !== 'image') activeStreams += 1;
       let releaseImage;
@@ -76,6 +77,10 @@ function registerBilibiliMusicRoutes(app, options = {}) {
       try {
         if (action === 'image') releaseImage = await takeImageSlot(res);
         if (res.destroyed) return;
+        if (req.path.replace(/\/+$/, '').toLowerCase().endsWith('/local-cover')) {
+          await proxyLocalCover(req, res, options.localCover);
+          return;
+        }
         if (req.path.replace(/\/+$/, '').toLowerCase().endsWith('/cover-image')) {
           await proxyRemoteCover(req, res, options.remoteCover);
           return;

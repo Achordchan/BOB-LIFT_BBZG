@@ -766,7 +766,7 @@ function registerMusicRoutes(app, deps) {
 
     res.json({
       success: true,
-      music
+      music: { ...music, coverUrl: musicCoverUrl(music, req.hostname) }
     });
   });
 
@@ -844,7 +844,7 @@ function registerMusicRoutes(app, deps) {
       res.json({
         success: true,
         message: '音乐更新成功',
-        music: data.music[musicIndex]
+        music: { ...data.music[musicIndex], coverUrl: musicCoverUrl(data.music[musicIndex], req.hostname) }
       });
     } catch (error) {
       console.error('更新音乐失败:', error);
