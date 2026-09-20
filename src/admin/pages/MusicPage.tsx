@@ -96,6 +96,7 @@ export default function MusicPage({
     if (isMusic) {
       fd.append('songName', songName);
       fd.append('artist', artist);
+      if (values.coverFile?.[0]?.originFileObj) fd.append('coverFile', values.coverFile[0].originFileObj);
     }
     fd.append('description', values.description || '');
     if (values.lrcFile?.[0]?.originFileObj) fd.append('lrcFile', values.lrcFile[0].originFileObj);
@@ -629,6 +630,9 @@ export default function MusicPage({
           <Form.Item name="description" label="说明"><Input /></Form.Item>
         </>}
         <Form.Item name="file" label="音频文件" valuePropName="fileList" getValueFromEvent={norm} rules={[{ required: true, message: '请选择音频文件' }]}><Upload beforeUpload={() => false} maxCount={1} accept="audio/*"><Button icon={<UploadOutlined />}>选择文件</Button></Upload></Form.Item>
+        {open === 'music' && <Form.Item name="coverFile" label="歌曲封面" valuePropName="fileList" getValueFromEvent={norm} extra="可选，最大 5 MB；自动优化为最长边 640 像素的 WebP">
+          <Upload beforeUpload={() => false} maxCount={1} accept="image/jpeg,image/png,image/webp,image/avif"><Button icon={<UploadOutlined />}>选择封面</Button></Upload>
+        </Form.Item>}
         {open === 'music' && <><Form.Item name="lrcFile" label="LRC 歌词文件" valuePropName="fileList" getValueFromEvent={norm}><Upload beforeUpload={() => false} maxCount={1} accept=".lrc,text/plain"><Button>选择歌词文件</Button></Upload></Form.Item><Form.Item name="lrcContent" label="歌词内容"><Input.TextArea rows={6} /></Form.Item></>}
         {open === 'music' && <Form.Item>
           <Button size="small" loading={searchLyricsLoading} onClick={searchLyricsForUpload}>搜索网易歌词</Button>

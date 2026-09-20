@@ -4,7 +4,8 @@ const axios = require('axios');
 const { createNeteaseClient } = require('../lib/netease-client');
 const { createBilibiliClient, parseBilibiliId, assertMp3Response } = require('../lib/bilibili-client');
 const { saveMusicStream, acquireMusicImportSlot } = require('../lib/music-download');
-const { normalizeMusicCover, musicCoverUrl } = require('../lib/music-cover');
+const { musicCoverUrl } = require('../lib/music-cover');
+const { importCover } = require('../lib/cover-storage');
 const { getClientIp } = require('../lib/request-ip');
 const { hashPassword, verifyPassword, needsRehash } = require('../lib/password');
 const { createRateLimiter } = require('../lib/rate-limit');
@@ -157,6 +158,8 @@ function registerEggRoutes(app, deps) {
 
     await saveMusicStream(response, filePath);
 
+    const cover = await importCover(payload.coverUrl, { baseDir, hostname: payload.coverHostname });
+
     const data = getData();
     if (!data.music) data.music = [];
 
@@ -176,7 +179,7 @@ function registerEggRoutes(app, deps) {
       uploadDate: new Date().toISOString(),
       source,
       sourceId: idStr,
-      coverUrl: normalizeMusicCover(payload.coverUrl, payload.coverHostname)
+      ...cover
     };
 
     if (lyricText) {

@@ -4,7 +4,8 @@ const axios = require('axios');
 const { createNeteaseClient } = require('../lib/netease-client');
 const { createBilibiliClient, parseBilibiliId, assertMp3Response } = require('../lib/bilibili-client');
 const { saveMusicStream, acquireMusicImportSlot } = require('../lib/music-download');
-const { normalizeMusicCover, musicCoverUrl } = require('../lib/music-cover');
+const { musicCoverUrl } = require('../lib/music-cover');
+const { importCover, readCoverFile, storeCover } = require('../lib/cover-storage');
 const { recordAudit } = require('../lib/audit');
 
 function registerMusicRoutes(app, deps) {
@@ -260,6 +261,8 @@ function registerMusicRoutes(app, deps) {
       message: '写入本地库...'
     }, { eventType: 'progress', force: true });
 
+    const cover = await importCover(payload.coverUrl, { baseDir, hostname: payload.coverHostname });
+
     const data = getData();
     if (!data.music) data.music = [];
 
@@ -279,7 +282,7 @@ function registerMusicRoutes(app, deps) {
       uploadDate: new Date().toISOString(),
       source: payload.source || 'netease',
       sourceId: String(payload.neteaseId),
-      coverUrl: normalizeMusicCover(payload.coverUrl, payload.coverHostname)
+      ...cover
     };
 
     if (lrcText) {
@@ -333,87 +336,102 @@ function registerMusicRoutes(app, deps) {
   // API: 上传音乐文件
   app.post('/api/music/upload', upload.fields([
     { name: 'musicFile', maxCount: 1 },
-    { name: 'lrcFile', maxCount: 1 }
-  ]), (req, res) => {
-    if (!req.files || !req.files.musicFile) {
-      return res.status(400).json({
-        success: false,
-        message: '请选择音乐文件'
-      });
-    }
-
-    const name = cleanText(req.body.name);
-    const nameParts = splitJoinedMusicName(name);
-    const songName = cleanText(req.body.songName) || nameParts.songName;
-    const artist = cleanText(req.body.artist) || nameParts.artist;
-    const description = cleanText(req.body.description);
-    const isSound = req.body.isSound === 'true';
-
-    if (!name) {
-      return res.status(400).json({
-        success: false,
-        message: '请提供音乐名称'
-      });
-    }
-
-    const musicFile = req.files.musicFile[0];
-    const lrcFile = req.files.lrcFile ? req.files.lrcFile[0] : null;
-
-    // 读取数据
-    const data = getData();
-
-    // 创建音乐记录
-    const musicId = uuidv4();
-    const musicRecord = {
-      id: musicId,
-      name: name,
-      songName,
-      artist,
-      description: description,
-      filename: musicFile.filename,
-      originalname: musicFile.originalname,
-      isSound: isSound,
-      uploadDate: new Date().toISOString()
-    };
-
-    // 如果有LRC文件，添加到音乐记录
-    if (lrcFile) {
-      musicRecord.lrcFilename = lrcFile.filename;
-
-      // 确保歌词内容被正确保存，特别是从编辑器添加的内容
-      const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFile.filename);
-      if (!fs.existsSync(lrcFilePath)) {
-        console.error('LRC文件未被正确保存:', lrcFilePath);
-      } else {
-        console.log('LRC文件已保存:', lrcFilePath);
+    { name: 'lrcFile', maxCount: 1 },
+    { name: 'coverFile', maxCount: 1 }
+  ]), async (req, res, next) => {
+    try {
+      if (!req.files || !req.files.musicFile) {
+        return res.status(400).json({
+          success: false,
+          message: '请选择音乐文件'
+        });
       }
-    } else if (req.body.lrcContent) {
-      // 如果没有上传LRC文件，但有直接输入的歌词内容
+
+      const name = cleanText(req.body.name);
+      const nameParts = splitJoinedMusicName(name);
+      const songName = cleanText(req.body.songName) || nameParts.songName;
+      const artist = cleanText(req.body.artist) || nameParts.artist;
+      const description = cleanText(req.body.description);
+      const isSound = req.body.isSound === 'true';
+
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message: '请提供音乐名称'
+        });
+      }
+
+      const musicFile = req.files.musicFile[0];
+      const lrcFile = req.files.lrcFile ? req.files.lrcFile[0] : null;
+
+      const coverFile = req.files.coverFile?.[0];
+      let cover;
       try {
-        // 生成唯一文件名
-        const lrcFilename = `${uuidv4()}.lrc`;
-        const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFilename);
-
-        // 将歌词内容写入文件
-        fs.writeFileSync(lrcFilePath, req.body.lrcContent, 'utf8');
-
-        // 更新音乐记录
-        musicRecord.lrcFilename = lrcFilename;
-        console.log('从编辑器内容创建LRC文件成功:', lrcFilename);
+        if (coverFile) cover = await storeCover(await readCoverFile(coverFile.path), baseDir);
       } catch (error) {
-        console.error('创建LRC文件失败:', error);
+        for (const file of [musicFile, lrcFile]) if (file) safeUnlink(file.path);
+        return res.status(400).json({ success: false, message: `封面处理失败：${error.message}` });
       }
-    }
 
-    // 添加到数据中
-    data.music.push(musicRecord);
-    saveData(data);
+      // 读取数据
+      const data = getData();
 
-    res.json({
-      success: true,
-      message: '音乐上传成功',
-      musicId: musicId
-    });
+      // 创建音乐记录
+      const musicId = uuidv4();
+      const musicRecord = {
+        id: musicId,
+        name: name,
+        songName,
+        artist,
+        description: description,
+        filename: musicFile.filename,
+        originalname: musicFile.originalname,
+        isSound: isSound,
+        uploadDate: new Date().toISOString(),
+        ...(cover ? { coverUrl: cover.coverUrl } : {})
+      };
+
+      // 如果有LRC文件，添加到音乐记录
+      if (lrcFile) {
+        musicRecord.lrcFilename = lrcFile.filename;
+
+        // 确保歌词内容被正确保存，特别是从编辑器添加的内容
+        const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFile.filename);
+        if (!fs.existsSync(lrcFilePath)) {
+          console.error('LRC文件未被正确保存:', lrcFilePath);
+        } else {
+          console.log('LRC文件已保存:', lrcFilePath);
+        }
+      } else if (req.body.lrcContent) {
+        // 如果没有上传LRC文件，但有直接输入的歌词内容
+        try {
+          // 生成唯一文件名
+          const lrcFilename = `${uuidv4()}.lrc`;
+          const lrcFilePath = path.join(baseDir, 'public', 'music', lrcFilename);
+
+          // 将歌词内容写入文件
+          fs.writeFileSync(lrcFilePath, req.body.lrcContent, 'utf8');
+
+          // 更新音乐记录
+          musicRecord.lrcFilename = lrcFilename;
+          console.log('从编辑器内容创建LRC文件成功:', lrcFilename);
+        } catch (error) {
+          console.error('创建LRC文件失败:', error);
+        }
+      }
+
+      // 添加到数据中
+      data.music.push(musicRecord);
+      if (saveData(data) === false) return res.status(500).json({ success: false, message: '音乐库保存失败' });
+      // 转换已解码且记录已重新读取核验后，才删除此次上传的临时原图。
+      if (coverFile && getData().music?.some(item => item.id === musicId && item.coverUrl === cover.coverUrl)) safeUnlink(coverFile.path);
+
+      res.json({
+        success: true,
+        message: '音乐上传成功',
+        musicId: musicId
+      });
+    } catch (error) { next(error); }
   });
 
   app.post(['/api/music/import-netease', '/api/music/import-bilibili'], requireLogin, async (req, res) => {
