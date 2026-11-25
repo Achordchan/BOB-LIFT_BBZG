@@ -99,6 +99,10 @@ test('网易云封面展示走 300x300 WebP 缩略图，已带缩略参数或非
     'https://p2.music.126.net/abc/123.jpg?imageView&thumbnail=300x300&type=webp');
   assert.equal(neteaseThumbnail('https://p1.music.126.net/a.jpg?x=1'),
     'https://p1.music.126.net/a.jpg?x=1&imageView&thumbnail=300x300&type=webp');
+  assert.equal(neteaseThumbnail('https://p2.music.126.net/a.jpg#cover'),
+    'https://p2.music.126.net/a.jpg?imageView&thumbnail=300x300&type=webp');
+  assert.equal(neteaseThumbnail('https://p2.music.126.net/a.jpg?x=1#cover'),
+    'https://p2.music.126.net/a.jpg?x=1&imageView&thumbnail=300x300&type=webp');
   assert.equal(neteaseThumbnail('https://p1.music.126.net/a.jpg?param=100y100'), null);
   assert.equal(neteaseThumbnail('https://p1.music.126.net/a.jpg?imageView&thumbnail=50x50'), null);
   assert.equal(neteaseThumbnail('https://i0.hdslb.com/a.jpg'), null);
