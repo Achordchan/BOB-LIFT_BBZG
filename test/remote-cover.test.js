@@ -3,7 +3,7 @@ const test = require('node:test');
 const express = require('express');
 const { Readable } = require('stream');
 const dns = require('dns').promises;
-const { proxyRemoteCover, validateRemoteCover, isPublicAddress } = require('../lib/remote-cover');
+const { proxyRemoteCover, validateRemoteCover, isPublicAddress, neteaseThumbnail } = require('../lib/remote-cover');
 
 test('远程封面拒绝内网、元数据、映射 IPv6 和本站主机', () => {
   for (const address of ['127.0.0.1', '10.1.2.3', '169.254.169.254', '100.64.1.1', '198.18.0.1', '::1', '::ffff:127.0.0.1', 'fc00::1']) {
@@ -92,4 +92,33 @@ test('保留全部已验证地址供双栈回退，显式地址族不会跨族�
   assert.equal((await fetch(`${base}/image?url=https://cdn.example/image`)).status, 200);
   ipv6Available = false;
   assert.equal((await fetch(`${base}/image?url=https://cdn.example/image`)).status, 200);
+});
+
+test('网易云封面展示走 300x300 WebP 缩略图，已带缩略参数或非网易地址不改写', () => {
+  assert.equal(neteaseThumbnail('https://p2.music.126.net/abc/123.jpg'),
+    'https://p2.music.126.net/abc/123.jpg?imageView&thumbnail=300x300&type=webp');
+  assert.equal(neteaseThumbnail('https://p1.music.126.net/a.jpg?x=1'),
+    'https://p1.music.126.net/a.jpg?x=1&imageView&thumbnail=300x300&type=webp');
+  assert.equal(neteaseThumbnail('https://p2.music.126.net/a.jpg#cover'),
+    'https://p2.music.126.net/a.jpg?imageView&thumbnail=300x300&type=webp');
+  assert.equal(neteaseThumbnail('https://p2.music.126.net/a.jpg?x=1#cover'),
+    'https://p2.music.126.net/a.jpg?x=1&imageView&thumbnail=300x300&type=webp');
+  assert.equal(neteaseThumbnail('https://p1.music.126.net/a.jpg?param=100y100'), null);
+  assert.equal(neteaseThumbnail('https://p1.music.126.net/a.jpg?imageView&thumbnail=50x50'), null);
+  assert.equal(neteaseThumbnail('https://i0.hdslb.com/a.jpg'), null);
+  assert.equal(neteaseThumbnail('https://evil.music.126.net.example/a.jpg'), null);
+  assert.equal(neteaseThumbnail('not a url'), null);
+});
+
+test('封面代理请求网易云缩略图并以 image/webp 返回', async t => {
+  const requested = [];
+  const { base } = await fixture(t, async url => {
+    requested.push(url);
+    return { status: 200, headers: { 'content-type': 'image/jpg' }, data: Readable.from([Buffer.from('RIFF0000WEBP')]) };
+  });
+  const response = await fetch(`${base}/image?url=${encodeURIComponent('https://p2.music.126.net/abc/123.jpg')}`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'image/webp');
+  assert.match(response.headers.get('cache-control'), /max-age=86400/);
+  assert.deepEqual(requested, ['https://p2.music.126.net/abc/123.jpg?imageView&thumbnail=300x300&type=webp']);
 });
